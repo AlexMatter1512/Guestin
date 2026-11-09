@@ -1,0 +1,14 @@
+.git
+.env
+.env.*
+!.env.example
+node_modules
+apps/*/node_modules
+apps/*/.svelte-kit
+apps/*/build
+data
+backups
+test-results
+playwright-report
+
+.github

@@ -1,0 +1,13 @@
+services:
+  oshost:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_PATH: /app/data/oshost.sqlite
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - oshost-data:/app/data
+volumes:
+  oshost-data:

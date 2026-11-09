@@ -1,0 +1,1239 @@
+import {
+  log,
+  logError,
+  withLogContext,
+  setLogActor,
+  setLogResource,
+  logRoute,
+} from "./log";
+import { Hono } from "hono";
+import { z } from "zod";
+import type { DB } from "./db";
+import { vault, token, digest } from "./security";
+import { openDevice, type DeviceAdapter } from "./devices";
+import {
+  codeSchema,
+  doorSchema,
+  propertySchema,
+  defaultTemplates,
+  localDate,
+} from "../shared/schema";
+import { connectorRoutes } from "./connectors";
+import { databaseLifecycle } from "./lifecycle";
+type Env = {
+  Bindings: { clientIP?: string };
+  Variables: { user: any; csrf: string };
+};
+export function createApp(
+  db: DB,
+  config: {
+    key: string;
+    setupToken: string;
+    origin: string;
+    device?: DeviceAdapter;
+  },
+) {
+  const app = new Hono<Env>(),
+    crypto = vault(config.key);
+  const adapter = config.device ?? openDevice;
+  const device: DeviceAdapter = async (kind, credentials) => {
+    const started = performance.now();
+    log("info", "device.action_started", { provider: kind });
+    try {
+      const result = await adapter(kind, credentials);
+      log(
+        result.status === "accepted" ? "info" : "warn",
+        "device.action_completed",
+        {
+          provider: kind,
+          outcome: result.status,
+          durationMs: Math.round(performance.now() - started),
+        },
+      );
+      return result;
+    } catch (e) {
+      logError("device.action_exception", e, {
+        provider: kind,
+        durationMs: Math.round(performance.now() - started),
+      });
+      throw e;
+    }
+  };
+  const lifecycle = databaseLifecycle(db);
+  const get = (sql: string, ...args: any[]) =>
+    db.query(sql).get(...args) as any;
+  const all = (sql: string, ...args: any[]) =>
+    db.query(sql).all(...args) as any[];
+  const run = (sql: string, ...args: any[]) => db.query(sql).run(...args);
+  const fail = (message: string, status = 400) => {
+    const reasons: Record<string, string> = {
+      "Access expired": "access_expired",
+      "Access is not yet valid": "access_premature",
+      "Single-use access already consumed": "single_use_consumed",
+      "Door permission paused": "permission_paused",
+      "Door disabled": "door_disabled",
+      "Door not permitted": "door_not_permitted",
+      "Invalid or revoked access link": "invalid_access_link",
+      "Previous action is unresolved": "unresolved_action",
+    };
+    if (reasons[message])
+      log("warn", "access.rejected", { reason: reasons[message], status });
+    throw Object.assign(Error(message), { status });
+  };
+  function event(
+    type: string,
+    message: string,
+    propertyId: string | null = null,
+    codeId: string | null = null,
+  ) {
+    const id = cryptoRandom();
+    log(
+      type.includes("denied") ||
+        type.includes("invalid") ||
+        type.includes("failed") ||
+        type.includes("uncertain")
+        ? "warn"
+        : "info",
+      "activity.recorded",
+      { eventId: id, eventType: type, propertyId, codeId },
+    );
+    run(
+      "INSERT INTO events VALUES(?,?,?,?,?,?)",
+      id,
+      propertyId,
+      codeId,
+      type,
+      message,
+      new Date().toISOString(),
+    );
+    for (const s of all("SELECT * FROM subscriptions")) {
+      const p = JSON.parse(s.preferences);
+      if (
+        (!p.properties.length || p.properties.includes(propertyId)) &&
+        (!p.events.length || p.events.includes(type))
+      )
+        run(
+          "INSERT OR IGNORE INTO jobs(event_id,subscription_id,next) VALUES(?,?,?)",
+          id,
+          s.id,
+          Date.now(),
+        );
+    }
+  }
+  const cryptoRandom = () => globalThis.crypto.randomUUID();
+  function owner(c: any) {
+    if (c.get("user").role !== "owner") fail("Owner permission required", 403);
+  }
+  const defaultPreferences = {
+    tour: "pending",
+    language: null,
+    theme: "system",
+  };
+  function userView(user: any) {
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      preferences: {
+        ...defaultPreferences,
+        ...JSON.parse(
+          get("SELECT data FROM user_preferences WHERE user_id=?", user.id)
+            ?.data ?? "{}",
+        ),
+      },
+    };
+  }
+  function session(c: any, user: any) {
+    setLogActor(user);
+    log("info", "auth.succeeded");
+    const raw = token(),
+      csrf = token();
+    run(
+      "INSERT INTO sessions VALUES(?,?,?,?)",
+      digest(raw),
+      user.id,
+      csrf,
+      Date.now() + 7 * 86400000,
+    );
+    c.header(
+      "Set-Cookie",
+      `oshost_session=${raw}; HttpOnly; SameSite=Strict; Path=/api/; Max-Age=604800${config.origin.startsWith("https:") ? "; Secure" : ""}`,
+    );
+    return c.json({
+      user: userView(user),
+      csrf,
+    });
+  }
+  app.use("/api/*", async (c, next) => {
+    const requestId = cryptoRandom();
+    const started = performance.now();
+    c.header("X-Request-ID", requestId);
+    return withLogContext(
+      {
+        requestId,
+        method: c.req.method,
+        route: logRoute(c.req.path),
+        clientIP: c.env?.clientIP,
+      },
+      async () => {
+        log("debug", "request.started");
+        try {
+          await next();
+        } finally {
+          log(
+            c.res.status >= 500
+              ? "error"
+              : c.res.status >= 400
+                ? "warn"
+                : "info",
+            "request.completed",
+            {
+              status: c.res.status,
+              durationMs: Math.round((performance.now() - started) * 100) / 100,
+            },
+          );
+        }
+      },
+    );
+  });
+  const buckets = new Map<string, { n: number; until: number }>();
+  app.use("/api/*", async (c, next) => {
+    c.header("Cache-Control", "no-store");
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header("Referrer-Policy", "no-referrer");
+    if (Number(c.req.header("content-length") ?? 0) > 8 * 1024 * 1024)
+      return c.json({ error: "Request too large" }, 413);
+    if (c.req.method !== "GET" && c.req.header("origin") !== config.origin)
+      return c.json({ error: "Origin rejected" }, 403);
+    if (lifecycle.resetting)
+      return c.json({ error: "Database reset in progress" }, 503);
+    lifecycle.active++;
+    try {
+      await next();
+    } finally {
+      lifecycle.active--;
+    }
+  });
+  app.use("/api/v1/*", async (c, next) => {
+    if (
+      c.req.path === "/api/v1/guest" ||
+      c.req.path.startsWith("/api/v1/guest/") ||
+      c.req.path.startsWith("/api/v1/auth/")
+    ) {
+      const key = c.env?.clientIP ?? "direct";
+      const now = Date.now();
+      if (buckets.size > 10000)
+        for (const [k, v] of buckets) if (v.until < now) buckets.delete(k);
+      const b = buckets.get(key);
+      if (b && b.until > now) {
+        if (++b.n > 100)
+          return c.json({ error: "Too many attempts; try again shortly" }, 429);
+      } else buckets.set(key, { n: 1, until: now + 60000 });
+    }
+    await next();
+  });
+  app.onError((e, c) => {
+    const status = e instanceof z.ZodError ? 400 : ((e as any).status ?? 500);
+    if (status >= 500) logError("request.exception", e, { status });
+    else log("warn", "request.rejected", { status, errorType: e.name });
+    return c.json(
+      {
+        error:
+          e instanceof z.ZodError
+            ? e.issues.map((i) => i.message).join("; ")
+            : (e as any).status
+              ? e.message
+              : "Request failed",
+      },
+      status as any,
+    );
+  });
+  app.get("/api/v1/health", (c) => c.json({ status: "ok", schema: 2 }));
+  app.get("/api/v1/auth/status", (c) =>
+    c.json({ needsSetup: !get("SELECT 1 FROM users LIMIT 1") }),
+  );
+  const identity = z.object({
+    name: z.string().min(1),
+    email: z.email().transform((v) => v.toLowerCase()),
+    password: z.string().min(12).max(200),
+  });
+  app.post("/api/v1/auth/setup", async (c) => {
+    const body = await c.req.json();
+    const data = identity.parse(body);
+    const password = await Bun.password.hash(data.password, {
+      algorithm: "argon2id",
+    });
+    const user = db.transaction(() => {
+      if (
+        get("SELECT 1 FROM users") ||
+        digest(body.setupToken ?? "") !== digest(config.setupToken)
+      )
+        fail("Setup unavailable", 403);
+      const user = { id: cryptoRandom(), ...data, role: "owner" };
+      run(
+        "INSERT INTO users VALUES(?,?,?,?,?)",
+        user.id,
+        user.name,
+        user.email,
+        password,
+        user.role,
+      );
+      return user;
+    })();
+    return session(c, user);
+  });
+  app.post("/api/v1/auth/login", async (c) => {
+    const body = await c.req.json();
+    const user = get(
+      "SELECT * FROM users WHERE email=?",
+      String(body.email).toLowerCase(),
+    );
+    if (
+      !user ||
+      !(await Bun.password.verify(String(body.password), user.password))
+    ) {
+      log("warn", "auth.rejected", { reason: "invalid_credentials" });
+      fail("Invalid credentials", 401);
+    }
+    return session(c, user);
+  });
+  app.post("/api/v1/auth/accept-invite", async (c) => {
+    const body = await c.req.json(),
+      data = identity.parse(body),
+      password = await Bun.password.hash(data.password, {
+        algorithm: "argon2id",
+      });
+    const user = db.transaction(() => {
+      const invite = get(
+        "SELECT * FROM invites WHERE digest=? AND expires>?",
+        digest(body.invite ?? ""),
+        Date.now(),
+      );
+      if (!invite) fail("Invitation invalid or expired", 403);
+      if (get("SELECT 1 FROM users WHERE email=?", data.email))
+        fail("Email already exists");
+      const u = { id: cryptoRandom(), ...data, role: "staff" };
+      run(
+        "INSERT INTO users VALUES(?,?,?,?,?)",
+        u.id,
+        u.name,
+        u.email,
+        password,
+        u.role,
+      );
+      run("DELETE FROM invites WHERE digest=?", invite.digest);
+      return u;
+    })();
+    return session(c, user);
+  });
+  app.use("/api/v1/*", async (c, next) => {
+    const path = c.req.path;
+    if (
+      path === "/api/v1/guest" ||
+      path.startsWith("/api/v1/guest/") ||
+      path.startsWith("/api/v1/public/") ||
+      path.startsWith("/api/v1/auth/") ||
+      path.endsWith("/health")
+    )
+      return next();
+    const cookie = c.req
+      .header("cookie")
+      ?.match(/(?:^|; )oshost_session=([^;]+)/)?.[1];
+    const s =
+      cookie &&
+      get(
+        "SELECT s.*,u.id,u.name,u.email,u.role FROM sessions s JOIN users u ON s.user_id=u.id WHERE digest=? AND expires>?",
+        digest(cookie),
+        Date.now(),
+      );
+    if (!s) {
+      log("warn", "auth.session_rejected");
+      return c.json({ error: "Authentication required" }, 401);
+    }
+    setLogActor(s);
+    if (c.req.method !== "GET" && c.req.header("x-csrf-token") !== s.csrf)
+      return c.json({ error: "CSRF token rejected" }, 403);
+    c.set("user", userView(s));
+    c.set("csrf", s.csrf);
+    await next();
+  });
+  app.get("/api/v1/me", (c) =>
+    c.json({ user: c.get("user"), csrf: c.get("csrf") }),
+  );
+  app.patch("/api/v1/me/preferences", async (c) => {
+    const changes = z
+      .object({
+        tour: z.enum(["pending", "completed", "skipped"]).optional(),
+        language: z.enum(["en", "it"]).nullable().optional(),
+        theme: z.enum(["light", "dark", "system"]).optional(),
+      })
+      .strict()
+      .parse(await c.req.json());
+    const preferences = { ...userView(c.get("user")).preferences, ...changes };
+    run(
+      "INSERT INTO user_preferences VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET data=excluded.data",
+      c.get("user").id,
+      JSON.stringify(preferences),
+    );
+    return c.json({ preferences });
+  });
+  app.post("/api/v1/admin/wipe", async (c) => {
+    owner(c);
+    const input = z
+      .object({
+        password: z.string().max(200),
+        confirmation: z.literal("WIPE ALL DATA"),
+      })
+      .parse(await c.req.json());
+    const user = get("SELECT * FROM users WHERE id=?", c.get("user").id);
+    if (!user || !(await Bun.password.verify(input.password, user.password)))
+      fail("Current password is incorrect", 403);
+    if (lifecycle.active !== 1)
+      fail(
+        "Another request or notification is in progress. Wait for it to finish before wiping the database.",
+        409,
+      );
+    lifecycle.resetting = true;
+    try {
+      db.transaction(() => {
+        for (const table of [
+          "jobs",
+          "subscriptions",
+          "events",
+          "door_tests",
+          "actions",
+          "redemptions",
+          "grants",
+          "codes",
+          "connections",
+          "templates",
+          "doors",
+          "properties",
+          "sessions",
+          "invites",
+          "user_preferences",
+          "users",
+        ])
+          db.exec(`DELETE FROM ${table}`);
+      })();
+      log("warn", "workspace.wiped");
+      buckets.clear();
+      c.header(
+        "Set-Cookie",
+        "oshost_session=; Path=/api/; HttpOnly; SameSite=Strict; Max-Age=0",
+      );
+      return c.json({ ok: true, needsSetup: true });
+    } finally {
+      lifecycle.resetting = false;
+    }
+  });
+  app.post("/api/v1/logout", (c) => {
+    run("DELETE FROM sessions WHERE user_id=?", c.get("user").id);
+    c.header(
+      "Set-Cookie",
+      "oshost_session=; Path=/api/; HttpOnly; SameSite=Strict; Max-Age=0",
+    );
+    return c.json({ ok: true });
+  });
+  app.get("/api/v1/users", (c) => {
+    owner(c);
+    return c.json(all("SELECT id,name,email,role FROM users"));
+  });
+  app.delete("/api/v1/users/:id", (c) => {
+    owner(c);
+    if (c.req.param("id") === c.get("user").id) fail("Cannot remove yourself");
+    run("DELETE FROM sessions WHERE user_id=?", c.req.param("id"));
+    run("DELETE FROM users WHERE id=? AND role=?", c.req.param("id"), "staff");
+    return c.json({ ok: true });
+  });
+  app.post("/api/v1/invites", (c) => {
+    owner(c);
+    const raw = token();
+    run("INSERT INTO invites VALUES(?,?)", digest(raw), Date.now() + 86400000);
+    return c.json({ link: `${config.origin}/host/#invite=${raw}` });
+  });
+  app.get("/api/v1/properties", (c) =>
+    c.json(
+      all("SELECT * FROM properties").map((p) => ({
+        id: p.id,
+        ...JSON.parse(p.data),
+      })),
+    ),
+  );
+  app.post("/api/v1/properties", async (c) => {
+    owner(c);
+    const data = propertySchema.parse(await c.req.json()),
+      id = cryptoRandom();
+    run("INSERT INTO properties VALUES(?,?)", id, JSON.stringify(data));
+    return c.json({ id, ...data }, 201);
+  });
+  app.put("/api/v1/properties/:id", async (c) => {
+    owner(c);
+    const data = propertySchema.parse(await c.req.json());
+    run(
+      "UPDATE properties SET data=? WHERE id=?",
+      JSON.stringify(data),
+      c.req.param("id"),
+    );
+    return c.json({ ok: true });
+  });
+  const doorView = (d: any) => {
+    const data = JSON.parse(d.data);
+    const test = get(
+      "SELECT * FROM door_tests WHERE door_id=? AND resolved=0 ORDER BY created DESC LIMIT 1",
+      d.id,
+    );
+    return {
+      id: d.id,
+      enabled: true,
+      description: "",
+      descriptionTranslations: {},
+      photos: [],
+      primaryPhotoId: null,
+      order: 0,
+      ...data,
+      configured: data.integration !== "none",
+      testAction: test ? { id: test.id, ...JSON.parse(test.result) } : null,
+    };
+  };
+  app.get("/api/v1/doors", (c) =>
+    c.json(
+      all("SELECT * FROM doors")
+        .map(doorView)
+        .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)),
+    ),
+  );
+  app.put("/api/v1/doors/order", async (c) => {
+    owner(c);
+    const b = z
+      .object({ propertyId: z.string(), doorIds: z.array(z.string()) })
+      .parse(await c.req.json());
+    const doors = all("SELECT * FROM doors WHERE property_id=?", b.propertyId);
+    if (
+      new Set(b.doorIds).size !== doors.length ||
+      b.doorIds.length !== doors.length ||
+      doors.some((d) => !b.doorIds.includes(d.id))
+    )
+      fail("Include every door in the property exactly once");
+    db.transaction(() => {
+      for (const [order, id] of b.doorIds.entries()) {
+        const d = doors.find((d) => d.id === id);
+        run(
+          "UPDATE doors SET data=? WHERE id=?",
+          JSON.stringify({ ...JSON.parse(d.data), order }),
+          id,
+        );
+      }
+    })();
+    return c.json({ ok: true });
+  });
+  app.post("/api/v1/doors", async (c) => {
+    owner(c);
+    const { config: secret, ...data } = doorSchema.parse(await c.req.json());
+    validateDoorPhotos(data);
+    validateDevice(data.integration, secret);
+    const id = cryptoRandom();
+    run(
+      "INSERT INTO doors VALUES(?,?,?,?)",
+      id,
+      data.propertyId,
+      JSON.stringify(data),
+      crypto.seal(secret),
+    );
+    return c.json({ id, ...data }, 201);
+  });
+  app.put("/api/v1/doors/:id", async (c) => {
+    owner(c);
+    const input = await c.req.json();
+    const d = get("SELECT * FROM doors WHERE id=?", c.req.param("id"));
+    if (!d) fail("Door missing", 404);
+    const current = JSON.parse(d.data);
+    const { config: secret, ...data } = doorSchema.parse({
+      ...current,
+      ...input,
+    });
+    if (current.propertyId !== data.propertyId)
+      fail("A door cannot move between properties");
+    const use =
+      data.integration === "none"
+        ? secret
+        : Object.keys(secret).length
+          ? secret
+          : crypto.open(d.secret);
+    validateDoorPhotos(data);
+    validateDevice(data.integration, use);
+    run(
+      "UPDATE doors SET data=?,secret=? WHERE id=?",
+      JSON.stringify(data),
+      crypto.seal(use),
+      d.id,
+    );
+    return c.json({ ok: true });
+  });
+  function validateDoorPhotos(data: any) {
+    if (new Set(data.photos.map((p: any) => p.id)).size !== data.photos.length)
+      fail("Duplicate photo identifiers");
+    if (
+      data.primaryPhotoId &&
+      !data.photos.some((p: any) => p.id === data.primaryPhotoId)
+    )
+      fail("Primary photo is missing");
+    for (const photo of data.photos) {
+      const bytes = Buffer.from(photo.url.split(",")[1], "base64");
+      const valid = photo.url.startsWith("data:image/png;")
+        ? bytes
+            .subarray(0, 8)
+            .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+        : photo.url.startsWith("data:image/jpeg;")
+          ? bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255
+          : bytes.subarray(0, 4).toString() === "RIFF" &&
+            bytes.subarray(8, 12).toString() === "WEBP";
+      if (!valid) fail("Only PNG, JPEG and WebP photo data is allowed");
+    }
+  }
+  app.delete("/api/v1/doors/:id", (c) => {
+    owner(c);
+    const d = get("SELECT * FROM doors WHERE id=?", c.req.param("id"));
+    if (!d) fail("Door missing", 404);
+    if (get("SELECT 1 FROM grants WHERE door_id=?", d.id))
+      fail(
+        "This door is used by access codes. Disable it to preserve their history.",
+        409,
+      );
+    if (get("SELECT 1 FROM door_tests WHERE door_id=? AND resolved=0", d.id))
+      fail("Resolve the door test before deleting this door", 409);
+    run("DELETE FROM doors WHERE id=?", d.id);
+    event(
+      "door.deleted",
+      `Door deleted: ${JSON.parse(d.data).name}`,
+      d.property_id,
+    );
+    return c.json({ ok: true });
+  });
+  app.post("/api/v1/doors/:id/test", async (c) => {
+    z.object({ confirm: z.literal(true) }).parse(await c.req.json());
+    const id = actionId(c),
+      doorId = c.req.param("id");
+    const prior = get("SELECT * FROM door_tests WHERE id=?", id);
+    if (prior) {
+      if (prior.door_id !== doorId || prior.user_id !== c.get("user").id)
+        fail("Idempotency key conflict", 409);
+      return c.json({ id, ...JSON.parse(prior.result) });
+    }
+    const d = get("SELECT * FROM doors WHERE id=?", doorId);
+    if (!d) fail("Door missing", 404);
+    const data = JSON.parse(d.data);
+    if (data.enabled === false) fail("Door disabled", 403);
+    if (data.integration === "none")
+      fail("This door has no device connector yet", 400);
+    if (get("SELECT 1 FROM door_tests WHERE door_id=? AND resolved=0", doorId))
+      fail(
+        "A previous test is pending or uncertain. Check the door and resolve it before another test.",
+        409,
+      );
+    run(
+      "INSERT INTO door_tests(id,door_id,user_id,result,created) VALUES(?,?,?,?,?)",
+      id,
+      doorId,
+      c.get("user").id,
+      JSON.stringify({
+        status: "pending",
+        detail: "Device request in progress",
+      }),
+      new Date().toISOString(),
+    );
+    let result;
+    try {
+      result = await device(data.integration, crypto.open(d.secret));
+    } catch {
+      result = {
+        status: "uncertain",
+        detail: "Device response unavailable; check the door before retrying",
+      };
+    }
+    db.transaction(() => {
+      run(
+        "UPDATE door_tests SET result=?,resolved=? WHERE id=?",
+        JSON.stringify(result),
+        Number(result.status !== "uncertain"),
+        id,
+      );
+      event(
+        "device.test." + result.status,
+        `${c.get("user").name} tested ${data.name}: ${result.detail}`,
+        d.property_id,
+      );
+    })();
+    return c.json({ id, ...result });
+  });
+  app.post("/api/v1/doors/:id/resolve-test", async (c) => {
+    const b = z
+      .object({ actionId: z.string(), confirm: z.literal(true) })
+      .parse(await c.req.json());
+    const action = get(
+      "SELECT * FROM door_tests WHERE id=? AND door_id=?",
+      b.actionId,
+      c.req.param("id"),
+    );
+    if (!action) fail("Door test missing", 404);
+    if (JSON.parse(action.result).status === "pending")
+      fail("Device request is still running", 409);
+    if (action.resolved) return c.json({ ok: true });
+    run("UPDATE door_tests SET resolved=1 WHERE id=?", action.id);
+    const d = get("SELECT * FROM doors WHERE id=?", action.door_id);
+    event(
+      "device.test.resolved",
+      `${c.get("user").name} checked the uncertain door test`,
+      d?.property_id,
+    );
+    return c.json({ ok: true });
+  });
+  function validateDevice(kind: string, s: any) {
+    if (kind === "none" && Object.keys(s).length)
+      fail("An unconnected door must not contain device credentials");
+    if (kind === "ewelink" && !s.webhook_code) fail("Webhook code required");
+    if (
+      kind === "shelly" &&
+      (!/^shelly-[a-z0-9-]+\.shelly\.cloud$/.test(s.host) ||
+        !s.device_id ||
+        !s.api_key)
+    )
+      fail("Shelly cloud host, device ID and API key required");
+  }
+  const codeView = (row: any) => ({
+    id: row.id,
+    ...JSON.parse(row.data),
+    revoked: !!row.revoked,
+    created: row.created,
+    creator: row.creator,
+    creatorName:
+      get("SELECT name FROM users WHERE id=?", row.creator)?.name ?? null,
+    link: `${config.origin}/guest/#code=${crypto.open(row.secret)}`,
+    grants: all(
+      "SELECT door_id AS doorId,start,end,single_use AS singleUse,used,claim,active FROM grants WHERE code_id=?",
+      row.id,
+    ).map((g) => ({ ...g, singleUse: !!g.singleUse, active: !!g.active })),
+    breakfastUsed: get(
+      "SELECT COALESCE(SUM(quantity),0) AS n FROM redemptions WHERE code_id=?",
+      row.id,
+    ).n,
+  });
+  app.get("/api/v1/codes", (c) =>
+    c.json(all("SELECT * FROM codes ORDER BY created DESC").map(codeView)),
+  );
+  function saveCode(data: any, id: string, userId: string, isNew: boolean) {
+    db.transaction(() => {
+      if (!get("SELECT 1 FROM properties WHERE id=?", data.propertyId))
+        fail("Property missing");
+      if (
+        new Set(data.grants.map((g: any) => g.doorId)).size !==
+        data.grants.length
+      )
+        fail("Duplicate door");
+      for (const g of data.grants) {
+        if (
+          !get(
+            "SELECT 1 FROM doors WHERE id=? AND property_id=?",
+            g.doorId,
+            data.propertyId,
+          )
+        )
+          fail("Door is outside this property");
+        const old = get(
+          "SELECT * FROM grants WHERE code_id=? AND door_id=?",
+          id,
+          g.doorId,
+        );
+        if (old?.claim)
+          fail("Resolve pending device action before editing this code", 409);
+      }
+      const used = get(
+        "SELECT COALESCE(SUM(quantity),0) AS n FROM redemptions WHERE code_id=?",
+        id,
+      ).n;
+      if (used > (data.breakfast?.total ?? 0))
+        fail("Allocation cannot be below breakfasts already used");
+      const old = get("SELECT * FROM codes WHERE id=?", id);
+      if (!isNew && !old) fail("Code missing", 404);
+      if (old && old.property_id !== data.propertyId)
+        fail("Create a new access code to use another property");
+      if (
+        old &&
+        all("SELECT * FROM grants WHERE code_id=? AND claim IS NOT NULL", id)
+          .length
+      )
+        fail("Resolve pending device action first", 409);
+      const { grants, ...record } = data;
+      if (isNew) {
+        const raw = token();
+        run(
+          "INSERT INTO codes(id,property_id,creator,digest,secret,data,created) VALUES(?,?,?,?,?,?,?)",
+          id,
+          data.propertyId,
+          userId,
+          digest(raw),
+          crypto.seal(raw),
+          JSON.stringify(record),
+          new Date().toISOString(),
+        );
+      } else
+        run(
+          "UPDATE codes SET data=?,property_id=? WHERE id=?",
+          JSON.stringify(record),
+          data.propertyId,
+          id,
+        );
+      const prior = all("SELECT * FROM grants WHERE code_id=?", id);
+      run("DELETE FROM grants WHERE code_id=?", id);
+      for (const g of grants)
+        run(
+          "INSERT INTO grants(code_id,door_id,start,end,single_use,used,active) VALUES(?,?,?,?,?,?,?)",
+          id,
+          g.doorId,
+          g.start,
+          g.end,
+          Number(g.singleUse),
+          prior.find((v) => v.door_id === g.doorId)?.used ?? 0,
+          Number(
+            g.active ??
+              Boolean(prior.find((v) => v.door_id === g.doorId)?.active ?? 1),
+          ),
+        );
+      event(
+        isNew ? "code.created" : "code.updated",
+        isNew ? "Access code created" : "Access code updated",
+        data.propertyId,
+        id,
+      );
+    })();
+  }
+  app.post("/api/v1/codes", async (c) => {
+    const id = cryptoRandom();
+    saveCode(codeSchema.parse(await c.req.json()), id, c.get("user").id, true);
+    return c.json(codeView(get("SELECT * FROM codes WHERE id=?", id)), 201);
+  });
+  app.put("/api/v1/codes/:id", async (c) => {
+    saveCode(
+      codeSchema.parse(await c.req.json()),
+      c.req.param("id"),
+      c.get("user").id,
+      false,
+    );
+    return c.json({ ok: true });
+  });
+  app.patch("/api/v1/codes/:id/grants/:doorId", async (c) => {
+    const b = z.object({ active: z.boolean() }).parse(await c.req.json());
+    const code = get("SELECT * FROM codes WHERE id=?", c.req.param("id"));
+    const grant = get(
+      "SELECT * FROM grants WHERE code_id=? AND door_id=?",
+      c.req.param("id"),
+      c.req.param("doorId"),
+    );
+    if (!code || !grant) fail("Door permission missing", 404);
+    if (grant.claim)
+      fail(
+        "Resolve pending device action before changing this permission",
+        409,
+      );
+    run(
+      "UPDATE grants SET active=? WHERE code_id=? AND door_id=?",
+      Number(b.active),
+      code.id,
+      grant.door_id,
+    );
+    event(
+      "code.permission",
+      b.active ? "Door permission resumed" : "Door permission paused",
+      code.property_id,
+      code.id,
+    );
+    return c.json({ ok: true });
+  });
+  app.post("/api/v1/codes/:id/revoke", (c) => {
+    const r = get("SELECT * FROM codes WHERE id=?", c.req.param("id"));
+    if (!r) fail("Code missing", 404);
+    run("UPDATE codes SET revoked=1 WHERE id=?", r.id);
+    event("code.revoked", "Access code revoked", r.property_id, r.id);
+    return c.json({ ok: true });
+  });
+  app.post("/api/v1/codes/:id/regenerate", (c) => {
+    const raw = token();
+    run(
+      "UPDATE codes SET digest=?,secret=? WHERE id=?",
+      digest(raw),
+      crypto.seal(raw),
+      c.req.param("id"),
+    );
+    return c.json({ ok: true });
+  });
+  app.post("/api/v1/codes/:id/resolve", async (c) => {
+    const b = z
+      .object({ doorId: z.string(), consumed: z.boolean() })
+      .parse(await c.req.json());
+    db.transaction(() => {
+      const g = get(
+        "SELECT * FROM grants WHERE code_id=? AND door_id=?",
+        c.req.param("id"),
+        b.doorId,
+      );
+      if (!g?.claim) fail("No uncertain action to resolve");
+      const action = get("SELECT * FROM actions WHERE id=?", g.claim);
+      if (action && JSON.parse(action.result).status === "pending")
+        fail("Device request is still running", 409);
+      run(
+        "UPDATE grants SET claim=NULL,used=used+? WHERE code_id=? AND door_id=?",
+        Number(b.consumed),
+        g.code_id,
+        g.door_id,
+      );
+      event(
+        "device.resolved",
+        `Host resolved uncertain action as ${b.consumed ? "consumed" : "retry permitted"}`,
+        get("SELECT property_id FROM codes WHERE id=?", g.code_id).property_id,
+        g.code_id,
+      );
+    })();
+    return c.json({ ok: true });
+  });
+  app.get("/api/v1/templates/:property", (c) =>
+    c.json(
+      JSON.parse(
+        get(
+          "SELECT data FROM templates WHERE property_id=?",
+          c.req.param("property"),
+        )?.data ?? JSON.stringify(defaultTemplates),
+      ),
+    ),
+  );
+  app.put("/api/v1/templates/:property", async (c) => {
+    const data = z
+      .record(z.string(), z.record(z.string(), z.string().max(10000)))
+      .parse(await c.req.json());
+    run(
+      "INSERT INTO templates VALUES(?,?) ON CONFLICT(property_id) DO UPDATE SET data=excluded.data",
+      c.req.param("property"),
+      JSON.stringify(data),
+    );
+    return c.json({ ok: true });
+  });
+  app.get("/api/v1/events", (c) =>
+    c.json(all("SELECT * FROM events ORDER BY created DESC LIMIT 1000")),
+  );
+  app.get("/api/v1/reports", (c) =>
+    c.json(
+      all(
+        "SELECT c.id,c.creator,u.name,c.created,c.property_id,(SELECT COUNT(*) FROM events e WHERE e.code_id=c.id AND e.type LIKE 'access.%') AS attempts,(SELECT COUNT(*) FROM events e WHERE e.code_id=c.id AND e.type='access.accepted') AS accepted FROM codes c LEFT JOIN users u ON c.creator=u.id",
+      ),
+    ),
+  );
+  let lastInvalid = 0;
+  function guest(c: any) {
+    const raw = c.req.header("authorization")?.replace(/^Bearer /, "") ?? "";
+    const r = get("SELECT * FROM codes WHERE digest=?", digest(raw));
+    if (!r || r.revoked) {
+      if (Date.now() - lastInvalid > 60000) {
+        event(
+          "access.invalid",
+          "An invalid or revoked guest link was attempted",
+        );
+        lastInvalid = Date.now();
+      }
+      fail("Invalid or revoked access link", 403);
+    }
+    setLogResource({ codeId: r.id, propertyId: r.property_id });
+    return r;
+  }
+  app.get("/api/v1/guest", (c) => {
+    const r = guest(c),
+      d = JSON.parse(r.data),
+      p = JSON.parse(
+        get("SELECT data FROM properties WHERE id=?", r.property_id).data,
+      );
+    return c.json({
+      label: d.label,
+      property: p.name,
+      timezone: p.timezone,
+      breakfast: d.breakfast,
+      breakfastUsed: get(
+        "SELECT COALESCE(SUM(quantity),0) AS n FROM redemptions WHERE code_id=?",
+        r.id,
+      ).n,
+      doors: all(
+        "SELECT g.*,d.data FROM grants g JOIN doors d ON d.id=g.door_id WHERE code_id=?",
+        r.id,
+      )
+        .map((g) => ({
+          id: g.door_id,
+          name: JSON.parse(g.data).name,
+          translations: JSON.parse(g.data).translations,
+          description: JSON.parse(g.data).description ?? "",
+          descriptionTranslations:
+            JSON.parse(g.data).descriptionTranslations ?? {},
+          photos: JSON.parse(g.data).photos ?? [],
+          primaryPhotoId: JSON.parse(g.data).primaryPhotoId ?? null,
+          order: JSON.parse(g.data).order ?? 0,
+          enabled: JSON.parse(g.data).enabled !== false,
+          active: !!g.active,
+          start: g.start,
+          end: g.end,
+          singleUse: !!g.single_use,
+          used: g.used,
+          pending: !!g.claim,
+          configured: JSON.parse(g.data).integration !== "none",
+        }))
+        .sort((a, b) => a.order - b.order),
+    });
+  });
+  function actionId(c: any) {
+    const id = c.req.header("idempotency-key");
+    if (!id || !z.uuid().safeParse(id).success)
+      fail("UUID Idempotency-Key required");
+    return id!;
+  }
+  app.post("/api/v1/guest/doors/:door/open", async (c) => {
+    const r = guest(c),
+      id = actionId(c),
+      doorId = c.req.param("door");
+    const previous = get("SELECT * FROM actions WHERE id=?", id);
+    if (previous) {
+      if (
+        previous.code_id !== r.id ||
+        previous.target !== doorId ||
+        previous.kind !== "door"
+      )
+        fail("Idempotency key conflict", 409);
+      return c.json(JSON.parse(previous.result));
+    }
+    const d = get("SELECT * FROM doors WHERE id=?", doorId);
+    try {
+      db.transaction(() => {
+        const g = get(
+          "SELECT * FROM grants WHERE code_id=? AND door_id=?",
+          r.id,
+          doorId,
+        );
+        const now = new Date().toISOString();
+        let reason =
+          !g || !d
+            ? "Door not permitted"
+            : JSON.parse(d.data).enabled === false
+              ? "Door disabled"
+              : !g.active
+                ? "Door permission paused"
+                : JSON.parse(d.data).integration === "none"
+                  ? "This door has no device connector yet"
+                  : now < g.start
+                    ? "Access is not yet valid"
+                    : now >= g.end
+                      ? "Access expired"
+                      : g.claim
+                        ? "Previous action is unresolved"
+                        : g.single_use && g.used
+                          ? "Single-use access already consumed"
+                          : null;
+        if (reason) {
+          fail(reason, 403);
+        }
+        run(
+          "INSERT INTO actions VALUES(?,?,?,?,?)",
+          id,
+          r.id,
+          "door",
+          doorId,
+          JSON.stringify({ status: "pending" }),
+        );
+        run(
+          "UPDATE grants SET claim=? WHERE code_id=? AND door_id=?",
+          id,
+          r.id,
+          doorId,
+        );
+      })();
+    } catch (e) {
+      event("access.denied", (e as Error).message, r.property_id, r.id);
+      throw e;
+    }
+    let result;
+    try {
+      result = await device(
+        JSON.parse(d.data).integration,
+        crypto.open(d.secret),
+      );
+    } catch {
+      result = { status: "uncertain", detail: "Device response unavailable" };
+    }
+    db.transaction(() => {
+      run("UPDATE actions SET result=? WHERE id=?", JSON.stringify(result), id);
+      if (result.status !== "uncertain")
+        run(
+          "UPDATE grants SET claim=NULL,used=used+? WHERE code_id=? AND door_id=?",
+          Number(result.status === "accepted"),
+          r.id,
+          doorId,
+        );
+      event("access." + result.status, result.detail, r.property_id, r.id);
+    })();
+    return c.json(result);
+  });
+  app.post("/api/v1/guest/breakfast", async (c) => {
+    const { quantity } = z
+      .object({ quantity: z.number().int().min(1).max(1000) })
+      .parse(await c.req.json());
+    const r = guest(c),
+      id = actionId(c);
+    let error: string | undefined;
+    const result = db.transaction(() => {
+      const prior = get("SELECT * FROM actions WHERE id=?", id);
+      if (prior) {
+        if (
+          prior.code_id !== r.id ||
+          prior.kind !== "breakfast" ||
+          prior.target !== String(quantity)
+        )
+          fail("Idempotency key conflict", 409);
+        return JSON.parse(prior.result);
+      }
+      const d = JSON.parse(r.data),
+        p = JSON.parse(
+          get("SELECT data FROM properties WHERE id=?", r.property_id).data,
+        ),
+        today = localDate(p.timezone),
+        used = get(
+          "SELECT COALESCE(SUM(quantity),0) AS n FROM redemptions WHERE code_id=?",
+          r.id,
+        ).n;
+      if (
+        !d.breakfast ||
+        today < d.breakfast.start ||
+        today > d.breakfast.end ||
+        used + quantity > d.breakfast.total
+      ) {
+        error = "Breakfast unavailable for this date or quantity";
+        event("breakfast.denied", error, r.property_id, r.id);
+        return null;
+      }
+      run(
+        "INSERT INTO redemptions VALUES(?,?,?,?,?)",
+        id,
+        r.id,
+        quantity,
+        today,
+        new Date().toISOString(),
+      );
+      const result = { remaining: d.breakfast.total - used - quantity };
+      run(
+        "INSERT INTO actions VALUES(?,?,?,?,?)",
+        id,
+        r.id,
+        "breakfast",
+        String(quantity),
+        JSON.stringify(result),
+      );
+      event(
+        "breakfast.redeemed",
+        `${quantity} breakfast(s) redeemed`,
+        r.property_id,
+        r.id,
+      );
+      return result;
+    })();
+    if (error) fail(error, 403);
+    return c.json(result);
+  });
+  app.get("/api/v1/public/breakfast/:property", (c) => {
+    const p = get(
+      "SELECT * FROM properties WHERE id=?",
+      c.req.param("property"),
+    );
+    if (!p) fail("Property missing", 404);
+    const data = JSON.parse(p.data),
+      today = localDate(data.timezone),
+      month = today.slice(0, 7) + "-01",
+      last = new Date(month + "T12:00:00Z");
+    last.setUTCMonth(last.getUTCMonth() - 1);
+    const lastStart = last.toISOString().slice(0, 10);
+    const total = (from: string, to: string) =>
+      get(
+        "SELECT COALESCE(SUM(r.quantity),0) AS total FROM redemptions r JOIN codes c ON r.code_id=c.id WHERE c.property_id=? AND r.date>=? AND r.date<=?",
+        p.id,
+        from,
+        to,
+      ).total;
+    const from = z.iso.date().parse(c.req.query("from") ?? month),
+      to = z.iso.date().parse(c.req.query("to") ?? today);
+    if (from > to) fail("Invalid date range");
+    return c.json({
+      property: data.name,
+      timezone: data.timezone,
+      today: total(today, today),
+      thisMonth: total(month, today),
+      lastMonth: total(
+        lastStart,
+        new Date(Date.parse(month + "T12:00:00Z") - 86400000)
+          .toISOString()
+          .slice(0, 10),
+      ),
+      from,
+      to,
+      total: total(from, to),
+    });
+  });
+  app.get("/api/v1/push/key", (c) =>
+    c.json({ key: process.env.VAPID_PUBLIC_KEY ?? null }),
+  );
+  app.post("/api/v1/push/subscriptions", async (c) => {
+    const b = z
+      .object({
+        subscription: z.object({
+          endpoint: z.url(),
+          keys: z.object({ p256dh: z.string(), auth: z.string() }),
+        }),
+        properties: z.array(z.string()).default([]),
+        events: z.array(z.string()).default([]),
+      })
+      .parse(await c.req.json());
+    const u = new URL(b.subscription.endpoint);
+    if (
+      u.protocol !== "https:" ||
+      ![
+        "fcm.googleapis.com",
+        "updates.push.services.mozilla.com",
+        "web.push.apple.com",
+      ].some((h) => u.hostname === h || u.hostname.endsWith("." + h))
+    )
+      fail("Unsupported push endpoint");
+    const id = digest(b.subscription.endpoint);
+    run(
+      "INSERT INTO subscriptions VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET user_id=excluded.user_id,data=excluded.data,preferences=excluded.preferences",
+      id,
+      c.get("user").id,
+      JSON.stringify(b.subscription),
+      JSON.stringify({ properties: b.properties, events: b.events }),
+    );
+    return c.json({ ok: true });
+  });
+  app.delete("/api/v1/push/subscriptions", (c) => {
+    run("DELETE FROM subscriptions WHERE user_id=?", c.get("user").id);
+    return c.json({ ok: true });
+  });
+  connectorRoutes(app as any, db, crypto, owner, fail);
+  // Interrupted requests are never replayed after restart. Claims require host resolution.
+  run(
+    `UPDATE actions SET result=? WHERE result=?`,
+    JSON.stringify({
+      status: "uncertain",
+      detail: "Server restarted during device request; verify before retrying",
+    }),
+    JSON.stringify({ status: "pending" }),
+  );
+  run(
+    `UPDATE door_tests SET result=? WHERE resolved=0 AND json_extract(result,'$.status')='pending'`,
+    JSON.stringify({
+      status: "uncertain",
+      detail:
+        "Server restarted during door test; check the door before retrying",
+    }),
+  );
+  return app;
+}
