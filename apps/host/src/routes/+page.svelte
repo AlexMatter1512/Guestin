@@ -1,4 +1,8 @@
 <script lang="ts">
+  import { notificationTypes } from "../../../../shared/notifications";
+  import AccessCalendar from "$lib/components/AccessCalendar.svelte";
+  import * as Popover from "$lib/components/ui/popover";
+  import { buttonVariants } from "$lib/components/ui/button";
   import { Checkbox } from "$lib/components/ui/checkbox";
   import { Input } from "$lib/components/ui/input";
   import { Textarea } from "$lib/components/ui/textarea";
@@ -17,7 +21,6 @@
     KeyRound,
     DoorOpen,
     Plus,
-    Activity,
     Settings,
     CircleHelp,
     ChevronRight,
@@ -43,7 +46,6 @@
     Sun,
     Moon,
     X,
-    CalendarDays,
     ChevronLeft,
     Ellipsis,
     LogOut,
@@ -375,13 +377,19 @@
       if (saved) {
         pushProperties = saved.properties ?? [];
         pushEvents = (saved.events ?? []).join(",");
+        pushAllEvents = saved.allEvents ?? !saved.events?.length;
+        pushAllProperties = saved.allProperties ?? !saved.properties?.length;
       } else {
         pushProperties = [];
         pushEvents = "";
+        pushAllEvents = true;
+        pushAllProperties = true;
       }
     } catch {
       pushProperties = [];
       pushEvents = "";
+      pushAllEvents = true;
+      pushAllProperties = true;
     }
   }
   async function preferences(value: any) {
@@ -573,6 +581,8 @@
     message = $state("");
   let pushProperties = $state<string[]>([]),
     pushEvents = $state(""),
+    pushAllEvents = $state(true),
+    pushAllProperties = $state(true),
     permission = $state("");
   $effect(() => {
     if (tab !== "Messages" || !propertyId) return;
@@ -596,24 +606,33 @@
     };
   });
   const property = $derived(properties.find((p) => p.id === propertyId));
+  const activeCodeDate = $derived(
+    codeDate || dayAt(new Date(currentTime).toISOString(), propertyId),
+  );
+  function codeOnDate(c: any, day: string) {
+    return (
+      c.grants.some(
+        (g: any) =>
+          dayAt(g.start, c.propertyId) <= day &&
+          dayAt(new Date(Date.parse(g.end) - 1).toISOString(), c.propertyId) >=
+            day,
+      ) ||
+      (c.breakfast && c.breakfast.start <= day && c.breakfast.end >= day) ||
+      (!c.grants.length &&
+        !c.breakfast &&
+        dayAt(c.created, c.propertyId) === day)
+    );
+  }
+  function dateHasCodes(day: string) {
+    return codes.some((c) => c.propertyId === propertyId && codeOnDate(c, day));
+  }
   const filtered = $derived(
     codes.filter(
       (c) =>
         (!propertyId || c.propertyId === propertyId) &&
         c.label.toLowerCase().includes(search.toLowerCase()) &&
         (codeStatus === "all" || statusOf(c) === codeStatus) &&
-        (!codeDate ||
-          c.grants.some(
-            (g: any) =>
-              dayAt(g.start, c.propertyId) <= codeDate &&
-              dayAt(
-                new Date(Date.parse(g.end) - 1).toISOString(),
-                c.propertyId,
-              ) >= codeDate,
-          ) ||
-          (c.breakfast &&
-            c.breakfast.start <= codeDate &&
-            c.breakfast.end >= codeDate)),
+        codeOnDate(c, activeCodeDate),
     ),
   );
   const stats = $derived.by(() => {
@@ -727,6 +746,8 @@
       if (saved && user?.id === account) {
         pushProperties = saved.properties ?? [];
         pushEvents = (saved.events ?? []).join(",");
+        pushAllEvents = saved.allEvents ?? !saved.events?.length;
+        pushAllProperties = saved.allProperties ?? !saved.properties?.length;
         localStorage.setItem("oshost.push." + account, JSON.stringify(saved));
       }
     } catch {
@@ -1016,7 +1037,9 @@
     localStorage.removeItem("oshost.draft." + user.id);
     editing = false;
     search = "";
-    codeDate = "";
+    codeDate = data.grants[0]
+      ? dayAt(data.grants[0].start, data.propertyId)
+      : (data.breakfast?.start ?? "");
     codeStatus = "all";
     await reload();
     notice = "Access code saved. The guest link is ready to share.";
@@ -1103,6 +1126,9 @@
       }));
     await api("push/subscriptions", {
       subscription: subscription.toJSON(),
+      language: hostLanguage.current,
+      allEvents: pushAllEvents,
+      allProperties: pushAllProperties,
       properties: pushProperties,
       events: pushEvents
         .split(",")
@@ -1114,6 +1140,8 @@
       JSON.stringify({
         properties: pushProperties,
         events: pushEvents.split(",").filter(Boolean),
+        allEvents: pushAllEvents,
+        allProperties: pushAllProperties,
       }),
     );
     notice = "Notification preferences saved.";
@@ -1234,7 +1262,7 @@
         ? tab === "Doors"
           ? doorEditor
             ? '[data-tour="door-form"]'
-            : '[data-tour="add-door"]'
+            : '[data-tour="new-code"]'
           : '[data-tour="nav-doors"]'
         : tourStage === "code"
           ? tab === "Codes" && editing && !editId
@@ -1271,7 +1299,7 @@
             )
           : !doorEditor
             ? t(
-                "Click Add door. Give it a name such as “Example entrance”. You will add a device connector later, so no device account or credentials are needed now.",
+                "Click the highlighted + button. Give the door a name such as “Example entrance”. You will add a device connector later, so no device account or credentials are needed now.",
               )
             : t(
                 "Name your example door, leave Integration on Connect later, and click Save door. You will add a device connector later; this door cannot unlock anything yet.",
@@ -1585,8 +1613,14 @@
             data-tour="new-code"
             aria-label={t("Create access code")}
             disabled={!propertyId || busy}
-            onclick={() => (tourVisible ? newCode() : (quickCreate = true))}
-            ><Plus size={25} /></Button
+            onclick={() => {
+              if (tourVisible && tourStage === "door") {
+                editingDoor = "";
+                detailDoorId = "";
+                doorEditor = true;
+              } else if (tourVisible) newCode();
+              else quickCreate = true;
+            }}><Plus size={25} /></Button
           >
         {:else}<Button
             type="button"
@@ -1816,17 +1850,13 @@
                 >
               </form>
             {:else if detailCode}
-              <Card.Root
-                class="workspace-card stack"
-                data-code-id={detailCode.id}
-              >
+              <section class="code-detail stack" data-code-id={detailCode.id}>
                 <div class="row spread">
-                  <h2>{detailCode.label}</h2>
                   <Badge variant="secondary" class="badge"
                     >{t(statusOf(detailCode))}</Badge
                   >
                 </div>
-                <p>{detailCode.notes}</p>
+                {#if detailCode.notes}<p>{detailCode.notes}</p>{/if}
                 <small
                   >{t("Created by")}
                   {detailCode.creatorName ??
@@ -1892,7 +1922,7 @@
                 </section>
                 <h3>{t("Door permissions")}</h3>
                 {#each detailCode.grants as g (g.doorId)}<section
-                    class="door stack"
+                    class="permission-row stack"
                   >
                     <div class="row spread">
                       <strong
@@ -1997,63 +2027,61 @@
                     >
                   </div>
                 </details>
-              </Card.Root>
+              </section>
             {:else}
-              <div class="list-toolbar">
-                <div class="search-field">
-                  <Search size={18} /><Input
-                    aria-label={t("Search codes")}
-                    placeholder={t("Search guest access…")}
-                    bind:value={search}
-                  />
-                </div>
+              <div class="calendar-bar code-toolbar">
                 <Button
-                  type="button"
-                  variant="default"
-                  class="primary"
-                  onclick={() => newCode()}
-                  disabled={!propertyId}
-                  ><Plus size={17} /><span>{t("New code")}</span></Button
-                >
-              </div>
-              <div class="calendar-bar">
-                <Button
-                  type="button"
                   variant="ghost"
                   size="icon"
-                  class="icon-button"
                   aria-label={t("Previous day")}
                   onclick={() => shiftDay(-1)}><ChevronLeft size={18} /></Button
-                ><Label class="date-filter"
-                  ><CalendarDays size={17} /><Input
-                    aria-label={t("Valid on date")}
-                    type="date"
-                    bind:value={codeDate}
-                  /></Label
-                ><Button
-                  type="button"
+                >
+                <AccessCalendar
+                  value={activeCodeDate}
+                  hasCodes={dateHasCodes}
+                  onchange={(day) => (codeDate = day)}
+                />
+                <Button
                   variant="ghost"
                   size="icon"
-                  class="icon-button"
                   aria-label={t("Next day")}
                   onclick={() => shiftDay(1)}><ChevronRight size={18} /></Button
-                ><Button
-                  type="button"
+                >
+                <Button
                   variant="ghost"
-                  class="quiet"
+                  class="quiet today-button"
                   onclick={() =>
                     (codeDate = dayAt(new Date().toISOString(), propertyId))}
                   >{t("Today")}</Button
-                ><Button
-                  type="button"
-                  variant="ghost"
-                  class={cn("quiet", { selected: !codeDate })}
-                  onclick={() => (codeDate = "")}>{t("All dates")}</Button
-                ><Button
-                  type="button"
+                >
+                <div class="toolbar-spacer"></div>
+                <Popover.Root>
+                  <Popover.Trigger
+                    class={buttonVariants({ variant: "ghost", size: "icon" })}
+                    aria-label={t("Search codes")}
+                    title={t("Search codes")}
+                    data-search-active={!!search}
+                    ><Search size={18} /></Popover.Trigger
+                  >
+                  <Popover.Content align="end" class="w-72">
+                    <Label for="code-search">{t("Search codes")}</Label>
+                    <div class="flex gap-2">
+                      <Input
+                        id="code-search"
+                        placeholder={t("Search guest access…")}
+                        bind:value={search}
+                      /><Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t("Clear search")}
+                        onclick={() => (search = "")}><X size={16} /></Button
+                      >
+                    </div>
+                  </Popover.Content>
+                </Popover.Root>
+                <Button
                   variant="ghost"
                   size="icon"
-                  class="icon-button"
                   aria-label={t("Filters")}
                   title={t("Filters")}
                   aria-expanded={filtersOpen}
@@ -2116,10 +2144,30 @@
                           >{/if}{#if c.breakfast}<span class="muted"
                             ><Coffee size={13} />
                             {c.breakfast.total - c.breakfastUsed}</span
-                          >{/if}</span
+                          >{/if}<span
+                          class="muted"
+                          title={t("Successful requests")}
+                          aria-label={t("Successful requests") +
+                            ": " +
+                            (reports.find((r) => r.id === c.id)?.accepted ?? 0)}
+                          ><ChartNoAxesColumn size={13} />{reports.find(
+                            (r) => r.id === c.id,
+                          )?.accepted ?? 0}</span
+                        ></span
                       ></Button
                     >
                     <div class="row row-actions">
+                      <a
+                        class={buttonVariants({
+                          variant: "ghost",
+                          size: "icon",
+                        })}
+                        href={c.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={t("Open link")}
+                        title={t("Open link")}><ExternalLink size={19} /></a
+                      >
                       <Button
                         type="button"
                         variant="ghost"
@@ -2146,14 +2194,18 @@
                     <KeyRound size={36} />
                     <h2>
                       {t(
-                        search || codeDate || codeStatus !== "all"
+                        search || codeStatus !== "all"
                           ? "No matching codes"
-                          : "Your next guest starts here",
+                          : propertyId
+                            ? "No codes for this date"
+                            : "Your next guest starts here",
                       )}
                     </h2>
                     <p>
                       {t(
-                        "Create a link with just the doors and breakfast allowance they need.",
+                        propertyId
+                          ? "Choose another date or use + below to create an access code."
+                          : "Create a link with just the doors and breakfast allowance they need.",
                       )}
                     </p>
                     {#if !propertyId}{#if user.role === "owner"}<Button
@@ -2165,7 +2217,7 @@
                           {t(
                             "Ask an owner to set up a property and its doors.",
                           )}
-                        </p>{/if}{:else if search || codeDate || codeStatus !== "all"}<Button
+                        </p>{/if}{:else if search || codeStatus !== "all"}<Button
                         type="button"
                         variant="outline"
                         onclick={() => {
@@ -2173,11 +2225,6 @@
                           codeDate = "";
                           codeStatus = "all";
                         }}>{t("Clear filters")}</Button
-                      >{:else}<Button
-                        type="button"
-                        variant="outline"
-                        onclick={() => newCode()}
-                        disabled={!propertyId}>{t("Create access code")}</Button
                       >{/if}
                   </div>{/each}
               </Item.Group>{/if}
@@ -2467,33 +2514,71 @@
                 </p>
                 <small
                   >{t("Permission:")}
-                  {permission}{t(
-                    ". Leave filters empty to receive all activity.",
+                  {t(
+                    (
+                      {
+                        granted: "Allowed",
+                        denied: "Blocked",
+                        default: "Not requested",
+                        unsupported: "Not supported",
+                      } as Record<string, string>
+                    )[permission] ?? permission,
+                  )}{t(
+                    ". Choose event types below. No selection means no push notifications.",
                   )}</small
                 >
                 <div class="row">
+                  <Label class="inline"
+                    ><Checkbox
+                      checked={pushAllProperties}
+                      onCheckedChange={(checked) => {
+                        pushAllProperties = !!checked;
+                        pushProperties = [];
+                      }}
+                    />{t("All structures")}</Label
+                  >
                   {#each properties as p, index (p.id ?? index)}<Label
                       class="inline"
-                      ><input
-                        type="checkbox"
-                        value={p.id}
-                        bind:group={pushProperties}
+                      ><Checkbox
+                        checked={pushAllProperties ||
+                          pushProperties.includes(p.id)}
+                        onCheckedChange={(checked) => {
+                          const ids = (
+                            pushAllProperties
+                              ? properties.map((p) => p.id)
+                              : pushProperties
+                          ).filter((id) => id !== p.id);
+                          if (checked) ids.push(p.id);
+                          pushAllProperties = false;
+                          pushProperties = ids;
+                        }}
                       />{p.name}</Label
                     >{/each}
                 </div>
                 <fieldset class="stack">
-                  <legend>{t("Notify me about")}</legend
-                  >{#each [["access.accepted", "Access accepted"], ["access.denied", "Access denied"], ["access.failed", "Device failures"], ["access.uncertain", "Uncertain requests"], ["access.invalid", "Invalid guest links"], ["breakfast.redeemed", "Breakfast usage"], ["breakfast.denied", "Rejected breakfasts"]] as option (option[0])}<Label
+                  <legend>{t("Notify me about")}</legend>
+                  <Label class="inline"
+                    ><Checkbox
+                      checked={pushAllEvents}
+                      onCheckedChange={(checked) => {
+                        pushAllEvents = !!checked;
+                        pushEvents = "";
+                      }}
+                    />{t("All activity types")}</Label
+                  >
+                  {#each [["access.accepted", "Access accepted"], ["access.denied", "Access denied"], ["access.failed", "Device failures"], ["access.uncertain", "Uncertain requests"], ["access.invalid", "Invalid access code attempts (including page loads)"], ["breakfast.redeemed", "Breakfast usage"], ["breakfast.denied", "Rejected breakfasts"]] as option (option[0])}<Label
                       class="inline"
-                      ><input
-                        type="checkbox"
-                        checked={pushEvents.split(",").includes(option[0])}
-                        onchange={(e) => {
-                          const values = pushEvents
-                            .split(",")
-                            .filter(Boolean)
-                            .filter((v) => v !== option[0]);
-                          if (e.currentTarget.checked) values.push(option[0]);
+                      ><Checkbox
+                        checked={pushAllEvents ||
+                          pushEvents.split(",").includes(option[0])}
+                        onCheckedChange={(checked) => {
+                          const values = (
+                            pushAllEvents
+                              ? notificationTypes
+                              : pushEvents.split(",").filter(Boolean)
+                          ).filter((v) => v !== option[0]);
+                          pushAllEvents = false;
+                          if (checked) values.push(option[0]);
                           pushEvents = values.join(",");
                         }}
                       />{t(option[1])}</Label

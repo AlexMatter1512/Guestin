@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { notificationText } from "../../../../../shared/notifications";
   import { untrack } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import * as Card from "$lib/components/ui/card";
@@ -24,25 +25,6 @@
     loading = $state(false),
     error = $state("");
   let request = 0;
-  const labels: Record<string, string> = {
-    "code.created": "Access code created",
-    "code.updated": "Access code updated",
-    "code.revoked": "Access code revoked",
-    "code.permission": "Door permission changed",
-    "door.deleted": "Door deleted",
-    "device.test.accepted": "Door test accepted",
-    "device.test.failed": "Door test failed",
-    "device.test.uncertain": "Door test uncertain",
-    "device.test.resolved": "Door test resolved",
-    "device.resolved": "Device request resolved",
-    "access.accepted": "Access accepted",
-    "access.denied": "Access denied",
-    "access.failed": "Device failures",
-    "access.uncertain": "Uncertain requests",
-    "access.invalid": "Invalid guest links",
-    "breakfast.redeemed": "Breakfast usage",
-    "breakfast.denied": "Rejected breakfasts",
-  };
   const l = (en: string, it: string) =>
     hostLanguage.current === "it" ? it : en;
   async function load(more = false) {
@@ -103,21 +85,22 @@
 {#if error}<p class="error" role="alert">{error}</p>{/if}
 <div class="notification-history space-y-3" aria-busy={loading}>
   {#each events as event (event.id)}
+    {@const text = notificationText(
+      event,
+      hostLanguage.current,
+      codes.find((code) => code.id === event.code_id)?.label,
+    )}
     <Card.Root
       ><Card.Content class="pt-4"
         ><div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <strong>{t(labels[event.type] ?? event.type)}</strong><small
+          <strong>{text.title}</strong><small
             >{new Date(event.created).toLocaleString(hostLanguage.current, {
               timeZone: timezone,
             })}</small
           >
         </div>
-        <p>{event.message}</p>
-        {#if event.code_id}<small
-            >{codes.find((code) => code.id === event.code_id)?.label ??
-              ""}</small
-          >{/if}</Card.Content
-      ></Card.Root
+        <p>{text.body}</p>
+      </Card.Content></Card.Root
     >
   {:else}{#if !loading}<div class="empty-state">
         <Bell size={32} />

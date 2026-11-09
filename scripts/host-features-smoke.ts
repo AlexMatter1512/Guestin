@@ -175,7 +175,10 @@ try {
   await expect(page).toHaveURL(/#\/doors\/new$/);
   // History and reload preserve unpublished drafts.
   await page.locator('[data-tour="nav-codes"]').click();
-  await page.getByRole("button", { name: "New code", exact: true }).click();
+  await page.locator('[data-tour="new-code"]').click();
+  await page
+    .getByRole("button", { name: /Create access code Choose doors/ })
+    .click();
   await page
     .getByLabel("Guest name / label", { exact: true })
     .fill("History draft");

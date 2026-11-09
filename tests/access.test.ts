@@ -826,7 +826,7 @@ test("wipe requires owner, exact phrase and password; destroys records and sessi
       ).toBe(0);
     expect(
       (f.db.query("SELECT MAX(version) n FROM migrations").get() as any).n,
-    ).toBe(3);
+    ).toBe(4);
     expect(
       (
         await f.req("auth/setup", {
@@ -1022,6 +1022,130 @@ test("device onboarding progress resumes per user across sessions without alteri
       tourStep: null,
       tourCodeId: null,
     });
+  } finally {
+    f.db.close();
+  }
+});
+
+test("invalid guest page loads notify with safe unverified prior-visit context, per-link deduplication and code titles", async () => {
+  const f = await fixture();
+  try {
+    const ownerId = (f.db.query("SELECT id FROM users").get() as any).id;
+    f.db.query("INSERT INTO subscriptions VALUES(?,?,?,?)").run(
+      "invalid-option",
+      ownerId,
+      "{}",
+      JSON.stringify({
+        properties: [f.property.id],
+        events: ["access.invalid"],
+        language: "it",
+      }),
+    );
+    const hint = encodeURIComponent(
+      JSON.stringify({
+        label: "Previous stay",
+        date: "2026-10-01T12:00:00.000Z",
+        token: "must-not-persist",
+      }),
+    );
+    const load = (bearer: string, value = hint) =>
+      f.app.request("/api/v1/guest", {
+        headers: {
+          Authorization: "Bearer " + bearer,
+          "X-Oshost-Previous-Visit": value,
+        },
+      });
+    expect((await load("wrong-link-one")).status).toBe(403);
+    expect((await load("wrong-link-one")).status).toBe(403);
+    expect((await load("wrong-link-two", "%bad")).status).toBe(403);
+    const invalid = f.db
+      .query("SELECT * FROM events WHERE type='access.invalid'")
+      .all() as any[];
+    expect(invalid).toHaveLength(2);
+    expect(f.db.query("SELECT * FROM jobs").all()).toHaveLength(2);
+    const context = JSON.parse(
+      (
+        f.db
+          .query("SELECT data FROM event_context WHERE event_id=?")
+          .get(invalid[0].id) as any
+      ).data,
+    );
+    expect(context).toEqual({
+      action: "page",
+      previousVisit: {
+        label: "Previous stay",
+        date: "2026-10-01T12:00:00.000Z",
+      },
+    });
+    expect(
+      JSON.stringify(f.db.query("SELECT * FROM event_context").all()),
+    ).not.toContain("must-not-persist");
+    expect(JSON.stringify(invalid)).not.toContain("wrong-link");
+    await f.req(`codes/${f.code.id}/revoke`, {});
+    expect((await load(f.guest)).status).toBe(403);
+    const history = (
+      await f.req(`events?propertyId=${f.property.id}&pageSize=50`)
+    ).data.events;
+    const revoked = history.find(
+      (event: any) =>
+        event.type === "access.invalid" && event.code_id === f.code.id,
+    );
+    expect(revoked.context.codeLabel).toBe("Guest");
+    expect(revoked.property_id).toBe(f.property.id);
+    const created = history.find((event: any) => event.type === "code.created");
+    expect(created.context.codeLabel).toBe("Guest");
+    expect((await f.app.request("/api/v1/events")).status).toBe(401);
+    expect(f.calls()).toBe(0);
+  } finally {
+    f.db.close();
+  }
+});
+
+test("push event choices can explicitly select none or exclude invalid page attempts", async () => {
+  const f = await fixture();
+  try {
+    const subscription = {
+      endpoint: "https://fcm.googleapis.com/explicit-filter-fixture",
+      keys: { p256dh: "fixture", auth: "fixture" },
+    };
+    expect(
+      (
+        await f.req("push/subscriptions", {
+          subscription,
+          properties: [f.property.id],
+          events: [],
+          allEvents: false,
+          language: "it",
+        })
+      ).r.status,
+    ).toBe(200);
+    await f.app.request("/api/v1/guest", {
+      headers: { Authorization: "Bearer no-notifications" },
+    });
+    expect(f.db.query("SELECT * FROM jobs").all()).toHaveLength(0);
+    expect(
+      f.db.query("SELECT * FROM events WHERE type='access.invalid'").all(),
+    ).toHaveLength(1);
+    await f.req("push/subscriptions", {
+      subscription,
+      properties: [f.property.id],
+      events: ["access.accepted"],
+      allEvents: false,
+    });
+    await f.app.request("/api/v1/guest", {
+      headers: { Authorization: "Bearer excluded-invalid" },
+    });
+    expect(f.db.query("SELECT * FROM jobs").all()).toHaveLength(0);
+    await f.req("push/subscriptions", {
+      subscription,
+      properties: [f.property.id],
+      events: ["access.invalid"],
+      allEvents: false,
+    });
+    await f.app.request("/api/v1/guest", {
+      headers: { Authorization: "Bearer included-invalid" },
+    });
+    expect(f.db.query("SELECT * FROM jobs").all()).toHaveLength(1);
   } finally {
     f.db.close();
   }

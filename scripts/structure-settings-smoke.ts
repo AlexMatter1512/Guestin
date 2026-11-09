@@ -218,8 +218,14 @@ try {
     page.getByText("Settings saved.", { exact: true }),
   ).toBeVisible();
   await page
+    .getByRole("checkbox", { name: "All structures", exact: true })
+    .uncheck();
+  await page
     .getByRole("checkbox", { name: "Garden House", exact: true })
     .check();
+  await page
+    .getByRole("checkbox", { name: "All activity types", exact: true })
+    .uncheck();
   await page
     .getByRole("checkbox", { name: "Access accepted", exact: true })
     .check();

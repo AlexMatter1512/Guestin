@@ -110,6 +110,12 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+}
+
 /* GuestIn web UI adaptation. Native browser safe areas; no Capacitor runtime. */
 * {
   box-sizing: border-box;
@@ -875,20 +881,20 @@ details[open] > summary {
 .danger-zone > h2 {
   color: var(--destructive);
 }
-table {
+table:not([data-slot]) {
   border-collapse: collapse;
   width: 100%;
   display: block;
   overflow: auto;
   font-size: 13px;
 }
-th,
-td {
+th:not([data-slot]),
+td:not([data-slot]) {
   text-align: left;
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
 }
-th {
+th:not([data-slot]) {
   font-weight: 500;
   color: var(--muted-foreground);
 }
@@ -1493,4 +1499,74 @@ body,
   .page-heading {
     margin-bottom: 20px;
   }
+}
+
+/* Compact date navigation, with search available on demand. */
+.code-toolbar {
+  flex-wrap: nowrap;
+  gap: 0;
+}
+.code-toolbar > [data-slot="button"] {
+  flex-shrink: 0;
+  min-width: 36px;
+  width: 36px;
+  padding-inline: 0;
+}
+.code-toolbar .date-picker-trigger {
+  width: auto;
+  min-width: 0;
+  padding-inline: 8px;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.code-toolbar .today-button {
+  width: auto;
+  padding-inline: 8px;
+}
+.toolbar-spacer {
+  flex: 1;
+}
+[data-search-active="true"] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.code-detail {
+  padding-block: 4px;
+}
+.permission-row {
+  padding-block: 18px;
+  border-bottom: 1px solid var(--border);
+}
+.code-summary .badges .muted {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+@media (max-width: 359px) {
+  .code-toolbar .date-picker-trigger {
+    font-size: 12px;
+    padding-inline: 4px;
+  }
+  .code-toolbar .date-picker-trigger svg {
+    display: none;
+  }
+  .code-toolbar .today-button {
+    font-size: 12px;
+    padding-inline: 4px;
+  }
+  .code-toolbar > [data-slot="button"] {
+    min-width: 32px;
+    width: 32px;
+  }
+}
+.door-row[data-dragging="true"] {
+  background: var(--accent);
+  box-shadow: inset 3px 0 var(--primary);
+}
+.door-drag-handle {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  min-height: 44px;
+  min-width: 40px;
 }

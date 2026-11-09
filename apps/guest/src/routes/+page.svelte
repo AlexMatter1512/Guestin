@@ -1,4 +1,9 @@
 <script lang="ts">
+  import {
+    guestTokenFromURL,
+    guestURL,
+    previousVisit,
+  } from "$lib/guest-session";
   import { onMount } from "svelte";
   import { randomUUID } from "../../../../shared/browser";
   import {
@@ -13,7 +18,7 @@
   import DoorOpenerV2 from "$lib/components/DoorOpenerV2.svelte";
   import Colazioni from "$lib/components/colazioni/Colazioni.svelte";
   import UsagePeriodWarn from "$lib/components/colazioni/UsagePeriodWarn.svelte";
-  let code = "",
+  let code = $state(""),
     data = $state<any>(null),
     loaded = $state(false),
     tab = $state("doors"),
@@ -23,6 +28,38 @@
     hasRedeemed = $state(false);
   let dropdownRef = $state<HTMLDivElement>();
   let activeAction = false;
+  let loadRequest = 0;
+  let memoryPending: { id: string; quantity: number; codeId: string } | null =
+    null;
+  function readPending() {
+    try {
+      const value = JSON.parse(
+        sessionStorage.getItem("oshost.breakfast.pending") ?? "null",
+      );
+      if (
+        typeof value?.id === "string" &&
+        typeof value?.codeId === "string" &&
+        Number.isInteger(value?.quantity)
+      )
+        return value as NonNullable<typeof memoryPending>;
+    } catch {
+      /* A pending action can also survive in memory if storage is unavailable. */
+    }
+    return memoryPending;
+  }
+  function savePending(value: typeof memoryPending) {
+    memoryPending = value;
+    try {
+      if (value)
+        sessionStorage.setItem(
+          "oshost.breakfast.pending",
+          JSON.stringify(value),
+        );
+      else sessionStorage.removeItem("oshost.breakfast.pending");
+    } catch {
+      /* Storage is optional. */
+    }
+  }
   const remaining = $derived(
     data?.breakfast
       ? Math.max(0, data.breakfast.total - data.breakfastUsed)
@@ -76,7 +113,7 @@
       document.documentElement.lang = locale_state.current;
   });
   function guestHref(destination: string) {
-    return "/guest/?lang=" + locale_state.current + "#/" + destination;
+    return guestURL(location.href, destination, locale_state.current);
   }
   function navigate(e: MouseEvent, destination: string) {
     if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
@@ -89,7 +126,11 @@
   }
   function selectLocale(value: LocaleKey) {
     locale_state.current = value;
-    sessionStorage.setItem("oshost.guest.language", value);
+    try {
+      sessionStorage.setItem("oshost.guest.language", value);
+    } catch {
+      /* The URL keeps the language when storage is unavailable. */
+    }
     history.replaceState(null, "", guestHref(tab));
     open = false;
   }
@@ -97,24 +138,50 @@
     if (dropdownRef && !dropdownRef.contains(e.target as Node)) open = false;
   }
   function readRoute() {
-    tab = location.hash === "#/breakfast" ? "breakfast" : "doors";
+    const fragment = new URLSearchParams(location.hash.slice(1));
+    const language =
+      fragment.get("lang") ?? new URLSearchParams(location.search).get("lang");
+    if (language && translations_keys.includes(language as LocaleKey))
+      locale_state.current = language as LocaleKey;
+    tab = fragment.get("page") === "breakfast" ? "breakfast" : "doors";
     hasRedeemed = false;
+    const next = guestTokenFromURL(location.href);
+    if (next !== code) {
+      code = next;
+      data = null;
+      loaded = false;
+      loadRequest++;
+      void load();
+    }
   }
   onMount(() => {
+    // Remove credentials left by older app versions, including legacy pending actions.
+    try {
+      sessionStorage.removeItem("oshost.guest.code");
+      const pending = JSON.parse(
+        sessionStorage.getItem("oshost.breakfast.pending") ?? "null",
+      );
+      if (pending?.code) sessionStorage.removeItem("oshost.breakfast.pending");
+    } catch {
+      /* Storage is optional; access always comes from the URL. */
+    }
+    let savedLanguage: string | null = null;
+    try {
+      savedLanguage = sessionStorage.getItem("oshost.guest.language");
+    } catch {
+      /* Optional preference. */
+    }
     const hash = new URLSearchParams(location.hash.slice(1));
-    code =
-      hash.get("code") ?? sessionStorage.getItem("oshost.guest.code") ?? "";
-    if (code) sessionStorage.setItem("oshost.guest.code", code);
     const language =
       hash.get("lang") ??
       new URLSearchParams(location.search).get("lang") ??
-      sessionStorage.getItem("oshost.guest.language") ??
+      savedLanguage ??
       navigator.language.slice(0, 2);
     locale_state.current = translations_keys.includes(language as LocaleKey)
       ? (language as LocaleKey)
       : "en";
+    code = guestTokenFromURL(location.href);
     readRoute();
-    history.replaceState(null, "", guestHref(tab));
     void load();
     const timer = setInterval(() => (clock = Date.now()), 15000);
     const refresh = () => {
@@ -132,28 +199,57 @@
     };
   });
   async function request(path = "", body?: any, key?: string) {
+    const credential = guestTokenFromURL(location.href);
+    let hint: { label: string; date: string } | undefined;
+    try {
+      hint = previousVisit(localStorage);
+    } catch {
+      /* Storage is optional. */
+    }
     const r = await fetch("/api/v1/guest" + path, {
       method: body ? "POST" : "GET",
       headers: {
-        Authorization: "Bearer " + code,
+        Authorization: "Bearer " + credential,
+        ...(hint
+          ? {
+              "X-Oshost-Previous-Visit": encodeURIComponent(
+                JSON.stringify(hint),
+              ),
+            }
+          : {}),
         "Content-Type": "application/json",
         ...(key ? { "Idempotency-Key": key } : {}),
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     const result = await r.json();
+    if (credential !== guestTokenFromURL(location.href))
+      throw Object.assign(Error("Guest link changed"), { stale: true });
     if (!r.ok) throw Object.assign(Error(result.error), { status: r.status });
     return result;
   }
   async function load() {
+    const ticket = ++loadRequest;
     try {
-      data = await request();
-    } catch (e) {
-      if (!data || [401, 403].includes((e as any).status)) {
-        data = null;
+      const next = await request();
+      if (ticket !== loadRequest) return;
+      data = next;
+      try {
+        localStorage.setItem(
+          "oshost.guest.visit",
+          JSON.stringify({
+            label: String(next.label).slice(0, 120),
+            date: new Date().toISOString(),
+          }),
+        );
+      } catch {
+        /* Storage is optional. */
       }
+    } catch (e) {
+      if (ticket !== loadRequest || (e as any).stale) return;
+      if (!data || [401, 403].includes((e as any).status)) data = null;
     } finally {
-      loaded = true;
+      if (ticket === loadRequest) loaded = true;
     }
   }
   async function openDoor(door: any) {
@@ -169,6 +265,7 @@
       await load();
       return result;
     } catch (e) {
+      if ((e as any).stale) throw e;
       await load();
       if ((e as any).status >= 400 && (e as any).status < 500)
         return { status: "failed" as const, detail: (e as Error).message };
@@ -180,19 +277,17 @@
   async function redeem(quantity: number) {
     if (activeAction) throw Error(guestText("offline"));
     if (!navigator.onLine) throw Error(guestText("offline"));
-    const saved = sessionStorage.getItem("oshost.breakfast.pending");
-    const pending = saved ? JSON.parse(saved) : null;
-    if (pending?.code === code && pending.quantity !== quantity)
+    const codeId = data?.codeId;
+    if (!codeId) throw Error(guestText("offline"));
+    const pending = readPending();
+    if (pending && pending.codeId === codeId && pending.quantity !== quantity)
       throw Error(guestText("pendingBreakfast"));
-    const id = pending?.code === code ? pending.id : randomUUID();
-    sessionStorage.setItem(
-      "oshost.breakfast.pending",
-      JSON.stringify({ id, quantity, code }),
-    );
+    const id = pending && pending.codeId === codeId ? pending.id : randomUUID();
+    savePending({ id, quantity, codeId });
     activeAction = true;
     try {
       const result = await request("/breakfast", { quantity }, id);
-      sessionStorage.removeItem("oshost.breakfast.pending");
+      savePending(null);
       hasRedeemed = true;
       if (data)
         data = {
@@ -201,8 +296,9 @@
         };
       await load();
     } catch (e) {
+      if ((e as any).stale) throw e;
       if ((e as any).status >= 400 && (e as any).status < 500)
-        sessionStorage.removeItem("oshost.breakfast.pending");
+        savePending(null);
       await load();
       throw e;
     } finally {

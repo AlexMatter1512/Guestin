@@ -56,6 +56,11 @@ export function openDatabase(path: string) {
         INSERT INTO migrations VALUES(3);
       `);
     })();
+  if (!db.query("SELECT 1 FROM migrations WHERE version=4").get())
+    db.transaction(() => {
+      db.exec(`CREATE TABLE event_context(event_id TEXT PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE,data TEXT NOT NULL);
+        INSERT INTO migrations VALUES(4);`);
+    })();
   return db;
 }
 export type DB = ReturnType<typeof openDatabase>;

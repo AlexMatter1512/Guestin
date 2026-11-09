@@ -94,7 +94,7 @@ try {
     "Aggiungi la tua prima porta",
   );
   await page.locator('[data-tour="nav-doors"]').click();
-  await page.locator('[data-tour="add-door"]').click();
+  await page.locator('[data-tour="new-code"]').click();
   const door = page.locator('[data-tour="door-form"]');
   await door.getByLabel("Nome", { exact: true }).fill("Ingresso di esempio");
   await expect(

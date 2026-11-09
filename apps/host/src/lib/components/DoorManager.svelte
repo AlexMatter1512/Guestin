@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { flip } from "svelte/animate";
+  import { MediaQuery } from "svelte/reactivity";
   import { randomUUID } from "$lib/browser";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
@@ -91,6 +93,9 @@
     cloudHost = $state(""),
     deviceId = $state(""),
     apiKey = $state("");
+  const reducedMotion = new MediaQuery("(prefers-reduced-motion: reduce)");
+  let gestureOrder: string[] | null = null;
+  let pointerId: number | null = null;
   let loadedKey = "",
     orderIds = $state<string[] | null>(null),
     dragged = $state("");
@@ -127,6 +132,8 @@
       lastProperty = propertyId;
       orderIds = null;
       dragged = "";
+      pointerId = null;
+      gestureOrder = null;
       confirmation = null;
       result = null;
       selectedPhoto = "";
@@ -174,13 +181,6 @@
     } finally {
       pending = false;
     }
-  }
-  function addDoor() {
-    editId = "";
-    detailId = "";
-    editor = true;
-    confirmation = null;
-    result = null;
   }
   function editDoor(d: Door) {
     editId = d.id;
@@ -232,15 +232,39 @@
     [ids[i], ids[j]] = [ids[j], ids[i]];
     orderIds = ids;
   }
-  function drop(id: string) {
-    if (!dragged || dragged === id) return;
-    const ids = [...(orderIds ?? localDoors.map((d) => d.id))];
-    const from = ids.indexOf(dragged);
-    const to = ids.indexOf(id);
-    if (from < 0 || to < 0) return;
-    ids.splice(from, 1);
-    ids.splice(to, 0, dragged);
-    orderIds = ids;
+  function dragStart(e: PointerEvent, id: string) {
+    if (!orderIds || pending || !e.isPrimary || e.button !== 0) return;
+    pointerId = e.pointerId;
+    gestureOrder = [...orderIds];
+    dragged = id;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }
+  function dragMove(e: PointerEvent) {
+    if (!dragged || pointerId !== e.pointerId || !orderIds) return;
+    const row = document
+      .elementsFromPoint(e.clientX, e.clientY)
+      .map((el) => el.closest<HTMLElement>("[data-door-order]"))
+      .find(Boolean);
+    const id = row?.dataset.doorOrder;
+    if (id && id !== dragged) {
+      const ids = [...orderIds],
+        from = ids.indexOf(dragged),
+        to = ids.indexOf(id);
+      if (from >= 0 && to >= 0) {
+        ids.splice(from, 1);
+        ids.splice(to, 0, dragged);
+        orderIds = ids;
+      }
+    }
+    if (e.clientY < 100) window.scrollBy(0, -12);
+    if (e.clientY > window.innerHeight - 100) window.scrollBy(0, 12);
+  }
+  function dragEnd(e: PointerEvent, cancelled = false) {
+    if (pointerId !== e.pointerId) return;
+    if (cancelled && gestureOrder) orderIds = gestureOrder;
+    pointerId = null;
+    gestureOrder = null;
     dragged = "";
   }
   async function saveOrder() {
@@ -358,6 +382,12 @@
   }
 </script>
 
+<svelte:window
+  onpointermove={dragMove}
+  onpointerup={(e) => dragEnd(e)}
+  onpointercancel={(e) => dragEnd(e, true)}
+/>
+
 <section class="door-manager space-y-6" aria-label={t("Doors")}>
   {#if !editor && !detailId}
     <div class="flex flex-wrap items-start justify-between gap-4">
@@ -370,15 +400,6 @@
           <span>{t("doors in")} {propertyName || t("your property")}</span>
         </div>
       </div>
-      {#if owner}
-        <Button
-          data-tour="add-door"
-          disabled={!propertyId || pending}
-          onclick={addDoor}
-        >
-          <Plus size={16} />{t("Add door")}
-        </Button>
-      {/if}
     </div>
   {/if}
 
@@ -970,28 +991,32 @@
       >{/if}
     {#if visibleDoors.length}
       <Card.Root class="gap-0 py-0">
-        <ul class="door-list divide-y">
+        <ul class="door-list divide-y divide-border">
           {#each visibleDoors as door, index (door.id)}
             <li
               class="door-row flex items-center gap-3 px-4 py-2"
-              draggable={!!orderIds && !pending}
-              ondragstart={(e) => {
-                dragged = door.id;
-                e.dataTransfer?.setData("text/plain", door.id);
-              }}
-              ondragover={(e) => {
-                if (orderIds) e.preventDefault();
-              }}
-              ondrop={(e) => {
-                e.preventDefault();
-                if (orderIds) drop(door.id);
-              }}
-              ondragend={() => (dragged = "")}
+              data-door-order={door.id}
+              data-dragging={dragged === door.id}
+              animate:flip={{ duration: reducedMotion.current ? 0 : 160 }}
             >
-              {#if orderIds}<GripVertical
-                  class="shrink-0 text-muted-foreground"
-                  size={18}
-                />{/if}
+              {#if orderIds}<Button
+                  variant="ghost"
+                  size="icon"
+                  class="door-drag-handle shrink-0 touch-none cursor-grab active:cursor-grabbing"
+                  disabled={pending}
+                  aria-label={l(
+                    "Drag to reorder: ",
+                    "Trascina per riordinare: ",
+                  ) + door.name}
+                  aria-pressed={dragged === door.id}
+                  onpointerdown={(e) => dragStart(e, door.id)}
+                  onkeydown={(e) => {
+                    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                      e.preventDefault();
+                      move(door.id, e.key === "ArrowUp" ? -1 : 1);
+                    }
+                  }}><GripVertical size={18} /></Button
+                >{/if}
               <Button
                 variant="ghost"
                 class="h-auto min-w-0 flex-1 justify-start gap-3 whitespace-normal px-2 py-3 text-left"

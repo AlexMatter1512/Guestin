@@ -14,6 +14,7 @@ One Docker container serves the host app, guest app, and a public breakfast coun
 
 <p>
   <img src="docs/images/host-codes-mobile.png" width="240" alt="Host access codes and structure selector on a phone in light mode" />
+  <img src="docs/images/host-calendar-mobile.png" width="240" alt="Calendar with dots marking dates that contain access codes" />
   <img src="docs/images/host-doors-mobile.png" width="240" alt="Host door list on a phone" />
   <img src="docs/images/host-create-mobile-dark.png" width="240" alt="The simplified full-width Create drawer in dark mode" />
 </p>
@@ -24,7 +25,7 @@ One Docker container serves the host app, guest app, and a public breakfast coun
 - **Manage your places together.** Switch structures from the header, organize doors, invite staff, and test device connections. The bell opens shared notification history; the statistics tab shows usage reports.
 - **Keep breakfast simple.** Give a code its own allowance. Guests redeem from their page; your breakfast team sees how many breakfasts were actually used, without guest details. Settings lets you open the page or protect it with a password.
 - **Start manually, add helpers later.** KrossBooking, iCal calendars, and optional Gemini screenshot reading can fill in a draft. You review it before creating a code.
-- **Use it like an app.** Install separate host and guest web apps. Choose a light or dark theme and enable host notifications for access and breakfast activity.
+- **Use it like an app.** Install separate host and guest web apps. Choose a light or dark theme and enable host notifications for access and breakfast activity. Browse codes in a calendar with marked dates, and drag doors into order on your phone.
 
 The host app supports **Italian and English**. The guest app supports **Italian, English, French, Spanish, and German**.
 
@@ -87,7 +88,9 @@ All connectors are optional. You can create your first access code without confi
 
 The bell shows the selected structure’s history for everyone on your team. Notifications are kept for **three months** by default. Change that period under **Settings → Notifications**; older entries are automatically deleted. Statistics are preserved independently.
 
-Push notifications are optional. Each device chooses the structures and event types it receives. Changing push filters does not hide or delete the shared history.
+Push notifications are optional. Each device chooses the structures and event types it receives. History and push messages support Italian and English and include the access-code name when available. You can also receive alerts for invalid guest links, including attempts to load the guest page. Repeated attempts with the same link are throttled. Changing push filters does not hide or delete the shared history.
+
+Guest links keep their access code in the address, including when guests change pages or language. The token is never saved in browser storage. For visit history, the browser remembers just the last code’s name and visit date to help explain later invalid-link attempts; this history is an unverified hint, never proof of access.
 
 ## Updates and backups
 

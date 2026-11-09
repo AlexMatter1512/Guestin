@@ -163,11 +163,11 @@ try {
     "true",
   );
   await page.locator('[data-tour="nav-doors"]').click();
-  await expect(page.locator('[data-tour="add-door"]')).toHaveAttribute(
+  await expect(page.locator('[data-tour="new-code"]')).toHaveAttribute(
     "data-tour-highlighted",
     "true",
   );
-  await page.locator('[data-tour="add-door"]').click();
+  await page.locator('[data-tour="new-code"]').click();
   const door = page.locator('[data-tour="door-form"]');
   await expect(door).toHaveAttribute("data-tour-highlighted", "true");
   await door.getByLabel("Name", { exact: true }).fill("Example entrance");
@@ -202,7 +202,7 @@ try {
   await replayTour(page);
   await expect(tour.getByRole("heading")).toHaveText("Add your first door");
   await page.locator('[data-tour="nav-doors"]').click();
-  await page.getByRole("button", { name: "Add door", exact: true }).click();
+  await page.locator('[data-tour="new-code"]').click();
   await door.getByLabel("Name", { exact: true }).fill("Example entrance");
   await door.getByRole("button", { name: "Save door", exact: true }).click();
   const afterDoor = await noSideEffects(page, [1, 1, 0]);

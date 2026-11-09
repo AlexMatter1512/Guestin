@@ -115,7 +115,10 @@ try {
       .getByRole("button", { name: "Skip tour / Salta il tour" })
       .click();
   await page.locator('[data-tour="nav-doors"]').click();
-  await page.getByRole("button", { name: "Add door", exact: true }).click();
+  await page.locator('[data-tour="new-code"]').click();
+  await page
+    .getByRole("button", { name: /Add door Connect an entrance/ })
+    .click();
   const form = page.locator('[data-tour="door-form"]');
   await form.getByLabel("Name", { exact: true }).fill("Garden door");
   await form

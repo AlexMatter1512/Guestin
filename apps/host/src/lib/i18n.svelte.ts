@@ -1,6 +1,23 @@
 export type HostLocale = "en" | "it";
 export const hostLanguage = $state({ current: "en" as HostLocale });
 const italian: Record<string, string> = {
+  "No codes for this date": "Nessun codice per questa data",
+  "Choose another date or use + below to create an access code.":
+    "Scegli un’altra data o usa il + in basso per creare un codice di accesso.",
+  "All structures": "Tutte le strutture",
+  Allowed: "Consentito",
+  Blocked: "Bloccato",
+  "Not requested": "Non richiesto",
+  "Not supported": "Non supportato",
+  "All activity types": "Tutti i tipi di attività",
+  ". Choose event types below. No selection means no push notifications.":
+    ". Scegli i tipi di attività qui sotto. Senza selezioni non riceverai notifiche push.",
+  "Open link": "Apri link",
+  "Clear search": "Cancella ricerca",
+  "Invalid access code attempts (including page loads)":
+    "Tentativi con codici non validi (anche all’apertura della pagina)",
+  "Click the highlighted + button. Give the door a name such as “Example entrance”. You will add a device connector later, so no device account or credentials are needed now.":
+    "Tocca il pulsante + evidenziato. Dai alla porta un nome come “Ingresso di esempio”. Aggiungerai un connettore in seguito: ora non servono account o credenziali.",
   "Ask an owner to add a property and a door. You can explore Doors now, or skip this guide and return from App tour in Settings once setup is ready.":
     "Chiedi a un proprietario di aggiungere una struttura e una porta. Puoi esplorare Porte, oppure saltare la guida e riprenderla da Tour app nelle Impostazioni quando la configurazione è pronta.",
   "Access code created": "Codice creato",

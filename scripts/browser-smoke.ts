@@ -89,7 +89,10 @@ try {
     page.getByRole("heading", { name: "Add door", exact: true }),
   ).toHaveCount(0);
   await page.getByRole("button", { name: "Doors", exact: true }).click();
-  await page.getByRole("button", { name: "Add door", exact: true }).click();
+  await page.locator('[data-tour="new-code"]').click();
+  await page
+    .getByRole("button", { name: /Add door Connect an entrance/ })
+    .click();
   const doorForm = page.locator("form").filter({
     has: page.getByRole("heading", { name: "Add door", exact: true }),
   });
@@ -102,7 +105,10 @@ try {
   await doorForm.getByRole("button", { name: "Save door" }).click();
   await page.locator(".door-summary").filter({ hasText: "Entrance" }).waitFor();
   await page.getByRole("button", { name: "Codes", exact: true }).click();
-  await page.getByRole("button", { name: "New code" }).click();
+  await page.locator('[data-tour="new-code"]').click();
+  await page
+    .getByRole("button", { name: /Create access code Choose doors/ })
+    .click();
   await page.getByLabel("Guest name / label").fill("Maria Rossi");
   await page.getByLabel("Include breakfast").check();
   await page.getByLabel("Total breakfasts").fill("3");
@@ -150,7 +156,10 @@ try {
     ),
   );
   expect(scopes.sort()).toEqual(["/guest/", "/host/"]);
-  await page.getByRole("button", { name: "New code" }).click();
+  await page.locator('[data-tour="new-code"]').click();
+  await page
+    .getByRole("button", { name: /Create access code Choose doors/ })
+    .click();
   await page.getByLabel("Guest name / label").fill("Offline draft");
   await replayTour(page);
   await tour.getByRole("button", { name: "Skip tour" }).click();

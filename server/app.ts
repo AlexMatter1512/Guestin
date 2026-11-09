@@ -1,4 +1,8 @@
 import {
+  wantsNotification,
+  type NotificationContext,
+} from "../shared/notifications";
+import {
   log,
   logError,
   withLogContext,
@@ -88,6 +92,7 @@ export function createApp(
     message: string,
     propertyId: string | null = null,
     codeId: string | null = null,
+    context: NotificationContext = {},
   ) {
     const id = cryptoRandom();
     log(
@@ -109,6 +114,14 @@ export function createApp(
       message,
       new Date().toISOString(),
     );
+    const code = codeId
+      ? get("SELECT data FROM codes WHERE id=?", codeId)
+      : null;
+    const details = {
+      ...context,
+      ...(code ? { codeLabel: JSON.parse(code.data).label } : {}),
+    };
+    run("INSERT INTO event_context VALUES(?,?)", id, JSON.stringify(details));
     if (codeId && type.startsWith("access."))
       run(
         "INSERT INTO code_metrics(code_id,attempts,accepted) VALUES(?,1,?) ON CONFLICT(code_id) DO UPDATE SET attempts=attempts+1,accepted=accepted+excluded.accepted",
@@ -117,10 +130,7 @@ export function createApp(
       );
     for (const s of all("SELECT * FROM subscriptions")) {
       const p = { properties: [], events: [], ...JSON.parse(s.preferences) };
-      if (
-        (!p.properties.length || p.properties.includes(propertyId)) &&
-        (!p.events.length || p.events.includes(type))
-      )
+      if (wantsNotification(p, propertyId, type))
         run(
           "INSERT OR IGNORE INTO jobs(event_id,subscription_id,next) VALUES(?,?,?)",
           id,
@@ -258,7 +268,7 @@ export function createApp(
       status as any,
     );
   });
-  app.get("/api/v1/health", (c) => c.json({ status: "ok", schema: 3 }));
+  app.get("/api/v1/health", (c) => c.json({ status: "ok", schema: 4 }));
   app.get("/api/v1/auth/status", (c) =>
     c.json({ needsSetup: !get("SELECT 1 FROM users LIMIT 1") }),
   );
@@ -647,6 +657,8 @@ export function createApp(
       "door.deleted",
       `Door deleted: ${JSON.parse(d.data).name}`,
       d.property_id,
+      null,
+      { doorName: JSON.parse(d.data).name },
     );
     return c.json({ ok: true });
   });
@@ -702,6 +714,12 @@ export function createApp(
         "device.test." + result.status,
         `${c.get("user").name} tested ${data.name}: ${result.detail}`,
         d.property_id,
+        null,
+        {
+          actor: c.get("user").name,
+          doorName: data.name,
+          detail: result.detail,
+        },
       );
     })();
     return c.json({ id, ...result });
@@ -725,6 +743,8 @@ export function createApp(
       "device.test.resolved",
       `${c.get("user").name} checked the uncertain door test`,
       d?.property_id,
+      null,
+      { actor: c.get("user").name },
     );
     return c.json({ ok: true });
   });
@@ -993,7 +1013,13 @@ export function createApp(
       ...args,
       limit + 1,
     );
-    const events = rows.slice(0, limit),
+    const events = rows.slice(0, limit).map((row) => ({
+        ...row,
+        context: JSON.parse(
+          get("SELECT data FROM event_context WHERE event_id=?", row.id)
+            ?.data ?? "{}",
+        ),
+      })),
       last = events.at(-1);
     const nextCursor =
       rows.length > limit && last
@@ -1010,17 +1036,55 @@ export function createApp(
       ),
     ),
   );
-  let lastInvalid = 0;
+  const invalidAlerts = new Map<string, number>();
   function guest(c: any) {
     const raw = c.req.header("authorization")?.replace(/^Bearer /, "") ?? "";
     const r = get("SELECT * FROM codes WHERE digest=?", digest(raw));
     if (!r || r.revoked) {
-      if (Date.now() - lastInvalid > 60000) {
-        event(
-          "access.invalid",
-          "An invalid or revoked guest link was attempted",
-        );
-        lastInvalid = Date.now();
+      // Per-client and link throttling keeps distinct attempts visible without alert storms.
+      // Only a digest is retained in memory; never a bearer token or forwarded IP header.
+      const key = digest((c.env?.clientIP ?? "unknown") + ":" + raw);
+      const now = Date.now();
+      if (now - (invalidAlerts.get(key) ?? 0) > 60000) {
+        if (invalidAlerts.size >= 10000) {
+          for (const [id, at] of invalidAlerts)
+            if (now - at > 60000) invalidAlerts.delete(id);
+        }
+        if (invalidAlerts.size < 10000 || invalidAlerts.has(key)) {
+          let previousVisit: NotificationContext["previousVisit"];
+          const hint = c.req.header("X-Oshost-Previous-Visit");
+          if (hint && hint.length <= 2048) {
+            try {
+              const value = z
+                .object({
+                  label: z.string().trim().min(1).max(120),
+                  date: z.iso.datetime(),
+                })
+                .parse(JSON.parse(decodeURIComponent(hint)));
+              previousVisit = {
+                label: value.label.replace(/[\x00-\x1f\x7f]/g, ""),
+                date: value.date,
+              };
+            } catch {
+              /* Untrusted, optional browser hint; never authorizes or attributes a structure. */
+            }
+          }
+          event(
+            "access.invalid",
+            "An invalid or revoked guest link was attempted",
+            r?.property_id ?? null,
+            r?.id ?? null,
+            {
+              action: c.req.path.endsWith("/open")
+                ? "door"
+                : c.req.path.endsWith("/breakfast")
+                  ? "breakfast"
+                  : "page",
+              ...(previousVisit ? { previousVisit } : {}),
+            },
+          );
+          invalidAlerts.set(key, now);
+        }
       }
       fail("Invalid or revoked access link", 403);
     }
@@ -1034,6 +1098,7 @@ export function createApp(
         get("SELECT data FROM properties WHERE id=?", r.property_id).data,
       );
     return c.json({
+      codeId: r.id,
       label: d.label,
       property: p.name,
       timezone: p.timezone,
@@ -1279,6 +1344,9 @@ export function createApp(
         }),
         properties: z.array(z.string()).default([]),
         events: z.array(z.string()).default([]),
+        language: z.enum(["en", "it"]).default("en"),
+        allEvents: z.boolean().optional(),
+        allProperties: z.boolean().optional(),
       })
       .parse(await c.req.json());
     const u = new URL(b.subscription.endpoint);
@@ -1297,7 +1365,13 @@ export function createApp(
       id,
       c.get("user").id,
       JSON.stringify(b.subscription),
-      JSON.stringify({ properties: b.properties, events: b.events }),
+      JSON.stringify({
+        properties: b.properties,
+        events: b.events,
+        language: b.language,
+        allEvents: b.allEvents,
+        allProperties: b.allProperties,
+      }),
     );
     return c.json({ ok: true });
   });

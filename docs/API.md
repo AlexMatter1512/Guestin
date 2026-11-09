@@ -38,7 +38,7 @@ Authentication sets an HttpOnly session cookie. Passwords require at least 12 ch
 - `GET /guest`: guest page data, authenticated by the guest token in `Authorization: Bearer …`.
 - `POST /guest/doors/:id/open`, `POST /guest/breakfast`: live guest actions, requiring an `Idempotency-Key`. Breakfast input is `{quantity}`.
 
-Guest links carry their token in a URL fragment. Device acceptance is recorded separately from physical door state. Ambiguous requests are not retried automatically.
+Guest links keep their token in a URL fragment (`#code=…&page=breakfast`) throughout navigation. The browser never persists the token. `GET /guest` includes a non-secret `codeId` for pending-action idempotency; it cannot authorize requests. Guest requests can include a URL-encoded JSON `X-Oshost-Previous-Visit` header with `{label,date}`. This optional, bounded hint is unverified, recorded only on invalid-link events, and never determines authorization or structure attribution. Device acceptance is recorded separately from physical door state. Ambiguous requests are not retried automatically.
 
 ## Breakfast totals
 
@@ -48,7 +48,7 @@ When protected, anonymous requests return `401` with `{requiresPassword:true,err
 
 ## Shared history and reports
 
-`GET /events?propertyId=<id>&pageSize=50` returns `{events,nextCursor}`. Pass `cursor` to load older records. Events are shared with the team, scoped to the selected structure; unattributed security events can also appear. `pageSize` accepts 1–100. Legacy calls without pagination return an array.
+`GET /events?propertyId=<id>&pageSize=50` returns `{events,nextCursor}`. Pass `cursor` to load older records. Events are shared with the team, scoped to the selected structure; unattributed security events can also appear. `pageSize` accepts 1–100. Legacy calls without pagination return an array. Events may include `context.codeLabel` and unverified `context.previousVisit` metadata. Unknown invalid links appear as unattributed security events; known revoked links remain associated with their structure. Invalid page loads and actions use the `access.invalid` push option, throttled per client/link for one minute.
 
 `GET /reports` returns code creation and lifetime usage counters by code/creator/property. These counters survive notification retention cleanup.
 
@@ -62,7 +62,7 @@ Kross bearer tokens are encrypted in the server database, attached by the relay,
 
 - `GET /push/key`: VAPID public key.
 - `GET /push/subscriptions`: current user’s subscription IDs and per-device filters; no private subscription keys.
-- `POST /push/subscriptions`: `{subscription,properties,events}`. Empty filters mean all. Preferences apply to that endpoint only and do not affect shared history.
+- `POST /push/subscriptions`: `{subscription,properties,events,allProperties?,allEvents?,language?}`. Empty property filters mean all structures for legacy subscriptions. `allProperties:false` uses only selected structures (an empty array receives none). `allEvents:false` uses only the selected event types (an empty array receives none); older subscriptions with empty filters still receive all. `language` is `en` or `it`. Preferences apply to that endpoint only and do not affect shared history.
 - `DELETE /push/subscriptions`: `{endpoint}` removes only the current user’s matching device subscription.
 - `POST /admin/wipe`: owner-only `{password,confirmation:"WIPE ALL DATA"}` resets the workspace. Back up first.
 - `GET /health`: health and database schema version.
