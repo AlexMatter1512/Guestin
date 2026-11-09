@@ -1,4 +1,5 @@
-FROM oven/bun:1.4.0 AS build
+# Static assets and TypeScript checks run natively, even for multi-platform images.
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.0 AS build
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY apps/host/package.json apps/host/package.json
