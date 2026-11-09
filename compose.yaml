@@ -2,11 +2,21 @@ services:
   oshost:
     image: alexmatter/oshost:latest
     restart: unless-stopped
-    env_file: .env
     environment:
+      # Set these to your public HTTPS address and notification contact.
+      ORIGIN: https://access.example.com
+      VAPID_SUBJECT: mailto:admin@example.com
+      PORT: "3000"
       DB_PATH: /app/data/oshost.sqlite
+      TRUST_PROXY: "0"
+      LOG_LEVEL: info
+      LOG_FILE: /app/data/logs/server.jsonl
+      LOG_MAX_BYTES: "10485760"
+      LOG_ROTATIONS: "5"
+      # Encryption, setup and push keys are generated and saved in the volume.
+      # The setup token appears in container logs until an owner exists.
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:38471:3000"
     volumes:
       - oshost-data:/app/data
 volumes:

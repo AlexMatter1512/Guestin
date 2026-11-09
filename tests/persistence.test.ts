@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { openDatabase } from "../server/db";
 import { vault } from "../server/security";
 import { createApp } from "../server/app";
+import { initializeRuntimeSecrets } from "../server/runtime-secrets";
 test("versioned migrations, restart recovery, and backup/restore preserve encrypted data", async () => {
   const dir = mkdtempSync(join(tmpdir(), "oshost-db-")),
     path = join(dir, "live.sqlite"),
@@ -63,6 +64,10 @@ test("versioned migrations, restart recovery, and backup/restore preserve encryp
     });
     expect(await proc.exited).toBe(0);
     const secrets = await Bun.file(join(backup, "secrets.json")).json();
+    const restoredSecrets = initializeRuntimeSecrets({
+      DB_PATH: join(backup, "oshost.sqlite"),
+    });
+    expect(restoredSecrets.secrets.APP_KEY).toBe(key);
     const restored = openDatabase(join(backup, "oshost.sqlite"));
     expect(
       vault(secrets.APP_KEY).open(

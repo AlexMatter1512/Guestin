@@ -10,66 +10,55 @@ Requires Bun 1.4+. From the project root:
 
 ```sh
 bun install --frozen-lockfile
-bun scripts/init-env.ts
 bun run build
 bun start
 ```
 
-Open `http://localhost:3000/host/`. Use the `SETUP_TOKEN` from your local `.env` to create the first owner. The setup route closes once an owner exists. Passwords require 12 characters. Add a property in **Settings → Properties** and connect its doors in Doors, then create an access code. Before the initial guided setup, choose **Italiano** or **English** and confirm. This choice, theme preference, and tour completion/skip status are saved per user in SQLite and follow the account across devices. Language is changed under **Settings → App language** and theme under **Settings → Appearance**; guest language is independent. Interactive guided setup then starts: click the highlighted controls while the rest of the page is dimmed to create a property, an example door, and an access code. You can skip at any time or replay it with the ? button or App tour in Settings. Existing properties and doors are reused on replay; saves create real records, never automatic demo data. Owners can copy one-use staff invitation links; invitations expire after 24 hours.
+Open `http://localhost:3000/host/`. Use the setup token printed in the terminal to create the first owner. The setup route closes once an owner exists. Passwords require 12 characters. Add a property in **Settings → Properties** and connect its doors in Doors, then create an access code. Before the initial guided setup, choose **Italiano** or **English** and confirm. This choice, theme preference, and tour completion/skip status are saved per user in SQLite and follow the account across devices. Language is changed under **Settings → App language** and theme under **Settings → Appearance**; guest language is independent. Interactive guided setup then starts: click the highlighted controls while the rest of the page is dimmed to create a property, an example door, and an access code. You can skip at any time or replay it with the ? button or App tour in Settings. Existing properties and doors are reused on replay; saves create real records, never automatic demo data. Owners can copy one-use staff invitation links; invitations expire after 24 hours.
 
-Bun automatically reads `.env`. Keep it private and retain its `APP_KEY`: losing that key makes stored guest links and integration credentials unrecoverable. The initialization command refuses to overwrite an existing `.env`.
+The first startup generates encryption, setup, and Web Push keys and saves them with owner-only permissions in `data/runtime-secrets.json` beside SQLite. Keep this file with your database backups: losing the encryption key makes stored guest links and integration credentials unrecoverable. Bun also reads an optional `.env` for local configuration. Existing environment keys are adopted on the first startup after upgrading; persisted keys are never silently replaced.
 
-## Docker
+## Docker / Portainer
 
-Install [Docker Engine with the Compose plugin](https://docs.docker.com/engine/install/) on the server. Deployments use the published `alexmatter/oshost:latest` image (AMD64 and ARM64); Bun and a source build are not required on the server.
+The stack uses `alexmatter/oshost:latest` from Docker Hub (AMD64 and ARM64). No source build, Bun installation, `.env` file, or manually generated token is needed.
 
-Create a directory for the deployment and copy this repository's `compose.yaml` into it. From that directory, generate the initial `.env` using the image:
+In Portainer, choose **Stacks → Add stack → Web editor**, paste `compose.yaml`, and set the explicit `ORIGIN` and `VAPID_SUBJECT` values in its `environment` section. `ORIGIN` must be your exact public HTTPS origin, such as `https://access.example.com`; `VAPID_SUBJECT` is your contact email URI, such as `mailto:you@example.com`. Deploy the stack.
 
-```sh
-docker pull alexmatter/oshost:latest
-docker run --rm --user "$(id -u):$(id -g)" \
-  --mount "type=bind,src=$PWD,dst=/work" --workdir /work \
-  alexmatter/oshost:latest bun /app/scripts/init-env.ts
-nano .env
-```
+The application generates encryption, setup and VAPID keys on its first startup and stores them in `/app/data/runtime-secrets.json` on the persistent `oshost-data` volume. Open **Containers → oshost container → Logs** in Portainer and find the `setup.required` entry. Copy its `setupToken`, open `https://access.example.com/host/`, and create the owner. The token is printed to stdout on startup only while no user exists; it is not written to the application's diagnostic log file. Old container logs can retain that initial entry, but setup rejects the token after owner creation.
 
-Set `ORIGIN=https://access.example.com` to your exact public origin (scheme, hostname, and optional port) and `VAPID_SUBJECT=mailto:you@example.com` to your contact address. Keep the generated encryption/setup/VAPID keys. Initialization refuses to overwrite an existing `.env`; for an existing installation, retain its `.env` and volume.
+The published host port is **38471**, bound to localhost; the internal container port remains 3000. SQLite, keys, uploaded assets, and diagnostic logs persist in the named volume. Keep the stack name unchanged during updates so Portainer reuses the same volume. No separate database service is required.
 
-Start the application and check its health:
-
-```sh
-docker compose up -d
-docker compose ps
-curl --fail http://127.0.0.1:3000/api/v1/health
-docker compose logs --tail=100 oshost
-```
-
-Compose binds port 3000 to localhost for use behind an HTTPS reverse proxy, and stores SQLite, uploaded assets, and logs in the `oshost-data` named volume. No separate database service is required. Keep the deployment directory/project name unchanged so Compose reuses the same volume.
-
-Point your domain's DNS A/AAAA records at the server. Forward `/` through your existing HTTPS reverse proxy without stripping paths. The following Caddy configuration assumes Caddy runs on the server itself:
-
+Point your domain's DNS A/AAAA records at the server and configure HTTPS. For Caddy running directly on the server:
 
 ```caddyfile
 access.example.com {
-  reverse_proxy 127.0.0.1:3000
+  reverse_proxy 127.0.0.1:38471
 }
 ```
 
-Install/reload Caddy with that site configuration and allow incoming ports 80 and 443 for [automatic HTTPS](https://caddyserver.com/docs/quick-starts/reverse-proxy). If the proxy runs in another container, `127.0.0.1` refers to that container: connect it to oshost's Docker network and proxy to `oshost:3000` instead.
+Allow incoming ports 80 and 443 for [automatic HTTPS](https://caddyserver.com/docs/quick-starts/reverse-proxy). An existing Nginx or other HTTPS proxy can use the same upstream. Forward `/` without stripping paths. If the proxy is another container, attach it to the stack's network and proxy to `oshost:3000`; `127.0.0.1` inside the proxy points to the proxy itself. HTTPS enables PWA installation and push on phones.
 
-Open `https://access.example.com/host/` and create the owner with the `SETUP_TOKEN` from `.env`. HTTPS is required for PWA installation and push on phones. Set up the first property, door, and code through the guided tour.
+With Docker Compose instead of Portainer, save the same file and run:
 
-To update, create a backup first (see below), then run:
+```sh
+docker compose up -d
+# Initial owner setup token appears here until setup is completed:
+docker compose logs oshost
+curl --fail http://127.0.0.1:38471/api/v1/health
+```
+
+To update in Portainer, back up first, then update the stack with the option to pull the latest image. With Compose:
 
 ```sh
 docker compose pull
 docker compose up -d
-docker compose ps
 ```
 
-The data volume and `.env` survive replacement of the container; database migrations run at startup. Never use `docker compose down -v` unless you intend to delete the data volume. You can pin the `image` to a published `sha-<full-commit>` tag instead of `latest` for controlled upgrades. A database downgrade may require restoring the matching backup.
+Database migrations run at startup. Never delete the stack's data volume or run `docker compose down -v` unless you intend to delete all persisted data and keys. You can pin `image` to a published `sha-<full-commit>` tag for controlled upgrades. A database downgrade may require restoring the matching backup.
 
-For direct TLS, set `TLS_CERT` and `TLS_KEY` to certificate/key file paths visible inside the container, mount them read-only, expose the chosen port, and set `ORIGIN` to its HTTPS origin. TLS file paths are optional; do not set only one. HTTPS is necessary for PWA installation and push outside localhost.
+**Existing installations:** keep the current volume. If it has no `runtime-secrets.json` yet, supply the original `APP_KEY`, `SETUP_TOKEN`, `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` once in the stack environment. They will be saved in the volume and can then be removed from the stack definition. Startup refuses to generate a replacement encryption key for an existing database. Conflicting environment keys or a corrupt secrets file stop startup instead of silently replacing the identity.
+
+For direct TLS, set `TLS_CERT` and `TLS_KEY` to certificate/key paths mounted read-only inside the container and set the matching HTTPS `ORIGIN`. Keep both paths unset when your reverse proxy terminates TLS.
 
 ## Applications
 
@@ -96,7 +85,7 @@ Shared tokens, keys, calendar URLs, and device credentials use AES-256-GCM encry
 
 ## Notifications
 
-`scripts/init-env.ts` creates VAPID keys. Set `VAPID_SUBJECT` to a contact email URI such as `mailto:admin@example.com`. Each host device enables push in Settings → Notifications and can filter properties and event types. Empty filters mean all events. iPhone/iPad users must first add the host PWA to the Home Screen. Denying notifications leaves the activity feed available.
+First startup creates and persists VAPID keys automatically. Set `VAPID_SUBJECT` to a contact email URI such as `mailto:admin@example.com`. Each host device enables push in Settings → Notifications and can filter properties and event types. Empty filters mean all events. iPhone/iPad users must first add the host PWA to the Home Screen. Denying notifications leaves the activity feed available.
 
 Delivery jobs are persisted in SQLite, retried at most five times, and discarded for expired subscriptions. Browser notifications use event IDs as tags. Push delivery is best effort and does not affect device actions or breakfast accounting. The server requires outbound HTTPS access to the relevant browser push services.
 
@@ -108,7 +97,7 @@ bun scripts/backup.ts /absolute/private/backup-directory
 # docker compose exec oshost bun scripts/backup.ts /app/data/backup-YYYY-MM-DD
 ```
 
-The backup includes a consistent SQLite snapshot, any `data/assets`, and `secrets.json` with encryption and VAPID keys. Protect the entire backup as sensitive data. To restore: stop oshost, place `oshost.sqlite` at `DB_PATH`, restore assets, copy the saved keys into `.env`, remove stale SQLite `-wal`/`-shm` sidecars only while stopped, and start oshost. Existing session expiries still apply. The setup token can be regenerated after setup; keep the encryption key unchanged.
+The backup includes a consistent SQLite snapshot, any `data/assets`, `runtime-secrets.json` with the encryption/setup/VAPID keys, and a legacy-compatible `secrets.json`. Protect the entire backup as sensitive data. To restore: stop oshost, place `oshost.sqlite` at `DB_PATH`, restore assets, place the saved `runtime-secrets.json` beside the restored database (remove any conflicting old environment keys), remove stale SQLite `-wal`/`-shm` sidecars only while stopped, and start oshost. Existing session expiries still apply. Keep the encryption key unchanged. Older backups without `runtime-secrets.json` can be restored by supplying their original keys through the environment for the first start.
 
 ## Host controls and database reset
 
@@ -123,7 +112,7 @@ Doors supports confirmed host tests, enable/disable, descriptions and translatio
 
 Code cards show validity and door badges, with date/status filters, a detailed permission/usage view, pause/resume per door, duplicate warnings, direct guest-page links, and language-aware message preparation. Messages includes placeholder insertion, live previews, and reset-to-default. The central + offers a code or door; the account button opens your profile. Views and record details have bookmarkable hash URLs and support browser Back/Forward. Settings offers Light, Dark, and System themes.
 
-**Settings → Data management → Wipe database** is owner-only. It requires the current password, an explicit data-loss acknowledgment and the exact text `WIPE ALL DATA`. It deletes the entire team's database records, including users, sessions, photos, connector credentials, guest links, breakfast history and notification subscriptions. It cannot be undone without a backup. Back up first and retain the server's setup token: after a wipe, create a new owner through setup. The server rejects a wipe while other operations are in flight. Server configuration, encryption keys and existing backup files remain on disk; this is a logical reset, not secure media erasure. The application does not wipe anything during startup or migration.
+**Settings → Data management → Wipe database** is owner-only. It requires the current password, an explicit data-loss acknowledgment and the exact text `WIPE ALL DATA`. It deletes the entire team's database records, including users, sessions, photos, connector credentials, guest links, breakfast history and notification subscriptions. It cannot be undone without a backup. Back up first and retain the server's setup token: after a wipe, create a new owner through setup. The server rejects a wipe while other operations are in flight. Server configuration, persisted runtime keys and existing backup files remain on disk; this is a logical reset, not secure media erasure. The application does not wipe anything during startup or migration.
 
 ## Development and verification
 
@@ -178,6 +167,6 @@ Configure this repository in GitHub **Settings → Secrets and variables → Act
 - Actions secret `DOCKERHUB_TOKEN`: a Docker Hub access token with write permission for the `alexmatter/oshost` repository. Never commit it or put it in the image.
 - Optional Actions variable `DOCKERHUB_IMAGE`: another lowercase `namespace/image`; defaults to `<DOCKERHUB_USERNAME>/oshost`.
 
-Publication fails with a configuration message until the variable and token are set. After adding them, rerun the workflow from GitHub Actions. `compose.yaml` already uses `alexmatter/oshost:latest`; use `docker compose pull && docker compose up -d` to deploy a published update while retaining the existing `.env` and database volume.
+Publication fails with a configuration message until the variable and token are set. After adding them, rerun the workflow from GitHub Actions. `compose.yaml` already uses `alexmatter/oshost:latest`; use `docker compose pull && docker compose up -d` to deploy a published update while retaining the data volume, which also holds runtime keys.
 
 To run the same disposable image check locally: `bash scripts/container-smoke.sh oshost:ci` after building with `docker build -t oshost:ci .`.

@@ -3,15 +3,19 @@ import { openDatabase } from "./db";
 import { createApp } from "./app";
 import { deliverPush } from "./push";
 import { resolve, extname } from "node:path";
+import {
+  initializeRuntimeSecrets,
+  printSetupInstructions,
+} from "./runtime-secrets";
 process.umask(0o077);
+const { secrets } = initializeRuntimeSecrets();
 const db = openDatabase(process.env.DB_PATH ?? "data/oshost.sqlite");
 log("info", "database.ready", { schema: 2 });
 const app = createApp(db, {
-  key: process.env.APP_KEY ?? "",
-  setupToken: process.env.SETUP_TOKEN ?? "",
+  key: secrets.APP_KEY,
+  setupToken: secrets.SETUP_TOKEN,
   origin: process.env.ORIGIN ?? "http://localhost:3000",
 });
-if (!process.env.SETUP_TOKEN) throw Error("SETUP_TOKEN is required");
 app.get("/breakfast/:property", async (c) =>
   c.html(await Bun.file("server/breakfast.html").text()),
 );
@@ -81,6 +85,7 @@ const server = Bun.serve({
   maxRequestBodySize: 8 * 1024 * 1024,
 });
 log("info", "server.started", { port: server.port, tls: !!tls, schema: 2 });
+printSetupInstructions(db, secrets.SETUP_TOKEN);
 const stop = () => {
   log("info", "server.stopping");
   clearInterval(interval);

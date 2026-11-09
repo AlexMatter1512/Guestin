@@ -10,12 +10,13 @@ cleanup() {
   docker volume rm "$volume" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
-key="$(openssl rand -hex 32)"
 docker volume create "$volume" >/dev/null
-docker run --detach --name "$container" \
-  --env APP_KEY="$key" --env SETUP_TOKEN=ci-only-setup-token \
-  --env ORIGIN=http://localhost:3000 --env LOG_FILE=- \
-  --mount "type=volume,source=$volume,target=/app/data" "$image" >/dev/null
+start() {
+  docker run --detach --name "$container" \
+    --env ORIGIN=http://localhost:3000 --env LOG_FILE=- \
+    --mount "type=volume,source=$volume,target=/app/data" "$image" >/dev/null
+}
+start
 ready() {
   for attempt in $(seq 1 30); do
     if docker exec "$container" bun -e 'const r=await fetch("http://localhost:3000/api/v1/health");if(!r.ok)process.exit(1)' >/dev/null 2>&1; then
@@ -37,12 +38,29 @@ docker exec "$container" bun -e '
     const r=await fetch("http://localhost:3000"+path);if(!r.ok)throw Error("Missing packaged asset: "+path);
   }
   const {Database}=await import("bun:sqlite");const db=new Database("/app/data/oshost.sqlite");
-  db.exec("CREATE TABLE ci_canary(value TEXT); INSERT INTO ci_canary VALUES('"'"'persistent'"'"');");db.close();
+  const secrets=await Bun.file("/app/data/runtime-secrets.json").text();
+  const {vault}=await import("/app/server/security.ts");
+  db.exec("CREATE TABLE ci_canary(value TEXT);");
+  db.query("INSERT INTO ci_canary VALUES(?)").run(vault(JSON.parse(secrets).APP_KEY).seal("persistent"));
+  db.query("INSERT INTO users VALUES(?,?,?,?,?)").run("ci-owner","CI","ci@example.test","not-a-real-password-hash","owner");
+  db.close();
 '
+# Bootstrap output is intentionally present only while there is no owner.
+docker logs "$container" 2>&1 | docker exec -i "$container" bun -e 'const rows=(await Bun.stdin.text()).split("\n").filter(l=>l.startsWith("{")).map(l=>JSON.parse(l));if(rows.filter(r=>r.event==="setup.required"&&r.setupToken).length!==1)throw Error("Missing first-start setup token");'
 docker restart "$container" >/dev/null
+ready
+# Replace the container as Portainer does during an update; keep only its volume.
+docker rm -f "$container" >/dev/null
+start
 ready
 docker exec "$container" bun -e '
   const {Database}=await import("bun:sqlite");const db=new Database("/app/data/oshost.sqlite");
-  if(db.query("SELECT value FROM ci_canary").get()?.value!=="persistent")throw Error("Database did not survive restart");db.close();
+  const secrets=await Bun.file("/app/data/runtime-secrets.json").json();
+  const {vault}=await import("/app/server/security.ts");
+  if(vault(secrets.APP_KEY).open(db.query("SELECT value FROM ci_canary").get()?.value)!=="persistent")throw Error("Encrypted data did not survive replacement");db.close();
 '
-printf 'Container assets, SQLite access and restart persistence passed.\n'
+if docker logs "$container" 2>&1 | grep -q '"event":"setup.required"'; then
+  printf 'Setup token was logged after owner creation.\n' >&2
+  exit 1
+fi
+printf 'Container assets, first-start bootstrap and encrypted-data persistence after restart/replacement passed.\n'
