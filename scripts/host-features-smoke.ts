@@ -1,4 +1,8 @@
 import { chromium, expect } from "@playwright/test";
+async function replayTour(page: any) {
+  await page.locator('[data-tour="nav-settings"]').click();
+  await page.locator('[data-tour="app-tour"]').click();
+}
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -81,7 +85,7 @@ try {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(origin + "/host/");
-  await expect(page.locator("header h1")).toHaveText("Access codes");
+  await expect(page.locator(".page-heading h1")).toHaveText("Access codes");
   await expect(page.locator(".guided-setup")).toHaveCount(0);
   await page.locator(".code-summary").click();
   await expect(page).toHaveURL(new RegExp("/host/#/codes/" + code.id + "$"));
@@ -135,7 +139,7 @@ try {
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.screenshot({ path: join(dir, "dark-settings.png") });
   await page.reload();
-  await expect(page.locator("header h1")).toHaveText("Appearance");
+  await expect(page.locator(".page-heading h1")).toHaveText("Appearance");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.getByRole("radio", { name: "Light", exact: true }).click();
   await page.getByRole("button", { name: "Back", exact: true }).click();
@@ -153,7 +157,7 @@ try {
     page.getByLabel("Message template", { exact: true }),
   ).toHaveValue(/door access link/);
   await page.goBack();
-  await expect(page.locator("header h1")).toHaveText("Settings");
+  await expect(page.locator(".page-heading h1")).toHaveText("Settings");
   await page.getByRole("button", { name: "Profile", exact: true }).click();
   await expect(page.getByLabel("Email", { exact: true })).toHaveValue(
     "host@example.com",
@@ -225,9 +229,7 @@ try {
     data: { tour: "completed", language: "en" },
   });
   await staffContext.close();
-  await page
-    .getByRole("button", { name: "Take the app tour", exact: true })
-    .click();
+  await replayTour(page);
   await page.locator('[data-tour="new-code"]').click();
   await page
     .getByLabel("Guest name / label", { exact: true })
@@ -237,7 +239,7 @@ try {
   await page.getByLabel("Email", { exact: true }).fill("staff@example.com");
   await page.getByLabel("Password", { exact: true }).fill("staff-password");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.locator("header h1")).toHaveText("Access codes");
+  await expect(page.locator(".page-heading h1")).toHaveText("Access codes");
   await expect(page.locator(".guided-setup")).toHaveCount(0);
   await expect(page.locator('[data-tour="code-form"]')).toHaveCount(0);
   await page.locator('[data-tour="nav-settings"]').click();
@@ -249,7 +251,7 @@ try {
   await page.getByLabel("Email", { exact: true }).fill("host@example.com");
   await page.getByLabel("Password", { exact: true }).fill("feature-password");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.locator("header h1")).toHaveText("Access codes");
+  await expect(page.locator(".page-heading h1")).toHaveText("Access codes");
   await page.locator('[data-tour="nav-settings"]').click();
   await page.locator('[data-tour="nav-data"]').click();
   await page

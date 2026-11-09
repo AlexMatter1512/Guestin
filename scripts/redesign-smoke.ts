@@ -136,7 +136,7 @@ try {
       nativeRequests.push(request.url());
   });
   await page.goto(origin + "/host/");
-  await expect(page.locator(".app-header h1")).toHaveText("Access codes");
+  await expect(page.locator(".page-heading h1")).toHaveText("Access codes");
   expect(await page.evaluate(() => window.isSecureContext)).toBe(false);
   expect(await page.evaluate(() => typeof navigator.clipboard)).toBe(
     "undefined",
@@ -196,7 +196,7 @@ try {
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await page.screenshot({ path: join(dir, "codes-mobile.png") });
   await page.locator('[data-tour="nav-settings"]').click();
-  await expect(page.locator(".app-header h1")).toHaveText("Settings");
+  await expect(page.locator(".page-heading h1")).toHaveText("Settings");
   await expect(page.locator("main form")).toHaveCount(0);
   await expect(
     page.getByRole("button", {
@@ -218,7 +218,7 @@ try {
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.screenshot({ path: join(dir, "appearance-mobile.png") });
   await page.goBack();
-  await expect(page.locator(".app-header h1")).toHaveText("Settings");
+  await expect(page.locator(".page-heading h1")).toHaveText("Settings");
   await page.getByRole("button", { name: /^App language Italiano/ }).click();
   await expect(page).toHaveURL(/#\/settings\/language$/);
   await expect(

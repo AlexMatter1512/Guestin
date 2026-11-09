@@ -1,14 +1,10 @@
-# Source provenance
+# Credits and third-party notices
 
-Project licensing is intentionally undecided. No project-wide license grant is made yet.
+oshost builds on the work of these projects:
 
-- `apps/guest/src/lib/i18n/{en,it,fr,es,de}.json` were copied from the local BnB_Server_Bot/BnBFrontend source. No license file was present at its repository root during implementation. Verify permission and licensing before public release.
-- Guest layout, door cards, breakfast selector/confirmation/feedback markup, `ErrorScreen`, translation/state helpers, Tailwind styles, `favicon.png`, `default_door.png` and `doors_images/*.png` are copied/adapted directly from local `BnB_Server_Bot/BnBFrontend`. Source visual classes and assets are preserved; scripts are adapted for oshost's access-code API, independent breakfast allowance dates, property timezones and safe device outcomes. The source repository remains untouched. No source license file was present; public release still requires the later licensing review.
-- KrossBooking endpoint behavior follows local krossApy v5 source. No Python implementation was copied into the new project. The provider API is unofficial and can change.
-- GuestIn (AGPL-3.0) host web UI is now the visual and structural source: the neutral design tokens and theme CSS are adapted from `HostApp/src/app.css`; the fixed header/footer, settings rows, compact code list and creation sheet follow its web components. Capacitor/native dependencies are excluded. The original license is retained at `docs/licenses/GuestIn-LICENSE`. Public release must respect this reused-source license; the project-wide licensing decision remains deferred.
-- Device integration behavior was studied in GuestIn; adapters are new TypeScript implementations.
-- Host UI primitives are generated with the official shadcn-svelte 1.8.0 CLI (nova style), including cards, fields, buttons, inputs, labels, textareas, badges, alerts, native selects, checkboxes, switches, dialogs, drawers, items, progress and tables. Data-state variants are adapted to the installed Bits UI API; file inputs bind files without restoring protected filenames. They are composed into the host screens with Svelte 5 and Bits UI. The MIT notice is preserved in `docs/licenses/shadcn-svelte-LICENSE.md`. GuestIn continues to inform the host navigation and settings structure.
-- Dependency licenses remain those of their respective packages. Run a dependency license review before selecting the project license and publishing.
+- **GuestIn:** host interface and device integration references. Adapted host UI material is covered by AGPL-3.0; the original notice is retained in [GuestIn-LICENSE](licenses/GuestIn-LICENSE).
+- **BnB_Server_Bot / BnBFrontend:** guest interface, translations, and image assets. The source did not include a project license; permission and licensing need to be resolved before a project-wide license is selected.
+- **shadcn-svelte:** UI components, under the [MIT license](licenses/shadcn-svelte-LICENSE.md).
+- **krossApy:** reference for the KrossBooking connector protocol.
 
-Provider references used to validate the new adapters:
-- [Shelly Cloud v2 control](https://shelly-api-docs.shelly.cloud/cloud-control-api/communication-v2/): upstream authentication uses `auth_key` in the HTTPS query and HTTP 200 indicates command acceptance. oshost never exposes or logs that upstream URL. This provider-required transport is an exception to keeping credentials out of application URLs.
+Svelte, SvelteKit, Bits UI, Vaul, Hono, Bun, and other dependencies retain their own licenses. The project-wide oshost license remains under review.

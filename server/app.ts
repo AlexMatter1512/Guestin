@@ -20,6 +20,8 @@ import {
 } from "../shared/schema";
 import { connectorRoutes } from "./connectors";
 import { databaseLifecycle } from "./lifecycle";
+import { pruneNotifications } from "./notifications";
+import { breakfastAccessRoutes, mayReadBreakfast } from "./breakfast-access";
 type Env = {
   Bindings: { clientIP?: string };
   Variables: { user: any; csrf: string };
@@ -60,6 +62,7 @@ export function createApp(
     }
   };
   const lifecycle = databaseLifecycle(db);
+  pruneNotifications(db);
   const get = (sql: string, ...args: any[]) =>
     db.query(sql).get(...args) as any;
   const all = (sql: string, ...args: any[]) =>
@@ -106,8 +109,14 @@ export function createApp(
       message,
       new Date().toISOString(),
     );
+    if (codeId && type.startsWith("access."))
+      run(
+        "INSERT INTO code_metrics(code_id,attempts,accepted) VALUES(?,1,?) ON CONFLICT(code_id) DO UPDATE SET attempts=attempts+1,accepted=accepted+excluded.accepted",
+        codeId,
+        type === "access.accepted" ? 1 : 0,
+      );
     for (const s of all("SELECT * FROM subscriptions")) {
-      const p = JSON.parse(s.preferences);
+      const p = { properties: [], events: [], ...JSON.parse(s.preferences) };
       if (
         (!p.properties.length || p.properties.includes(propertyId)) &&
         (!p.events.length || p.events.includes(type))
@@ -249,7 +258,7 @@ export function createApp(
       status as any,
     );
   });
-  app.get("/api/v1/health", (c) => c.json({ status: "ok", schema: 2 }));
+  app.get("/api/v1/health", (c) => c.json({ status: "ok", schema: 3 }));
   app.get("/api/v1/auth/status", (c) =>
     c.json({ needsSetup: !get("SELECT 1 FROM users LIMIT 1") }),
   );
@@ -403,6 +412,9 @@ export function createApp(
           "jobs",
           "subscriptions",
           "events",
+          "breakfast_sessions",
+          "property_settings",
+          "code_metrics",
           "door_tests",
           "actions",
           "redemptions",
@@ -460,6 +472,15 @@ export function createApp(
       all("SELECT * FROM properties").map((p) => ({
         id: p.id,
         ...JSON.parse(p.data),
+        notificationRetentionMonths:
+          get(
+            "SELECT notification_months FROM property_settings WHERE property_id=?",
+            p.id,
+          )?.notification_months ?? 3,
+        breakfastProtected: !!get(
+          "SELECT breakfast_password FROM property_settings WHERE property_id=?",
+          p.id,
+        )?.breakfast_password,
       })),
     ),
   );
@@ -480,6 +501,22 @@ export function createApp(
     );
     return c.json({ ok: true });
   });
+  app.patch("/api/v1/properties/:id/notifications", async (c) => {
+    const id = c.req.param("id");
+    if (!get("SELECT 1 FROM properties WHERE id=?", id))
+      fail("Property missing", 404);
+    const { retentionMonths } = z
+      .object({ retentionMonths: z.number().int().min(1).max(120) })
+      .parse(await c.req.json());
+    run(
+      "INSERT INTO property_settings(property_id,notification_months) VALUES(?,?) ON CONFLICT(property_id) DO UPDATE SET notification_months=excluded.notification_months",
+      id,
+      retentionMonths,
+    );
+    pruneNotifications(db);
+    return c.json({ retentionMonths });
+  });
+  breakfastAccessRoutes(app as any, db, config.origin, owner, fail);
   const doorView = (d: any) => {
     const data = JSON.parse(d.data);
     const test = get(
@@ -919,13 +956,57 @@ export function createApp(
     );
     return c.json({ ok: true });
   });
-  app.get("/api/v1/events", (c) =>
-    c.json(all("SELECT * FROM events ORDER BY created DESC LIMIT 1000")),
-  );
+  app.get("/api/v1/events", (c) => {
+    pruneNotifications(db);
+    const paged = c.req.query("pageSize") !== undefined;
+    const limit = paged
+      ? z.coerce.number().int().min(1).max(100).parse(c.req.query("pageSize"))
+      : 1000;
+    const propertyId = c.req.query("propertyId");
+    const clauses: string[] = [],
+      args: any[] = [];
+    if (propertyId) {
+      z.string().uuid().parse(propertyId);
+      clauses.push("(property_id=? OR property_id IS NULL)");
+      args.push(propertyId);
+    }
+    if (c.req.query("cursor")) {
+      let cursor: { created: string; id: string };
+      try {
+        cursor = z
+          .object({ created: z.iso.datetime(), id: z.string().uuid() })
+          .parse(
+            JSON.parse(
+              Buffer.from(c.req.query("cursor")!, "base64url").toString(),
+            ),
+          );
+      } catch {
+        return c.json({ error: "Invalid history cursor" }, 400);
+      }
+      clauses.push("(created<? OR (created=? AND id<?))");
+      args.push(cursor.created, cursor.created, cursor.id);
+    }
+    const rows = all(
+      "SELECT * FROM events" +
+        (clauses.length ? " WHERE " + clauses.join(" AND ") : "") +
+        " ORDER BY created DESC,id DESC LIMIT ?",
+      ...args,
+      limit + 1,
+    );
+    const events = rows.slice(0, limit),
+      last = events.at(-1);
+    const nextCursor =
+      rows.length > limit && last
+        ? Buffer.from(
+            JSON.stringify({ created: last.created, id: last.id }),
+          ).toString("base64url")
+        : null;
+    return c.json(paged ? { events, nextCursor } : events);
+  });
   app.get("/api/v1/reports", (c) =>
     c.json(
       all(
-        "SELECT c.id,c.creator,u.name,c.created,c.property_id,(SELECT COUNT(*) FROM events e WHERE e.code_id=c.id AND e.type LIKE 'access.%') AS attempts,(SELECT COUNT(*) FROM events e WHERE e.code_id=c.id AND e.type='access.accepted') AS accepted FROM codes c LEFT JOIN users u ON c.creator=u.id",
+        "SELECT c.id,c.creator,u.name,c.created,c.property_id,COALESCE(m.attempts,0) attempts,COALESCE(m.accepted,0) accepted FROM codes c LEFT JOIN users u ON c.creator=u.id LEFT JOIN code_metrics m ON m.code_id=c.id",
       ),
     ),
   );
@@ -1149,6 +1230,11 @@ export function createApp(
       c.req.param("property"),
     );
     if (!p) fail("Property missing", 404);
+    if (!mayReadBreakfast(db, p.id, c.req.header("cookie")))
+      return c.json(
+        { error: "Breakfast page password required", requiresPassword: true },
+        401,
+      );
     const data = JSON.parse(p.data),
       today = localDate(data.timezone),
       month = today.slice(0, 7) + "-01",
@@ -1215,8 +1301,21 @@ export function createApp(
     );
     return c.json({ ok: true });
   });
-  app.delete("/api/v1/push/subscriptions", (c) => {
-    run("DELETE FROM subscriptions WHERE user_id=?", c.get("user").id);
+  app.get("/api/v1/push/subscriptions", (c) =>
+    c.json(
+      all(
+        "SELECT id,preferences FROM subscriptions WHERE user_id=?",
+        c.get("user").id,
+      ).map((row) => ({ id: row.id, ...JSON.parse(row.preferences) })),
+    ),
+  );
+  app.delete("/api/v1/push/subscriptions", async (c) => {
+    const input = z.object({ endpoint: z.url() }).parse(await c.req.json());
+    run(
+      "DELETE FROM subscriptions WHERE user_id=? AND id=?",
+      c.get("user").id,
+      digest(input.endpoint),
+    );
     return c.json({ ok: true });
   });
   connectorRoutes(app as any, db, crypto, owner, fail);

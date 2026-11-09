@@ -43,6 +43,19 @@ export function openDatabase(path: string) {
         INSERT INTO migrations VALUES(2);
       `);
     })();
+  if (!db.query("SELECT 1 FROM migrations WHERE version=3").get())
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE property_settings(property_id TEXT PRIMARY KEY REFERENCES properties(id) ON DELETE CASCADE,notification_months INTEGER NOT NULL DEFAULT 3 CHECK(notification_months BETWEEN 1 AND 120),breakfast_password TEXT);
+        INSERT INTO property_settings(property_id) SELECT id FROM properties;
+        CREATE TABLE breakfast_sessions(digest TEXT PRIMARY KEY,property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,expires INTEGER NOT NULL);
+        CREATE INDEX breakfast_sessions_expiry ON breakfast_sessions(expires);
+        CREATE TABLE code_metrics(code_id TEXT PRIMARY KEY REFERENCES codes(id) ON DELETE CASCADE,attempts INTEGER NOT NULL DEFAULT 0,accepted INTEGER NOT NULL DEFAULT 0);
+        INSERT INTO code_metrics(code_id,attempts,accepted) SELECT c.id,(SELECT COUNT(*) FROM events e WHERE e.code_id=c.id AND e.type LIKE 'access.%'),(SELECT COUNT(*) FROM events e WHERE e.code_id=c.id AND e.type='access.accepted') FROM codes c;
+        CREATE INDEX events_property_created ON events(property_id,created,id);
+        INSERT INTO migrations VALUES(3);
+      `);
+    })();
   return db;
 }
 export type DB = ReturnType<typeof openDatabase>;

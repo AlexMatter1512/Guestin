@@ -224,7 +224,7 @@ export function connectorRoutes(
         return c.json(
           {
             error:
-              "KrossBooking could be reached. Check the connection and retry; your saved login has been kept.",
+              "KrossBooking could not be reached. Check the connection and retry; your saved login has been kept.",
             code: "KROSS_NETWORK",
           },
           502,
@@ -371,7 +371,27 @@ export function connectorRoutes(
           );
         return c.json({ "2fa": !!data["2fa"], devices, authenticated: false });
       }
-      return c.json(data);
+      // Provider bearer credentials stay in SQLite even if an upstream read echoes them.
+      const redact = (value: any): any =>
+        Array.isArray(value)
+          ? value.map(redact)
+          : value && typeof value === "object"
+            ? Object.fromEntries(
+                Object.entries(value)
+                  .filter(
+                    ([key]) =>
+                      ![
+                        "auth_token",
+                        "access_token",
+                        "refresh_token",
+                        "authorization",
+                        "password",
+                      ].includes(key.toLowerCase()),
+                  )
+                  .map(([key, item]) => [key, redact(item)]),
+              )
+            : value;
+      return c.json(redact(data));
     }
     if (row.kind === "ical") {
       // Pin DNS resolution for this fetch to the validated public address to prevent rebinding.

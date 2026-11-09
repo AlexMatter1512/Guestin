@@ -1,6 +1,25 @@
 export type HostLocale = "en" | "it";
 export const hostLanguage = $state({ current: "en" as HostLocale });
 const italian: Record<string, string> = {
+  "Ask an owner to add a property and a door. You can explore Doors now, or skip this guide and return from App tour in Settings once setup is ready.":
+    "Chiedi a un proprietario di aggiungere una struttura e una porta. Puoi esplorare Porte, oppure saltare la guida e riprenderla da Tour app nelle Impostazioni quando la configurazione è pronta.",
+  "Access code created": "Codice creato",
+  "Access code updated": "Codice aggiornato",
+  "Access code revoked": "Codice revocato",
+  "Door permission changed": "Permesso porta modificato",
+  "Door deleted": "Porta eliminata",
+  "Door test accepted": "Test porta accettato",
+  "Door test failed": "Test porta fallito",
+  "Door test uncertain": "Test porta incerto",
+  "Door test resolved": "Test porta risolto",
+  "Device request resolved": "Richiesta dispositivo risolta",
+  Statistics: "Statistiche",
+  Structure: "Struttura",
+  "Notification history": "Cronologia notifiche",
+  "Push on this device": "Push su questo dispositivo",
+  Breakfast: "Colazioni",
+  "Breakfast page and password protection":
+    "Pagina colazioni e protezione con password",
   Profile: "Profilo",
   "Your account": "Il tuo account",
   Role: "Ruolo",

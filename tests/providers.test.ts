@@ -103,6 +103,28 @@ test("Kross relay persists tokens without exposing them and retains them on tran
   });
   expect(login.data.authenticated).toBe(true);
   expect(JSON.stringify(login.data)).not.toContain("provider-secret");
+  const stored = db
+    .query("SELECT secret FROM connections WHERE id=?")
+    .get(connection.id) as any;
+  expect(stored.secret).not.toContain("provider-secret");
+  expect(crypto.open(stored.secret).token).toBe("provider-secret");
+  const listed = await req("connections");
+  expect(JSON.stringify(listed.data)).not.toContain("provider-secret");
+  globalThis.fetch = (async (_url: unknown, init: RequestInit) => {
+    expect((init.headers as Record<string, string>).Authorization).toBe(
+      "Bearer provider-secret",
+    );
+    return Response.json({
+      data: [{ id: 1, auth_token: "provider-secret" }],
+      auth_token: "provider-secret",
+    });
+  }) as any;
+  const echoed = await req(`connections/${connection.id}/request`, {
+    path: "/properties/get-list",
+    body: {},
+  });
+  expect(JSON.stringify(echoed.data)).not.toContain("provider-secret");
+
   for (const status of [403, 503]) {
     globalThis.fetch = (async () =>
       Response.json({ error: "fail" }, { status })) as any;

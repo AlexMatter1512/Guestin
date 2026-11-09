@@ -757,7 +757,7 @@ test("wipe requires owner, exact phrase and password; destroys records and sessi
       ).toBe(0);
     expect(
       (f.db.query("SELECT MAX(version) n FROM migrations").get() as any).n,
-    ).toBe(2);
+    ).toBe(3);
     expect(
       (
         await f.req("auth/setup", {

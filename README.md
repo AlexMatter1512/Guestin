@@ -4,7 +4,7 @@
 
 oshost is a self-hosted guest access app for B&Bs, guesthouses, and small hospitality teams. Create an access code, choose the doors and times it allows, and share a guest link. Your guests open it in their browser, with no account to create.
 
-One Docker container serves the host app, guest app, and a public breakfast counter. Your data stays on your server.
+One Docker container serves the host app, guest app, and a public breakfast counter. Your access records, shared notification history, and saved connections stay on your server.
 
 [Get started](#get-started) · [How it works](#how-it-works) · [Documentation](#documentation)
 
@@ -13,16 +13,16 @@ One Docker container serves the host app, guest app, and a public breakfast coun
 ## On your phone
 
 <p>
-  <img src="docs/images/host-codes-mobile.png" width="240" alt="Host access codes on a phone in light mode" />
+  <img src="docs/images/host-codes-mobile.png" width="240" alt="Host access codes and structure selector on a phone in light mode" />
   <img src="docs/images/host-doors-mobile.png" width="240" alt="Host door list on a phone" />
-  <img src="docs/images/host-create-mobile-dark.png" width="240" alt="The full-width Create drawer in dark mode" />
+  <img src="docs/images/host-create-mobile-dark.png" width="240" alt="The simplified full-width Create drawer in dark mode" />
 </p>
 
 ## A workspace for you. A simple welcome for guests.
 
 - **Create access codes in seconds.** Give each guest the doors they need, with separate dates and single-use rules for each door. Copy a link or prepare a welcome message in Italian or English.
-- **Manage your places together.** Organize properties and doors, invite staff, test device connections, and see what happened in the activity feed.
-- **Keep breakfast simple.** Give a code its own breakfast allowance. Guests redeem from their page; your breakfast team sees public totals without guest details.
+- **Manage your places together.** Switch structures from the header, organize doors, invite staff, and test device connections. The bell opens shared notification history; the statistics tab shows usage reports.
+- **Keep breakfast simple.** Give a code its own allowance. Guests redeem from their page; your breakfast team sees aggregate totals without guest details. Settings lets you open the page or protect it with a password.
 - **Start manually, add helpers later.** KrossBooking, iCal calendars, and optional Gemini screenshot reading can fill in a draft. You review it before creating a code.
 - **Use it like an app.** Install separate host and guest web apps. Choose a light or dark theme and enable host notifications for access and breakfast activity.
 
@@ -35,7 +35,7 @@ The host app supports **Italian and English**. The guest app supports **Italian,
 3. **Create and share an access code.** Pick its doors, set their validity, add breakfast if needed, and send the guest link through whichever messaging app you use.
 4. **Welcome your guests.** Their page shows available doors and breakfast. You can edit or revoke access and review activity from the host app.
 
-A code is the central record. Connectors never issue codes automatically, and there is no background booking synchronization to configure.
+Booking and calendar imports prepare a draft for you to check before saving.
 
 ## Get started
 
@@ -75,13 +75,19 @@ You can keep using the app if you skip installation or notifications. Door openi
 
 ## Bring in details from a calendar or booking
 
-**KrossBooking:** connect your account, complete verification, find the reservation, and review the suggested code.
+**KrossBooking:** connect your account, complete verification, find the reservation, and review the suggested code. The bearer token is encrypted in the server’s SQLite database and shared across the team’s devices. The browser never stores or receives it; your Kross password is not saved.
 
 **iCal:** upload a calendar or fetch a saved calendar URL, inspect its events, then choose the door those events belong to. For example, a calendar for “Room 2” maps to the Room 2 door. In the draft, you can add the main entrance or other doors before saving. Importing a calendar alone creates no access codes.
 
 **Screenshots:** optionally configure a Gemini API key and review the extracted guest details and dates before saving.
 
 All connectors are optional. You can create your first access code without configuring any of them.
+
+## Notification history and push
+
+The bell shows the selected structure’s history for everyone on your team. Notifications are kept for **three months** by default. Change that period under **Settings → Notifications**; older entries are automatically deleted. Statistics are preserved independently.
+
+Push notifications are optional. Each device chooses the structures and event types it receives. Changing push filters does not hide or delete the shared history.
 
 ## Updates and backups
 
@@ -102,8 +108,8 @@ Upgrading an older installation? Keep its original keys for the first upgrade; s
 
 - [Self-hosting, configuration, backups, and development](docs/REFERENCE.md)
 - [API reference](docs/API.md)
-- [Verification notes](docs/VERIFICATION.md)
-- [Source credits and licensing](docs/PROVENANCE.md)
+- [Credits and third-party notices](docs/PROVENANCE.md)
+- [Contributing](CONTRIBUTING.md)
 
 Device integrations report whether a request was accepted by the provider; they cannot confirm that a door physically opened. Test your device setup before sharing access with guests.
 
@@ -111,4 +117,4 @@ Device integrations report whether a request was accepted by the provider; they 
 
 Issues, usability feedback, and contributions are welcome. Describe what you expected, what happened, and the browser or device you used. Keep passwords, guest links, and API keys out of issue reports.
 
-The project license is still being decided. Reused components retain their original notices and obligations; see [source provenance](docs/PROVENANCE.md). A project-wide open-source license has not yet been granted.
+The project license is under review. See [credits and third-party notices](docs/PROVENANCE.md) for the licenses of reused components.

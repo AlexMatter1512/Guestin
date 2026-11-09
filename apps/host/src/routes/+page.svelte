@@ -50,6 +50,8 @@
     ListFilter,
     Pencil,
   } from "@lucide/svelte";
+  import StructureSettings from "$lib/components/StructureSettings.svelte";
+  import NotificationHistory from "$lib/components/NotificationHistory.svelte";
   import ConnectorManager from "$lib/components/ConnectorManager.svelte";
   import Modal from "$lib/components/Modal.svelte";
   import { copyText, guestToken } from "$lib/browser";
@@ -94,7 +96,6 @@
   let properties = $state<any[]>([]),
     doors = $state<any[]>([]),
     codes = $state<any[]>([]),
-    events = $state<any[]>([]),
     connections = $state<any[]>([]),
     reports = $state<any[]>([]),
     users = $state<any[]>([]),
@@ -191,8 +192,8 @@
     },
     {
       id: "breakfast",
-      title: "Breakfast totals",
-      description: "Open the public count page",
+      title: "Breakfast",
+      description: "Breakfast page and password protection",
       icon: Coffee,
       group: "Workspace",
     },
@@ -231,7 +232,11 @@
       return;
     }
     navigate(
-      tab === "Codes" ? "Codes" : tab === "Doors" ? "Doors" : "Settings",
+      tab === "Codes" || tab === "Activity"
+        ? "Codes"
+        : tab === "Doors"
+          ? "Doors"
+          : "Settings",
     );
   }
   function editProperty(p?: any) {
@@ -363,6 +368,21 @@
       setHostLocale(user.id, user.preferences.language);
     else restoreHostLocale(user.id);
     theme = user.preferences?.theme ?? "system";
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem("oshost.push." + user.id) ?? "null",
+      );
+      if (saved) {
+        pushProperties = saved.properties ?? [];
+        pushEvents = (saved.events ?? []).join(",");
+      } else {
+        pushProperties = [];
+        pushEvents = "";
+      }
+    } catch {
+      pushProperties = [];
+      pushEvents = "";
+    }
   }
   async function preferences(value: any) {
     const accountId = user?.id;
@@ -382,6 +402,7 @@
       ...navigation.map((n) => n.name),
       ...tools.map((n) => n.name),
       "Profile",
+      "Activity",
     ].find((n) => n.toLowerCase() === destination);
     if (!found) return;
     const savedDraft = user && localStorage.getItem("oshost.draft." + user.id);
@@ -423,6 +444,8 @@
         } else detailCodeId = id;
       }
     }
+    if (found === "Activity" && id && properties.some((p) => p.id === id))
+      propertyId = id;
     if (found === "Doors" && id) {
       const d = doors.find((d) => d.id === id);
       if (d) propertyId = d.propertyId;
@@ -447,6 +470,7 @@
   $effect(() => {
     if (!routeReady || !user) return;
     let route = "/" + tab.toLowerCase();
+    if (tab === "Activity" && propertyId) route += "/" + propertyId;
     if (tab === "Settings" && settingsPage)
       route +=
         "/" + settingsPage + (propertyForm ? "/" + (pEditing || "new") : "");
@@ -665,19 +689,49 @@
     }
   }
   async function reload() {
-    [properties, doors, codes, events, connections, reports] =
-      await Promise.all(
-        [
-          "properties",
-          "doors",
-          "codes",
-          "events",
-          "connections",
-          "reports",
-        ].map((p) => api(p)),
-      );
+    [properties, doors, codes, connections, reports] = await Promise.all(
+      ["properties", "doors", "codes", "connections", "reports"].map((p) =>
+        api(p),
+      ),
+    );
     if (!propertyId) propertyId = properties[0]?.id ?? "";
     if (user?.role === "owner") users = await api("users");
+    if (user?.id && pushLoadedFor !== user.id) {
+      pushLoadedFor = user.id;
+      await restoreDevicePushPreferences();
+    }
+  }
+  let pushLoadedFor = "";
+  async function restoreDevicePushPreferences() {
+    const account = user?.id;
+    try {
+      if (
+        localStorage.getItem("oshost.push." + account) ||
+        !("serviceWorker" in navigator) ||
+        !globalThis.crypto?.subtle
+      )
+        return;
+      const registration =
+        await navigator.serviceWorker.getRegistration("/host/");
+      const subscription = await registration?.pushManager.getSubscription();
+      if (!subscription) return;
+      const bytes = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(subscription.endpoint),
+      );
+      const id = [...new Uint8Array(bytes)]
+        .map((value) => value.toString(16).padStart(2, "0"))
+        .join("");
+      const records = await api("push/subscriptions");
+      const saved = records.find((record: any) => record.id === id);
+      if (saved && user?.id === account) {
+        pushProperties = saved.properties ?? [];
+        pushEvents = (saved.events ?? []).join(",");
+        localStorage.setItem("oshost.push." + account, JSON.stringify(saved));
+      }
+    } catch {
+      /* Unsupported browsers keep local selection; history is always available. */
+    }
   }
   onMount(() => {
     const stopInstallTracking = appInstallation.listen();
@@ -762,6 +816,7 @@
   });
   function resetAccountUI() {
     routeReady = false;
+    pushLoadedFor = "";
     settingsPage = "";
     propertyForm = false;
     connectorView = "list";
@@ -788,7 +843,6 @@
     properties = [];
     doors = [];
     codes = [];
-    events = [];
     connections = [];
     reports = [];
     users = [];
@@ -1055,6 +1109,13 @@
         .map((s) => s.trim())
         .filter(Boolean),
     });
+    localStorage.setItem(
+      "oshost.push." + user.id,
+      JSON.stringify({
+        properties: pushProperties,
+        events: pushEvents.split(",").filter(Boolean),
+      }),
+    );
     notice = "Notification preferences saved.";
   }
 
@@ -1062,7 +1123,7 @@
     { name: "Codes", icon: KeyRound },
     { name: "Doors", icon: DoorOpen },
     { name: "Create", icon: Plus },
-    { name: "Activity", icon: Activity },
+    { name: "Reports", label: "Statistics", icon: ChartNoAxesColumn },
     { name: "Settings", icon: Settings },
   ];
   const tools = [
@@ -1102,7 +1163,7 @@
       doorEditor ||
       !!detailDoorId ||
       !!settingsPage ||
-      ["Messages", "Reports", "Connectors", "Profile"].includes(tab),
+      ["Messages", "Activity", "Connectors", "Profile"].includes(tab),
   );
   const pageTitle = $derived(
     tab === "Settings" && settingsPage
@@ -1135,7 +1196,11 @@
                   ical: "Calendars",
                   gemini: "Image import",
                 }[connectorView]
-              : tab,
+              : tab === "Reports"
+                ? "Statistics"
+                : tab === "Activity"
+                  ? "Notifications"
+                  : tab,
   );
   const tourTitle = $derived(
     tourStage === "property"
@@ -1244,7 +1309,7 @@
                         " You can manage its permissions and revoke the link from this card.",
                       ))
                 : t(
-                    "Ask an owner to add a property and a door. You can explore Doors now, or skip this guide and return using the ? button once setup is ready.",
+                    "Ask an owner to add a property and a door. You can explore Doors now, or skip this guide and return from App tour in Settings once setup is ready.",
                   ),
   );
   function navigate(destination: string) {
@@ -1263,6 +1328,22 @@
   }
   function startTour() {
     if (!user || !navigator.onLine) return;
+    if (!editing) {
+      try {
+        const saved = localStorage.getItem("oshost.draft." + user.id);
+        if (saved) {
+          draft = JSON.parse(saved);
+          const storedId =
+            localStorage.getItem("oshost.draft.editId." + user.id) ?? "";
+          editId = codes.some((code) => code.id === storedId) ? storedId : "";
+          editing = true;
+          tab = "Codes";
+          settingsPage = "";
+        }
+      } catch {
+        /* Ignore an invalid local draft; server records remain authoritative. */
+      }
+    }
     if (!user.preferences?.language) {
       suggestedLocale = navigator.language.toLowerCase().startsWith("it")
         ? "it"
@@ -1450,10 +1531,25 @@
               aria-label={t("Back")}
               onclick={back}><ArrowLeft size={21} /></Button
             >{/if}
-          <div>
-            <p class="header-brand">oshost</p>
-            <h1>{t(pageTitle)}</h1>
-          </div>
+          {#if properties.length}
+            <div class="header-structure">
+              <Building2 size={18} aria-hidden="true" />
+              <NativeSelect.Root
+                class="w-full"
+                aria-label={t("Structure")}
+                value={editing ? draft.propertyId : propertyId}
+                disabled={editing || doorEditor || propertyForm}
+                onchange={(event) => {
+                  propertyId = event.currentTarget.value;
+                  changeTourProperty(propertyId);
+                }}
+              >
+                {#each properties as p (p.id)}<NativeSelect.Option value={p.id}
+                    >{p.name}</NativeSelect.Option
+                  >{/each}
+              </NativeSelect.Root>
+            </div>
+          {:else}<span class="font-semibold">oshost</span>{/if}
         </div>
         <div class="row header-actions">
           <Button
@@ -1461,9 +1557,9 @@
             variant="ghost"
             size="icon"
             class="icon-button"
-            aria-label={t("Take the app tour")}
-            title={t("Take the app tour")}
-            onclick={startTour}><CircleHelp size={20} /></Button
+            aria-label={t("Notifications")}
+            title={t("Notification history")}
+            onclick={() => navigate("Activity")}><Bell size={20} /></Button
           ><Button
             type="button"
             variant="ghost"
@@ -1499,30 +1595,18 @@
               active:
                 tab === item.name ||
                 (item.name === "Settings" &&
-                  ["Connectors", "Messages", "Reports", "Profile"].includes(
-                    tab,
-                  )),
+                  ["Connectors", "Messages", "Profile"].includes(tab)),
             })}
             aria-current={tab === item.name ? "page" : undefined}
             data-tour={"nav-" + item.name.toLowerCase()}
             onclick={() => navigate(item.name)}
-            ><item.icon size={21} /><span>{t(item.name)}</span></Button
+            ><item.icon size={21} /><span>{t(item.label ?? item.name)}</span
+            ></Button
           >{/if}
       {/each}
     </nav>
     <main class:settings-index={tab === "Settings" && !settingsPage}>
-      {#if properties.length && !editing && !doorEditor && !detailCodeId && !detailDoorId && !(tab === "Settings" && ["appearance", "language", "team", "data", "notifications"].includes(settingsPage)) && tab !== "Profile"}
-        <div class="property-switch">
-          <Building2 size={16} /><NativeSelect.Root
-            class="w-full"
-            aria-label={t("Property")}
-            bind:value={propertyId}
-            onchange={() => changeTourProperty(propertyId)}
-            >{#each properties as p (p.id)}<NativeSelect.Option value={p.id}
-                >{p.name}</NativeSelect.Option
-              >{/each}</NativeSelect.Root
-          >
-        </div>{/if}
+      <div class="page-heading"><h1>{t(pageTitle)}</h1></div>
       <Tour
         open={tourVisible}
         stage={tourStage}
@@ -2097,27 +2181,14 @@
                       >{/if}
                   </div>{/each}
               </Item.Group>{/if}
-          {:else if tab === "Activity"}<div class="row spread">
-              <p class="muted">
-                {t("Access attempts, device responses and breakfast usage.")}
-              </p>
-              <Button onclick={() => act(reload)}>{t("Refresh")}</Button>
-            </div>
-            {#each events.filter((e) => !e.property_id || e.property_id === propertyId) as e, index (e.id ?? index)}<Card.Root
-                class="workspace-card"
-              >
-                <div class="row spread">
-                  <strong>{e.type}</strong><small
-                    >{new Date(e.created).toLocaleString(
-                      hostLanguage.current,
-                    )}</small
-                  >
-                </div>
-                <p>{e.message}</p>
-                {#if e.code_id}<small
-                    >{codes.find((c) => c.id === e.code_id)?.label}</small
-                  >{/if}
-              </Card.Root>{/each}
+          {:else if tab === "Activity"}<NotificationHistory
+              {propertyId}
+              propertyName={property?.name ?? ""}
+              retentionMonths={property?.notificationRetentionMonths ?? 3}
+              timezone={property?.timezone ?? "UTC"}
+              {codes}
+              {api}
+            />
           {:else if tab === "Reports"}<Card.Root class="workspace-card">
               <h2>{t("Code creation and usage")}</h2>
               <p class="muted">
@@ -2313,6 +2384,7 @@
                   type="button"
                   variant="ghost"
                   class="settings-row"
+                  data-tour="app-tour"
                   onclick={startTour}
                   ><CircleHelp size={21} /><span
                     ><strong>{t("App tour")}</strong><small
@@ -2379,8 +2451,15 @@
                   >{/each}
               </Item.Group>
             {:else if settingsPage === "notifications"}
+              <StructureSettings
+                {property}
+                mode="notifications"
+                owner={user.role === "owner"}
+                {api}
+                {reload}
+              />
               <Card.Root class="workspace-card stack">
-                <h2>{t("Notifications & installation")}</h2>
+                <h2>{t("Push on this device")}</h2>
                 <p class="muted">
                   {t(
                     "Install this app from your browser menu. On iPhone: Share → Add to Home Screen, then enable notifications here.",
@@ -2431,15 +2510,21 @@
                     variant="outline"
                     onclick={() =>
                       act(async () => {
-                        await api("push/subscriptions", undefined, "DELETE");
                         if ("serviceWorker" in navigator) {
                           const r =
                             await navigator.serviceWorker.getRegistration(
                               "/host/",
                             );
-                          await (
-                            await r?.pushManager.getSubscription()
-                          )?.unsubscribe();
+                          const subscription =
+                            await r?.pushManager.getSubscription();
+                          if (subscription) {
+                            await api(
+                              "push/subscriptions",
+                              { endpoint: subscription.endpoint },
+                              "DELETE",
+                            );
+                            await subscription.unsubscribe();
+                          }
                         }
                         notice = "Notifications disabled.";
                       })}>{t("Disable notifications")}</Button
@@ -2578,26 +2663,13 @@
                       >{/if}
                   </div>{/each}
               </Card.Root>
-            {:else if settingsPage === "breakfast"}<div class="page-intro">
-                <p>
-                  {t(
-                    "Only aggregate totals are public. Guest details stay private.",
-                  )}
-                </p>
-              </div>
-              <Item.Group class="workspace-list">
-                {#each properties as p (p.id)}<a
-                    class="settings-row"
-                    href={"/breakfast/" + p.id}
-                    target="_blank"
-                    rel="noreferrer"
-                    ><Coffee size={21} /><span
-                      ><strong>{p.name}</strong><small
-                        >{t("Open public breakfast page ↗")}</small
-                      ></span
-                    ><ExternalLink size={18} /></a
-                  >{/each}
-              </Item.Group>
+            {:else if settingsPage === "breakfast"}<StructureSettings
+                {property}
+                mode="breakfast"
+                owner={user.role === "owner"}
+                {api}
+                {reload}
+              />
             {:else if settingsPage === "data" && user.role === "owner"}<div
                 class="page-intro"
               >
@@ -2759,7 +2831,7 @@
         open={quickCreate}
         title={t("Create")}
         onclose={() => (quickCreate = false)}
-        ><Item.Group class="workspace-list">
+        ><Item.Group class="quick-create-options">
           <Button
             type="button"
             variant="ghost"

@@ -15,18 +15,36 @@ export async function deliverPush(db: DB, send = webpush.sendNotification) {
     );
     const jobs = db
       .query(
-        "SELECT j.*,s.data,e.type,e.message FROM jobs j JOIN subscriptions s ON s.id=j.subscription_id JOIN events e ON e.id=j.event_id WHERE next<=? LIMIT 20",
+        "SELECT j.*,s.data,s.preferences,e.property_id,e.type,e.message,p.data property_data FROM jobs j JOIN subscriptions s ON s.id=j.subscription_id JOIN events e ON e.id=j.event_id LEFT JOIN properties p ON p.id=e.property_id WHERE next<=? LIMIT 20",
       )
       .all(Date.now()) as any[];
     for (const j of jobs) {
       try {
+        const preferences = {
+          properties: [],
+          events: [],
+          ...JSON.parse(j.preferences),
+        };
+        if (
+          (preferences.properties.length &&
+            !preferences.properties.includes(j.property_id)) ||
+          (preferences.events.length && !preferences.events.includes(j.type))
+        ) {
+          db.query(
+            "DELETE FROM jobs WHERE event_id=? AND subscription_id=?",
+          ).run(j.event_id, j.subscription_id);
+          continue;
+        }
         await send(
           JSON.parse(j.data),
           JSON.stringify({
             id: j.event_id,
-            title: "oshost · " + j.type,
+            title:
+              (j.property_data ? JSON.parse(j.property_data).name : "oshost") +
+              " · " +
+              j.type,
             body: j.message,
-            url: "/host/",
+            url: "/host/#/activity/" + (j.property_id ?? ""),
           }),
           { TTL: 3600, timeout: 10000 },
         );

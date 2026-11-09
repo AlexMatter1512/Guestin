@@ -25,7 +25,6 @@
   import * as NativeSelect from "$lib/components/ui/native-select";
   import { Separator } from "$lib/components/ui/separator";
   import { hostLanguage, t } from "$lib/i18n.svelte";
-  import { randomUUID } from "$lib/browser";
   import {
     KrossClient,
     calendarDrafts,
@@ -174,10 +173,8 @@
       providerProperties = [];
       providerProperty = "";
       hotelId = String(source?.data.hotelId ?? "");
-      const savedDevice =
-        source?.data.deviceId ?? localStorage.getItem("oshost.kross.device");
-      deviceId = savedDevice || randomUUID();
-      if (!savedDevice) localStorage.setItem("oshost.kross.device", deviceId);
+      deviceId = source?.data.deviceId ?? "";
+      localStorage.removeItem("oshost.kross.device");
       connected = Boolean(source?.data.authenticated);
       if (source?.data.model) geminiModel = String(source.data.model);
       if (view === "ical") {
@@ -292,11 +289,12 @@
         kind: "kross",
         name: "KrossBooking",
         secret: {},
-        data: { hotelId: hotelId.trim(), deviceId },
+        data: { hotelId: hotelId.trim() },
       });
       if (!current()) return;
       id = saved.id;
       selectedId = id;
+      deviceId = saved.data.deviceId;
       // Keep the credentials in memory through parent reload and any 2FA challenge.
       // Persist the new record immediately so a failed sign-in can be retried.
       loadedConnection = id + "/" + scope;

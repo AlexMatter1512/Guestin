@@ -1,4 +1,8 @@
 import { chromium, expect } from "@playwright/test";
+async function replayTour(page: any) {
+  await page.locator('[data-tour="nav-settings"]').click();
+  await page.locator('[data-tour="app-tour"]').click();
+}
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -131,7 +135,9 @@ try {
     )
     .toBe("completed");
   await page.reload();
-  await expect(page.locator("header h1")).toHaveText("Codici di accesso");
+  await expect(page.locator(".page-heading h1")).toHaveText(
+    "Codici di accesso",
+  );
   await expect(page.locator(".guided-setup")).toHaveCount(0);
   await expect(chooser).not.toBeVisible();
   await page.locator('[data-tour="nav-settings"]').click();
@@ -142,7 +148,7 @@ try {
   });
   await expect(language.getByRole("radio")).toHaveCount(2);
   await language.getByRole("radio", { name: /English/ }).click();
-  await expect(page.locator("header h1")).toHaveText("App language");
+  await expect(page.locator(".page-heading h1")).toHaveText("App language");
   await expect(
     page
       .getByRole("radiogroup", { name: "App language", exact: true })
@@ -157,7 +163,7 @@ try {
     )
     .toBe("en");
   await page.reload();
-  await expect(page.locator("header h1")).toHaveText("App language");
+  await expect(page.locator(".page-heading h1")).toHaveText("App language");
   await expect(page).toHaveURL(/#\/settings\/language$/);
   await expect(chooser).not.toBeVisible();
   // Server preferences survive a fresh browser with no local-storage flags.
@@ -171,7 +177,9 @@ try {
   await secondPage
     .getByRole("button", { name: "Sign in", exact: true })
     .click();
-  await expect(secondPage.locator("header h1")).toHaveText("Access codes");
+  await expect(secondPage.locator(".page-heading h1")).toHaveText(
+    "Access codes",
+  );
   await expect(secondPage.locator("html")).toHaveAttribute("lang", "en");
   await expect(secondPage.locator(".guided-setup")).toHaveCount(0);
   await expect(
@@ -195,12 +203,10 @@ try {
     localStorage.clear();
   });
   await page.reload();
-  await expect(page.locator("header h1")).toHaveText("App language");
+  await expect(page.locator(".page-heading h1")).toHaveText("App language");
   await expect(chooser).not.toBeVisible();
   await expect(page.locator(".guided-setup")).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "Take the app tour", exact: true })
-    .click();
+  await replayTour(page);
   await expect(chooser).toBeVisible();
   await expect(page.locator(".guided-setup")).toHaveCount(0);
   await chooser.getByRole("radio", { name: "English", exact: true }).check();

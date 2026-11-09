@@ -1,4 +1,8 @@
 import { chromium, expect, type Page } from "@playwright/test";
+async function replayTour(page: any) {
+  await page.locator('[data-tour="nav-settings"]').click();
+  await page.locator('[data-tour="app-tour"]').click();
+}
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -120,7 +124,7 @@ try {
     tour.getByRole("button", { name: "Next", exact: true }),
   ).toHaveCount(0);
   // Guidance points to a real navigation button rather than switching the page.
-  await expect(page.locator("header h1")).toHaveText("Access codes");
+  await expect(page.locator(".page-heading h1")).toHaveText("Access codes");
   await noSideEffects(page, [0, 0, 0]);
   await expect(page.locator('[data-tour="nav-settings"]')).toHaveAttribute(
     "data-tour-highlighted",
@@ -137,7 +141,7 @@ try {
     "true",
   );
   await page.locator('[data-tour="add-property"]').click();
-  await expect(page.locator("header h1")).toHaveText("Add property");
+  await expect(page.locator(".page-heading h1")).toHaveText("Add property");
   const property = page.locator('[data-tour="property-form"]');
   await expect(property).toBeVisible();
   await expect(property).toHaveAttribute("data-tour-highlighted", "true");
@@ -151,7 +155,7 @@ try {
     .getByRole("button", { name: "Add property", exact: true })
     .click();
   await expect(tour.getByRole("heading")).toHaveText("Add your first door");
-  await expect(page.locator("header h1")).toHaveText("Properties");
+  await expect(page.locator(".page-heading h1")).toHaveText("Properties");
   await noSideEffects(page, [1, 0, 0]);
 
   await expect(page.locator('[data-tour="nav-doors"]')).toHaveAttribute(
@@ -195,13 +199,11 @@ try {
   ).not.toBeVisible();
   await noSideEffects(skippedReload, [1, 0, 0]);
   await skippedReload.close();
-  await page
-    .getByRole("button", { name: "Take the app tour", exact: true })
-    .click();
+  await replayTour(page);
   await expect(tour.getByRole("heading")).toHaveText("Add your first door");
-  await expect(door.getByLabel("Name", { exact: true })).toHaveValue(
-    "Example entrance",
-  );
+  await page.locator('[data-tour="nav-doors"]').click();
+  await page.getByRole("button", { name: "Add door", exact: true }).click();
+  await door.getByLabel("Name", { exact: true }).fill("Example entrance");
   await door.getByRole("button", { name: "Save door", exact: true }).click();
   const afterDoor = await noSideEffects(page, [1, 1, 0]);
   expect(afterDoor.doors[0].integration).toBe("none");
@@ -377,9 +379,7 @@ try {
     .getByRole("button", { name: /^Create access code/ })
     .click();
   await page.getByLabel("Guest name / label").fill("Keep my draft");
-  await page
-    .getByRole("button", { name: "Take the app tour", exact: true })
-    .click();
+  await replayTour(page);
   await expect(tour).toBeVisible();
   await tour.getByRole("button", { name: "Skip tour", exact: true }).click();
   await expect(page.getByLabel("Guest name / label")).toHaveValue(
@@ -399,9 +399,7 @@ try {
     .click();
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await page.getByLabel("Guest name / label").fill("An unsaved edit");
-  await page
-    .getByRole("button", { name: "Take the app tour", exact: true })
-    .click();
+  await replayTour(page);
   await expect(page.locator('[data-tour="new-code"]')).toHaveAttribute(
     "data-tour-highlighted",
     "true",
@@ -455,14 +453,13 @@ try {
     .getByRole("button", { name: /^Create access code/ })
     .click();
   await page.getByLabel("Guest name / label").fill("Second guest");
-  await page
-    .getByRole("button", { name: "Take the app tour", exact: true })
-    .click();
+  await replayTour(page);
   const codeForm = page.locator('[data-tour="code-form"]');
   await expect(codeForm).toHaveAttribute("data-tour-highlighted", "true");
-  // The redesign shows the property selector inside the form, avoiding two
-  // competing selectors. Its changes still reconcile the tour's chosen door.
-  await expect(page.locator(".property-switch")).toHaveCount(0);
+  // The header selector stays visible but cannot switch context mid-form.
+  await expect(
+    page.getByRole("combobox", { name: "Structure", exact: true }),
+  ).toBeDisabled();
   const draftProperty = codeForm.getByRole("combobox", {
     name: "Property",
     exact: true,
@@ -497,8 +494,8 @@ try {
   );
   await expect(
     page
-      .locator(".property-switch")
-      .getByRole("combobox", { name: "Property", exact: true }),
+      .locator(".header-structure")
+      .getByRole("combobox", { name: "Structure", exact: true }),
   ).toHaveValue(second.property.id);
   const switched = await noSideEffects(page, [2, 2, 2]);
   const switchedCode = switched.codes.find(

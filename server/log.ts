@@ -200,6 +200,18 @@ export function logRoute(path: string) {
   if (routes.some((re) => re.test(path))) return path;
   for (const [re, pattern] of [
     [
+      /^\/api\/v1\/public\/breakfast\/[^/]+\/auth$/,
+      "/api/v1/public/breakfast/:property/auth",
+    ],
+    [
+      /^\/api\/v1\/properties\/[^/]+\/notifications$/,
+      "/api/v1/properties/:id/notifications",
+    ],
+    [
+      /^\/api\/v1\/properties\/[^/]+\/breakfast-settings$/,
+      "/api/v1/properties/:id/breakfast-settings",
+    ],
+    [
       /^\/api\/v1\/guest\/doors\/[^/]+\/open$/,
       "/api/v1/guest/doors/:door/open",
     ],

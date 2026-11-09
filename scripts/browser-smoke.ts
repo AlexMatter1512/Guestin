@@ -1,4 +1,8 @@
 import { chromium, expect } from "@playwright/test";
+async function replayTour(page: any) {
+  await page.locator('[data-tour="nav-settings"]').click();
+  await page.locator('[data-tour="app-tour"]').click();
+}
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -66,7 +70,7 @@ try {
     page.getByRole("heading", { name: "Access codes", exact: true }),
   ).toBeVisible();
   await expect(tour).not.toBeVisible();
-  await page.getByRole("button", { name: "Take the app tour" }).click();
+  await replayTour(page);
   await expect(tour).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(tour).not.toBeVisible();
@@ -148,7 +152,7 @@ try {
   expect(scopes.sort()).toEqual(["/guest/", "/host/"]);
   await page.getByRole("button", { name: "New code" }).click();
   await page.getByLabel("Guest name / label").fill("Offline draft");
-  await page.getByRole("button", { name: "Take the app tour" }).click();
+  await replayTour(page);
   await tour.getByRole("button", { name: "Skip tour" }).click();
   await expect(page.getByLabel("Guest name / label")).toHaveValue(
     "Offline draft",

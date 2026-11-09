@@ -2,6 +2,7 @@ import { log, logError } from "./log";
 import { openDatabase } from "./db";
 import { createApp } from "./app";
 import { deliverPush } from "./push";
+import { pruneNotifications } from "./notifications";
 import { resolve, extname } from "node:path";
 import {
   initializeRuntimeSecrets,
@@ -10,7 +11,7 @@ import {
 process.umask(0o077);
 const { secrets } = initializeRuntimeSecrets();
 const db = openDatabase(process.env.DB_PATH ?? "data/oshost.sqlite");
-log("info", "database.ready", { schema: 2 });
+log("info", "database.ready", { schema: 3 });
 const app = createApp(db, {
   key: secrets.APP_KEY,
   setupToken: secrets.SETUP_TOKEN,
@@ -51,10 +52,15 @@ app.get("*", async (c) => {
   return new Response(file, { headers: c.res.headers });
 });
 let sending = false;
+let nextPrune = 0;
 const interval = setInterval(async () => {
   if (sending) return;
   sending = true;
   try {
+    if (Date.now() >= nextPrune) {
+      pruneNotifications(db);
+      nextPrune = Date.now() + 3600000;
+    }
     await deliverPush(db);
   } catch (e) {
     logError("push.worker_failed", e);
@@ -84,7 +90,7 @@ const server = Bun.serve({
   tls,
   maxRequestBodySize: 8 * 1024 * 1024,
 });
-log("info", "server.started", { port: server.port, tls: !!tls, schema: 2 });
+log("info", "server.started", { port: server.port, tls: !!tls, schema: 3 });
 printSetupInstructions(db, secrets.SETUP_TOKEN);
 const stop = () => {
   log("info", "server.stopping");
