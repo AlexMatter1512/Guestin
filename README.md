@@ -21,19 +21,53 @@ Bun automatically reads `.env`. Keep it private and retain its `APP_KEY`: losing
 
 ## Docker
 
+Install [Docker Engine with the Compose plugin](https://docs.docker.com/engine/install/) on the server. Deployments use the published `alexmatter/oshost:latest` image (AMD64 and ARM64); Bun and a source build are not required on the server.
+
+Create a directory for the deployment and copy this repository's `compose.yaml` into it. From that directory, generate the initial `.env` using the image:
+
 ```sh
-docker compose up --build -d
+docker pull alexmatter/oshost:latest
+docker run --rm --user "$(id -u):$(id -g)" \
+  --mount "type=bind,src=$PWD,dst=/work" --workdir /work \
+  alexmatter/oshost:latest bun /app/scripts/init-env.ts
+nano .env
 ```
 
-Compose binds port 3000 to localhost for use behind an HTTPS reverse proxy, and stores SQLite in the `oshost-data` named volume. Set `ORIGIN` in `.env` to the exact public origin (scheme, hostname, and optional port). Forward `/` to the application without stripping paths. No separate database service is required.
+Set `ORIGIN=https://access.example.com` to your exact public origin (scheme, hostname, and optional port) and `VAPID_SUBJECT=mailto:you@example.com` to your contact address. Keep the generated encryption/setup/VAPID keys. Initialization refuses to overwrite an existing `.env`; for an existing installation, retain its `.env` and volume.
 
-Example Caddy configuration:
+Start the application and check its health:
+
+```sh
+docker compose up -d
+docker compose ps
+curl --fail http://127.0.0.1:3000/api/v1/health
+docker compose logs --tail=100 oshost
+```
+
+Compose binds port 3000 to localhost for use behind an HTTPS reverse proxy, and stores SQLite, uploaded assets, and logs in the `oshost-data` named volume. No separate database service is required. Keep the deployment directory/project name unchanged so Compose reuses the same volume.
+
+Point your domain's DNS A/AAAA records at the server. Forward `/` through your existing HTTPS reverse proxy without stripping paths. The following Caddy configuration assumes Caddy runs on the server itself:
+
 
 ```caddyfile
 access.example.com {
   reverse_proxy 127.0.0.1:3000
 }
 ```
+
+Install/reload Caddy with that site configuration and allow incoming ports 80 and 443 for [automatic HTTPS](https://caddyserver.com/docs/quick-starts/reverse-proxy). If the proxy runs in another container, `127.0.0.1` refers to that container: connect it to oshost's Docker network and proxy to `oshost:3000` instead.
+
+Open `https://access.example.com/host/` and create the owner with the `SETUP_TOKEN` from `.env`. HTTPS is required for PWA installation and push on phones. Set up the first property, door, and code through the guided tour.
+
+To update, create a backup first (see below), then run:
+
+```sh
+docker compose pull
+docker compose up -d
+docker compose ps
+```
+
+The data volume and `.env` survive replacement of the container; database migrations run at startup. Never use `docker compose down -v` unless you intend to delete the data volume. You can pin the `image` to a published `sha-<full-commit>` tag instead of `latest` for controlled upgrades. A database downgrade may require restoring the matching backup.
 
 For direct TLS, set `TLS_CERT` and `TLS_KEY` to certificate/key file paths visible inside the container, mount them read-only, expose the chosen port, and set `ORIGIN` to its HTTPS origin. TLS file paths are optional; do not set only one. HTTPS is necessary for PWA installation and push outside localhost.
 
@@ -144,6 +178,6 @@ Configure this repository in GitHub **Settings → Secrets and variables → Act
 - Actions secret `DOCKERHUB_TOKEN`: a Docker Hub access token with write permission for the `alexmatter/oshost` repository. Never commit it or put it in the image.
 - Optional Actions variable `DOCKERHUB_IMAGE`: another lowercase `namespace/image`; defaults to `<DOCKERHUB_USERNAME>/oshost`.
 
-Create `alexmatter/oshost` on Docker Hub if it does not already exist. Publication fails with a configuration message until the variable and token are set. After adding them, rerun the workflow from GitHub Actions. For the published image, replace `build: .` in your Compose service with `image: alexmatter/oshost:latest`; keep the existing `.env` and database volume.
+Publication fails with a configuration message until the variable and token are set. After adding them, rerun the workflow from GitHub Actions. `compose.yaml` already uses `alexmatter/oshost:latest`; use `docker compose pull && docker compose up -d` to deploy a published update while retaining the existing `.env` and database volume.
 
 To run the same disposable image check locally: `bash scripts/container-smoke.sh oshost:ci` after building with `docker build -t oshost:ci .`.

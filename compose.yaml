@@ -1,6 +1,6 @@
 services:
   oshost:
-    build: .
+    image: alexmatter/oshost:latest
     restart: unless-stopped
     env_file: .env
     environment:
