@@ -365,6 +365,8 @@ export function createApp(
     const changes = z
       .object({
         tour: z.enum(["pending", "completed", "skipped"]).optional(),
+        tourStep: z.enum(["install", "notifications"]).nullable().optional(),
+        tourCodeId: z.string().uuid().nullable().optional(),
         language: z.enum(["en", "it"]).nullable().optional(),
         theme: z.enum(["light", "dark", "system"]).optional(),
       })

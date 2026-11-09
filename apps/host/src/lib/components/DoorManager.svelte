@@ -1,5 +1,16 @@
 <script lang="ts">
   import { randomUUID } from "$lib/browser";
+  import { Button } from "$lib/components/ui/button";
+  import { Input } from "$lib/components/ui/input";
+  import { Label } from "$lib/components/ui/label";
+  import { Textarea } from "$lib/components/ui/textarea";
+  import { Badge } from "$lib/components/ui/badge";
+  import { Checkbox } from "$lib/components/ui/checkbox";
+  import { Switch } from "$lib/components/ui/switch";
+  import { Separator } from "$lib/components/ui/separator";
+  import * as Card from "$lib/components/ui/card";
+  import * as Alert from "$lib/components/ui/alert";
+  import * as NativeSelect from "$lib/components/ui/native-select";
   import {
     DoorOpen,
     Plus,
@@ -347,27 +358,46 @@
   }
 </script>
 
-<section aria-label={t("Doors")}>
-  {#if !editor && !detailId}<div class="row spread section-intro">
-      <div>
-        <p class="muted">{t("The doors your guests can use.")}</p>
-        <small
-          >{localDoors.length}
-          {t("doors in")}
-          {propertyName || t("your property")}</small
-        >
+<section class="door-manager space-y-6" aria-label={t("Doors")}>
+  {#if !editor && !detailId}
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div class="space-y-1">
+        <p class="text-sm text-muted-foreground">
+          {t("The doors your guests can use.")}
+        </p>
+        <div class="flex items-center gap-2 text-sm text-muted-foreground">
+          <Badge variant="secondary">{localDoors.length}</Badge>
+          <span>{t("doors in")} {propertyName || t("your property")}</span>
+        </div>
       </div>
-      {#if owner && !editor}<button
+      {#if owner}
+        <Button
           data-tour="add-door"
-          class="primary"
           disabled={!propertyId || pending}
-          onclick={addDoor}><Plus size={16} />{t("Add door")}</button
-        >{/if}
-    </div>{/if}
-  {#if error}<p role="alert" class="error">{error}</p>{/if}
-  {#if message}<p role="status" class="notice">{message}</p>{/if}
-  {#if result}<div class="card" role="status">
-      <strong
+          onclick={addDoor}
+        >
+          <Plus size={16} />{t("Add door")}
+        </Button>
+      {/if}
+    </div>
+  {/if}
+
+  {#if error}
+    <Alert.Root variant="destructive" role="alert"
+      ><CircleAlert size={16} /><Alert.Description>{error}</Alert.Description
+      ></Alert.Root
+    >
+  {/if}
+  {#if message}<Alert.Root role="status"
+      ><Alert.Description>{message}</Alert.Description></Alert.Root
+    >{/if}
+  {#if result}
+    <Alert.Root
+      role="status"
+      variant={result.status === "failed" ? "destructive" : "default"}
+    >
+      <CircleAlert size={16} />
+      <Alert.Title
         >{result.status === "accepted"
           ? l(
               "Request accepted by device provider",
@@ -378,620 +408,732 @@
             : l(
                 "Uncertain result — check the door",
                 "Risultato incerto — controlla la porta",
-              )}</strong
+              )}</Alert.Title
       >
-      <p>{result.detail}</p>
-      <p>
-        {l(
-          "Provider acceptance does not prove that the door physically opened. No automatic retry is sent.",
-          "L’accettazione del fornitore non prova che la porta si sia aperta fisicamente. Non viene eseguito alcun tentativo automatico.",
-        )}
-      </p>
-    </div>{/if}
+      <Alert.Description class="space-y-2">
+        <p>{result.detail}</p>
+        <p>
+          {l(
+            "Provider acceptance does not prove that the door physically opened. No automatic retry is sent.",
+            "L’accettazione del fornitore non prova che la porta si sia aperta fisicamente. Non viene eseguito alcun tentativo automatico.",
+          )}
+        </p>
+      </Alert.Description>
+    </Alert.Root>
+  {/if}
+
   {#if confirmation}
-    <section
-      class="card confirmation stack"
+    <Card.Root
+      class="confirmation border border-destructive/40"
+      role="region"
       aria-label={l("Confirm door action", "Conferma azione porta")}
     >
-      <h2>
-        {confirmation.kind === "test"
-          ? l("Test opening", "Prova apertura")
-          : confirmation.kind === "delete"
-            ? l("Delete door", "Elimina porta")
-            : l("Resolve uncertain test", "Risolvi test incerto")}: {confirmation
-          .door.name}
-      </h2>
-      <p>
-        {confirmation.kind === "test"
-          ? l(
-              "This sends a real unlock request to the connected device. Make sure it is safe to open the door and someone can verify the result. No guest code is consumed.",
-              "Verrà inviata una vera richiesta di apertura al dispositivo collegato. Assicurati che sia sicuro aprire la porta e che qualcuno possa verificare il risultato. Nessun codice ospite verrà consumato.",
-            )
-          : confirmation.kind === "delete"
+      <Card.Header>
+        <Card.Title
+          >{confirmation.kind === "test"
+            ? l("Test opening", "Prova apertura")
+            : confirmation.kind === "delete"
+              ? l("Delete door", "Elimina porta")
+              : l("Resolve uncertain test", "Risolvi test incerto")}: {confirmation
+            .door.name}</Card.Title
+        >
+        <Card.Description
+          >{confirmation.kind === "test"
             ? l(
-                "This permanently deletes the door and its photos and connection credentials. Doors referenced by access codes cannot be deleted; disable them instead.",
-                "La porta, le sue foto e le credenziali di connessione verranno eliminate definitivamente. Le porte associate a codici di accesso non possono essere eliminate; disabilitale invece.",
+                "This sends a real unlock request to the connected device. Make sure it is safe to open the door and someone can verify the result. No guest code is consumed.",
+                "Verrà inviata una vera richiesta di apertura al dispositivo collegato. Assicurati che sia sicuro aprire la porta e che qualcuno possa verificare il risultato. Nessun codice ospite verrà consumato.",
               )
-            : l(
-                "Only continue after physically checking the door and verifying the previous request. This clears the uncertain state; it does not send another unlock request.",
-                "Continua solo dopo aver controllato fisicamente la porta e verificato la richiesta precedente. Questo rimuove lo stato incerto e non invia un’altra richiesta di apertura.",
-              )}
-      </p>
-      <label class="inline"
-        ><input type="checkbox" bind:checked={acknowledged} />{l(
-          "I understand and confirm",
-          "Ho compreso e confermo",
-        )}</label
-      >
-      <div class="row">
-        <button
+            : confirmation.kind === "delete"
+              ? l(
+                  "This permanently deletes the door and its photos and connection credentials. Doors referenced by access codes cannot be deleted; disable them instead.",
+                  "La porta, le sue foto e le credenziali di connessione verranno eliminate definitivamente. Le porte associate a codici di accesso non possono essere eliminate; disabilitale invece.",
+                )
+              : l(
+                  "Only continue after physically checking the door and verifying the previous request. This clears the uncertain state; it does not send another unlock request.",
+                  "Continua solo dopo aver controllato fisicamente la porta e verificato la richiesta precedente. Questo rimuove lo stato incerto e non invia un’altra richiesta di apertura.",
+                )}</Card.Description
+        >
+      </Card.Header>
+      <Card.Content>
+        <div class="flex items-center gap-3">
+          <Checkbox id="door-action-confirm" bind:checked={acknowledged} />
+          <Label for="door-action-confirm"
+            >{l("I understand and confirm", "Ho compreso e confermo")}</Label
+          >
+        </div>
+      </Card.Content>
+      <Card.Footer class="flex flex-wrap gap-2">
+        <Button
+          variant={confirmation.kind === "delete" ? "destructive" : "default"}
           disabled={!acknowledged || pending}
           onclick={() => run(confirmAction)}
           >{confirmation.kind === "test"
             ? l("Send unlock request", "Invia richiesta di apertura")
-            : l("Confirm", "Conferma")}</button
-        ><button disabled={pending} onclick={() => (confirmation = null)}
-          >{t("Cancel")}</button
+            : l("Confirm", "Conferma")}</Button
         >
-      </div>
-    </section>
+        <Button
+          variant="outline"
+          disabled={pending}
+          onclick={() => (confirmation = null)}>{t("Cancel")}</Button
+        >
+      </Card.Footer>
+    </Card.Root>
   {/if}
+
   {#if !propertyId}
-    <div class="card empty-state">
-      <DoorOpen size={36} />
-      <h2>{t("Add your property first")}</h2>
-      <p>{t("Then connect the doors guests will access.")}</p>
-      {#if owner}<button onclick={onSetup}>{t("Set up a property")}</button
-        >{:else}<p>
-          {t("Ask an owner to set up a property and its doors.")}
-        </p>{/if}
-    </div>
+    <Card.Root class="py-12 text-center">
+      <Card.Content class="flex flex-col items-center gap-4">
+        <div
+          class="flex size-14 items-center justify-center rounded-xl bg-muted"
+        >
+          <DoorOpen size={28} />
+        </div>
+        <h2 class="text-lg font-semibold">{t("Add your property first")}</h2>
+        <p class="text-sm text-muted-foreground">
+          {t("Then connect the doors guests will access.")}
+        </p>
+        {#if owner}<Button onclick={onSetup}>{t("Set up a property")}</Button
+          >{:else}<p class="text-sm text-muted-foreground">
+            {t("Ask an owner to set up a property and its doors.")}
+          </p>{/if}
+      </Card.Content>
+    </Card.Root>
   {:else if editor && owner}
-    {#if editId && !localDoors.some((d) => d.id === editId)}<div class="card">
-        <p>
-          {l(
+    {#if editId && !localDoors.some((d) => d.id === editId)}
+      <Alert.Root
+        ><Alert.Description
+          >{l(
             "This door is not available in the selected property.",
             "Questa porta non è disponibile nella struttura selezionata.",
-          )}
-        </p>
-        <button onclick={back}>{t("Back to doors")}</button>
-      </div>
+          )}</Alert.Description
+        ></Alert.Root
+      >
+      <Button variant="outline" onclick={back}>{t("Back to doors")}</Button>
     {:else}
       <form
         data-tour="door-form"
-        class="card stack"
+        class="space-y-6"
         onsubmit={(e) => {
           e.preventDefault();
           void run(save);
         }}
       >
-        <div class="row spread">
-          <h2>{t(editId ? "Edit door" : "Add door")}</h2>
-          <button type="button" disabled={pending} onclick={back}
-            >{t("Back to doors")}</button
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h2 class="text-lg font-semibold">
+            {t(editId ? "Edit door" : "Add door")}
+          </h2>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            onclick={back}>{t("Back to doors")}</Button
           >
         </div>
-        <div class="grid">
-          <label
-            >{t("Name")}<input
-              bind:value={draft.name}
-              required
-              maxlength="120"
-            /></label
-          ><label
-            >{t("Integration")}<select bind:value={draft.integration}
-              ><option value="none">{t("Connect later (example door)")}</option
-              ><option value="ewelink">eWeLink webhook</option><option
-                value="shelly">Shelly Cloud</option
-              ></select
-            ></label
-          >
-        </div>
-        <label
-          >{l("Description", "Descrizione")}<textarea
-            bind:value={draft.description}
-            maxlength="3000"
-            placeholder={l(
-              "Help guests locate and use this door",
-              "Aiuta gli ospiti a trovare e usare questa porta",
-            )}></textarea></label
-        >
-        <div class="row">
-          <label class="inline"
-            ><input type="checkbox" bind:checked={draft.enabled} />{l(
-              "Enabled for guest access",
-              "Abilitata per l’accesso ospiti",
-            )}</label
-          ><label class="inline"
-            ><input type="checkbox" bind:checked={draft.common} />{t(
-              "Common door · preselected",
-            )}</label
-          ><label class="inline"
-            ><input type="checkbox" bind:checked={draft.singleUse} />{t(
-              "Single use by default",
-            )}</label
-          >
-        </div>
-        <small
-          >{l(
-            "Disabling a door blocks guest requests while preserving its connection and access permissions.",
-            "Disabilitare una porta blocca le richieste degli ospiti mantenendo la connessione e i permessi di accesso.",
-          )}</small
-        >
-        {#if draft.integration === "ewelink"}<label
-            >{t("eWeLink webhook code")}<input
-              type="password"
-              bind:value={webhook}
-              autocomplete="off"
-              required={!editId}
-            /></label
-          >
-        {:else if draft.integration === "shelly"}<div class="grid">
-            <label
-              >{t("Shelly Cloud host")}<input
-                bind:value={cloudHost}
-                placeholder="shelly-196-eu.shelly.cloud"
-                required={!editId}
-              /></label
-            ><label
-              >{t("Device ID")}<input
-                bind:value={deviceId}
-                required={!editId}
-              /></label
-            ><label
-              >{t("API key")}<input
-                type="password"
-                bind:value={apiKey}
-                autocomplete="off"
-                required={!editId}
-              /></label
+        <Card.Root>
+          <Card.Header>
+            <Card.Title>{l("Door details", "Dettagli della porta")}</Card.Title>
+            <Card.Description
+              >{l(
+                "Give guests a recognizable name and directions to this door.",
+                "Scegli un nome riconoscibile e spiega agli ospiti come trovare la porta.",
+              )}</Card.Description
             >
-          </div>{/if}
-        {#if draft.integration === "none"}<p class="notice">
-            {t(
-              "This is an example door. You will add a device connector later. No unlock request can be sent until it is connected.",
-            )}
-          </p>{:else if editId}<small
-            >{t(
-              "Leave credentials empty when editing to keep existing values.",
-            )}</small
-          >{/if}
-        <details>
-          <summary
-            >{l(
-              "Translated names and descriptions (optional)",
-              "Nomi e descrizioni tradotti (facoltativi)",
-            )}</summary
+          </Card.Header>
+          <Card.Content class="space-y-5">
+            <div class="space-y-2">
+              <Label for="door-name">{t("Name")}</Label><Input
+                id="door-name"
+                bind:value={draft.name}
+                required
+                maxlength={120}
+                placeholder={l("e.g. Main entrance", "es. Ingresso principale")}
+              />
+            </div>
+            <div class="space-y-2">
+              <Label for="door-description"
+                >{l("Description", "Descrizione")}</Label
+              ><Textarea
+                id="door-description"
+                bind:value={draft.description}
+                maxlength={3000}
+                placeholder={l(
+                  "Help guests locate and use this door",
+                  "Aiuta gli ospiti a trovare e usare questa porta",
+                )}
+              />
+            </div>
+          </Card.Content>
+        </Card.Root>
+        <Card.Root>
+          <Card.Header
+            ><Card.Title
+              >{l("Access defaults", "Accesso predefinito")}</Card.Title
+            ><Card.Description
+              >{l(
+                "Choose the starting rules for new access codes. You can change them for each guest.",
+                "Scegli le regole iniziali per i nuovi codici. Potrai modificarle per ogni ospite.",
+              )}</Card.Description
+            ></Card.Header
           >
-          <div class="stack">
-            {#each ["en", "it", "fr", "es", "de"] as lang (lang)}<div
-                class="grid"
+          <Card.Content class="space-y-4">
+            <div class="flex items-start justify-between gap-4">
+              <div class="space-y-1">
+                <Label for="door-enabled"
+                  >{l(
+                    "Enabled for guest access",
+                    "Abilitata per l’accesso ospiti",
+                  )}</Label
+                >
+                <p class="text-sm text-muted-foreground">
+                  {l(
+                    "Turn off access while keeping the connection and permissions.",
+                    "Disattiva l’accesso mantenendo la connessione e i permessi.",
+                  )}
+                </p>
+              </div>
+              <Switch id="door-enabled" bind:checked={draft.enabled} />
+            </div>
+            <Separator />
+            <div class="flex items-start justify-between gap-4">
+              <div class="space-y-1">
+                <Label for="door-common">{t("Common door · preselected")}</Label
+                >
+                <p class="text-sm text-muted-foreground">
+                  {l(
+                    "Include this door when you create a new code, such as a shared entrance.",
+                    "Includi questa porta nei nuovi codici, ad esempio un ingresso comune.",
+                  )}
+                </p>
+              </div>
+              <Switch id="door-common" bind:checked={draft.common} />
+            </div>
+            <Separator />
+            <div class="flex items-start justify-between gap-4">
+              <div class="space-y-1">
+                <Label for="door-single-use">{t("Single use by default")}</Label
+                >
+                <p class="text-sm text-muted-foreground">
+                  {l(
+                    "New codes will allow one accepted request for this door.",
+                    "I nuovi codici consentiranno una richiesta accettata per questa porta.",
+                  )}
+                </p>
+              </div>
+              <Switch id="door-single-use" bind:checked={draft.singleUse} />
+            </div>
+          </Card.Content>
+        </Card.Root>
+        <Card.Root>
+          <Card.Header
+            ><Card.Title
+              >{l(
+                "Device connection",
+                "Connessione al dispositivo",
+              )}</Card.Title
+            ><Card.Description
+              >{l(
+                "You can save an example door now and connect the opening device later.",
+                "Puoi salvare una porta di esempio e collegare il dispositivo di apertura in seguito.",
+              )}</Card.Description
+            ></Card.Header
+          >
+          <Card.Content class="space-y-5">
+            <div class="space-y-2">
+              <Label for="door-integration">{t("Integration")}</Label
+              ><NativeSelect.Root
+                id="door-integration"
+                bind:value={draft.integration}
+                class="w-full"
+                ><NativeSelect.Option value="none"
+                  >{t("Connect later (example door)")}</NativeSelect.Option
+                ><NativeSelect.Option value="ewelink"
+                  >eWeLink webhook</NativeSelect.Option
+                ><NativeSelect.Option value="shelly"
+                  >Shelly Cloud</NativeSelect.Option
+                ></NativeSelect.Root
               >
-                <label
-                  >{lang.toUpperCase()} · {t("Name")}<input
-                    bind:value={draft.translations[lang]}
-                    placeholder={draft.name}
-                    maxlength="120"
-                  /></label
-                ><label
-                  >{lang.toUpperCase()} · {l(
-                    "Description",
-                    "Descrizione",
-                  )}<textarea
-                    bind:value={draft.descriptionTranslations[lang]}
-                    placeholder={draft.description}
-                    maxlength="3000"></textarea></label
-                >
-              </div>{/each}
-          </div>
-        </details>
-        <fieldset class="stack">
-          <legend>{l("Door photos", "Foto della porta")}</legend><label
-            >{l("Add photos (up to 4)", "Aggiungi foto (fino a 4)")}<input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              multiple
-              disabled={pending || draft.photos.length >= 4}
-              onchange={(e) => {
-                const input = e.currentTarget;
-                void run(async () => {
-                  await upload(input.files);
-                  input.value = "";
-                });
-              }}
-            /></label
-          ><small
-            >{l(
-              "Photos are resized in your browser and saved with the door.",
-              "Le foto vengono ridimensionate nel browser e salvate insieme alla porta.",
-            )}</small
+            </div>
+            {#if draft.integration === "ewelink"}
+              <div class="space-y-2">
+                <Label for="door-webhook">{t("eWeLink webhook code")}</Label
+                ><Input
+                  id="door-webhook"
+                  type="password"
+                  bind:value={webhook}
+                  autocomplete="off"
+                  required={!editId}
+                />
+              </div>
+            {:else if draft.integration === "shelly"}
+              <div class="grid gap-4 sm:grid-cols-2">
+                <div class="space-y-2 sm:col-span-2">
+                  <Label for="door-cloud-host">{t("Shelly Cloud host")}</Label
+                  ><Input
+                    id="door-cloud-host"
+                    bind:value={cloudHost}
+                    placeholder="shelly-196-eu.shelly.cloud"
+                    required={!editId}
+                  />
+                </div>
+                <div class="space-y-2">
+                  <Label for="door-device-id">{t("Device ID")}</Label><Input
+                    id="door-device-id"
+                    bind:value={deviceId}
+                    required={!editId}
+                  />
+                </div>
+                <div class="space-y-2">
+                  <Label for="door-api-key">{t("API key")}</Label><Input
+                    id="door-api-key"
+                    type="password"
+                    bind:value={apiKey}
+                    autocomplete="off"
+                    required={!editId}
+                  />
+                </div>
+              </div>
+            {/if}
+            {#if draft.integration === "none"}<Alert.Root
+                ><Alert.Description
+                  >{t(
+                    "This is an example door. You will add a device connector later. No unlock request can be sent until it is connected.",
+                  )}</Alert.Description
+                ></Alert.Root
+              >{:else if editId}<p class="text-sm text-muted-foreground">
+                {t(
+                  "Leave credentials empty when editing to keep existing values.",
+                )}
+              </p>{/if}
+          </Card.Content>
+        </Card.Root>
+        <Card.Root>
+          <Card.Header
+            ><Card.Title
+              >{l("Guest languages", "Lingue degli ospiti")}</Card.Title
+            ><Card.Description
+              >{l(
+                "Optional names and directions in the guest app’s five languages.",
+                "Nomi e indicazioni facoltativi nelle cinque lingue dell’app ospiti.",
+              )}</Card.Description
+            ></Card.Header
           >
-          <div class="photo-grid">
-            {#each draft.photos as photo (photo.id)}<div class="photo-card">
-                <img src={photo.url} alt={photo.alt} /><label
-                  >{l("Photo description", "Descrizione foto")}<input
-                    bind:value={photo.alt}
-                    maxlength="200"
-                  /></label
-                ><label class="inline"
-                  ><input
-                    type="radio"
-                    name="primary-photo"
-                    value={photo.id}
-                    bind:group={draft.primaryPhotoId}
-                  />{l("Primary photo", "Foto principale")}</label
-                ><button type="button" onclick={() => removePhoto(photo.id)}
-                  >{l("Remove photo", "Rimuovi foto")}</button
-                >
-              </div>{/each}
-          </div>
-        </fieldset>
-        <button class="primary" disabled={pending || !propertyId}
-          >{t("Save door")}</button
+          <Card.Content>
+            <details class="group">
+              <summary class="cursor-pointer text-sm font-medium"
+                >{l(
+                  "Translated names and descriptions (optional)",
+                  "Nomi e descrizioni tradotti (facoltativi)",
+                )}</summary
+              >
+              <div class="mt-5 space-y-5">
+                {#each ["en", "it", "fr", "es", "de"] as lang (lang)}
+                  <div class="grid gap-4 sm:grid-cols-2">
+                    <div class="space-y-2">
+                      <Label for={"door-name-" + lang}
+                        >{lang.toUpperCase()} · {t("Name")}</Label
+                      ><Input
+                        id={"door-name-" + lang}
+                        bind:value={draft.translations[lang]}
+                        placeholder={draft.name}
+                        maxlength={120}
+                      />
+                    </div>
+                    <div class="space-y-2">
+                      <Label for={"door-description-" + lang}
+                        >{lang.toUpperCase()} · {l(
+                          "Description",
+                          "Descrizione",
+                        )}</Label
+                      ><Textarea
+                        id={"door-description-" + lang}
+                        bind:value={draft.descriptionTranslations[lang]}
+                        placeholder={draft.description}
+                        maxlength={3000}
+                      />
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </details>
+          </Card.Content>
+        </Card.Root>
+        <Card.Root>
+          <Card.Header
+            ><Card.Title>{l("Door photos", "Foto della porta")}</Card.Title
+            ><Card.Description
+              >{l(
+                "Help guests recognize the entrance. Photos are resized in your browser before saving.",
+                "Aiuta gli ospiti a riconoscere l’ingresso. Le foto vengono ridimensionate nel browser prima del salvataggio.",
+              )}</Card.Description
+            ></Card.Header
+          >
+          <Card.Content class="space-y-5">
+            <div class="space-y-2">
+              <Label for="door-photo-upload"
+                >{l("Add photos (up to 4)", "Aggiungi foto (fino a 4)")}</Label
+              ><Input
+                id="door-photo-upload"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                disabled={pending || draft.photos.length >= 4}
+                onchange={(e) => {
+                  const input = e.currentTarget;
+                  void run(async () => {
+                    await upload(input.files);
+                    input.value = "";
+                  });
+                }}
+              />
+            </div>
+            <div class="grid gap-4 sm:grid-cols-2">
+              {#each draft.photos as photo (photo.id)}
+                <div class="photo-card space-y-3 rounded-lg border p-3">
+                  <img
+                    class="h-40 w-full rounded-md object-cover"
+                    src={photo.url}
+                    alt={photo.alt}
+                  />
+                  <div class="space-y-2">
+                    <Label for={"photo-alt-" + photo.id}
+                      >{l("Photo description", "Descrizione foto")}</Label
+                    ><Input
+                      id={"photo-alt-" + photo.id}
+                      bind:value={photo.alt}
+                      maxlength={200}
+                    />
+                  </div>
+                  <label class="flex items-center gap-2 text-sm"
+                    ><input
+                      class="size-4 accent-primary"
+                      type="radio"
+                      name="primary-photo"
+                      value={photo.id}
+                      bind:group={draft.primaryPhotoId}
+                    />{l("Primary photo", "Foto principale")}</label
+                  >
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onclick={() => removePhoto(photo.id)}
+                    >{l("Remove photo", "Rimuovi foto")}</Button
+                  >
+                </div>
+              {/each}
+            </div>
+          </Card.Content>
+        </Card.Root>
+        <div
+          class="flex flex-wrap items-center justify-end gap-3 border-t pt-5"
         >
-      </form>{/if}
+          <Button
+            variant="outline"
+            type="button"
+            disabled={pending}
+            onclick={back}>{t("Cancel")}</Button
+          >
+          <Button type="submit" disabled={pending || !propertyId}
+            >{t("Save door")}</Button
+          >
+        </div>
+      </form>
+    {/if}
   {:else if detail}
-    {@const photos = detail.photos ?? []}{@const activePhoto =
+    {@const photos = detail.photos ?? []}
+    {@const activePhoto =
       photos.find((p) => p.id === selectedPhoto) ?? primary(detail)}
-    <article class="card stack">
-      <div class="row spread">
-        <h2>{detail.name}</h2>
-        <button onclick={back}>{t("Back to doors")}</button>
-      </div>
-      {#if activePhoto}<img
-          class="detail-photo"
-          src={activePhoto.url}
-          alt={activePhoto.alt}
-        />
-        <div class="thumbnails">
-          {#each photos as photo (photo.id)}<button
-              aria-label={l("View photo: ", "Vedi foto: ") + photo.alt}
-              class={{ chosen: photo.id === activePhoto.id }}
-              onclick={() => (selectedPhoto = photo.id)}
-              ><img src={photo.url} alt={photo.alt} /></button
-            >{/each}
-        </div>{/if}
-      {#if detail.description}<p class="description">
-          {detail.description}
-        </p>{/if}
-      <dl>
-        <dt>{l("Status", "Stato")}</dt>
-        <dd>
-          {detail.enabled === false
-            ? l("Disabled", "Disabilitata")
-            : l("Enabled", "Abilitata")}
-        </dd>
-        <dt>{t("Integration")}</dt>
-        <dd>
-          {detail.integration === "none"
-            ? t("Not connected yet")
-            : detail.integration === "shelly"
-              ? "Shelly Cloud"
-              : "eWeLink"}
-        </dd>
-        <dt>{l("Default permissions", "Permessi predefiniti")}</dt>
-        <dd>
-          {t(detail.common ? "Common door" : "Room door")} · {detail.singleUse
-            ? l("Single use", "Uso singolo")
-            : l("Multiple uses", "Utilizzi multipli")}
-        </dd>
-      </dl>
-      {@render doorActions(detail)}
-    </article>
-  {:else if detailId}<div class="card">
-      <p>{l("Door not found.", "Porta non trovata.")}</p>
-      <button onclick={back}>{t("Back to doors")}</button>
-    </div>
+    <Card.Root>
+      <Card.Header class="gap-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <Card.Title>{detail.name}</Card.Title><Button
+            variant="outline"
+            onclick={back}>{t("Back to doors")}</Button
+          >
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <Badge variant={detail.enabled === false ? "outline" : "secondary"}
+            >{detail.enabled === false
+              ? l("Disabled", "Disabilitata")
+              : l("Enabled", "Abilitata")}</Badge
+          ><Badge variant="outline"
+            >{detail.integration === "none"
+              ? t("Not connected yet")
+              : detail.integration === "shelly"
+                ? "Shelly Cloud"
+                : "eWeLink"}</Badge
+          >
+        </div>
+      </Card.Header>
+      <Card.Content class="space-y-5">
+        {#if activePhoto}
+          <img
+            class="detail-photo max-h-96 w-full rounded-lg object-contain"
+            src={activePhoto.url}
+            alt={activePhoto.alt}
+          />
+          <div class="flex flex-wrap gap-2">
+            {#each photos as photo (photo.id)}<Button
+                variant="outline"
+                class={photo.id === activePhoto.id
+                  ? "h-auto p-1 ring-2 ring-primary"
+                  : "h-auto p-1"}
+                aria-label={l("View photo: ", "Vedi foto: ") + photo.alt}
+                onclick={() => (selectedPhoto = photo.id)}
+                ><img
+                  class="h-14 w-16 rounded-sm object-cover"
+                  src={photo.url}
+                  alt={photo.alt}
+                /></Button
+              >{/each}
+          </div>
+        {/if}
+        {#if detail.description}<p class="whitespace-pre-wrap text-sm">
+            {detail.description}
+          </p>{/if}
+        <Separator />
+        <dl class="grid gap-3 text-sm sm:grid-cols-[minmax(140px,1fr)_2fr]">
+          <dt class="text-muted-foreground">{l("Status", "Stato")}</dt>
+          <dd>
+            {detail.enabled === false
+              ? l("Disabled", "Disabilitata")
+              : l("Enabled", "Abilitata")}
+          </dd>
+          <dt class="text-muted-foreground">{t("Integration")}</dt>
+          <dd>
+            {detail.integration === "none"
+              ? t("Not connected yet")
+              : detail.integration === "shelly"
+                ? "Shelly Cloud"
+                : "eWeLink"}
+          </dd>
+          <dt class="text-muted-foreground">
+            {l("Default permissions", "Permessi predefiniti")}
+          </dt>
+          <dd>
+            {t(detail.common ? "Common door" : "Room door")} · {detail.singleUse
+              ? l("Single use", "Uso singolo")
+              : l("Multiple uses", "Utilizzi multipli")}
+          </dd>
+        </dl>
+      </Card.Content>
+      <Card.Footer>{@render doorActions(detail)}</Card.Footer>
+    </Card.Root>
+  {:else if detailId}
+    <Alert.Root
+      ><Alert.Description
+        >{l("Door not found.", "Porta non trovata.")}</Alert.Description
+      ></Alert.Root
+    ><Button variant="outline" onclick={back}>{t("Back to doors")}</Button>
   {:else}
-    <div class="row spread filter-row">
-      <label
-        >{l("Show doors", "Mostra porte")}<select
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div class="space-y-2">
+        <Label for="door-filter">{l("Show doors", "Mostra porte")}</Label
+        ><NativeSelect.Root
+          id="door-filter"
           bind:value={filter}
           disabled={!!orderIds}
-          ><option value="all">{l("All doors", "Tutte le porte")}</option
-          ><option value="enabled">{l("Enabled", "Abilitate")}</option><option
-            value="disabled">{l("Disabled", "Disabilitate")}</option
-          ></select
-        ></label
-      >
-      {#if owner && localDoors.length > 1}{#if orderIds}<div class="row">
-            <button disabled={pending} onclick={() => run(saveOrder)}
-              >{l("Save order", "Salva ordine")}</button
-            ><button disabled={pending} onclick={() => (orderIds = null)}
-              >{t("Cancel")}</button
+          ><NativeSelect.Option value="all"
+            >{l("All doors", "Tutte le porte")}</NativeSelect.Option
+          ><NativeSelect.Option value="enabled"
+            >{l("Enabled", "Abilitate")}</NativeSelect.Option
+          ><NativeSelect.Option value="disabled"
+            >{l("Disabled", "Disabilitate")}</NativeSelect.Option
+          ></NativeSelect.Root
+        >
+      </div>
+      {#if owner && localDoors.length > 1}
+        {#if orderIds}<div class="flex gap-2">
+            <Button disabled={pending} onclick={() => run(saveOrder)}
+              >{l("Save order", "Salva ordine")}</Button
+            ><Button
+              variant="outline"
+              disabled={pending}
+              onclick={() => (orderIds = null)}>{t("Cancel")}</Button
             >
-          </div>{:else}<button
+          </div>
+        {:else}<Button
+            variant="outline"
             onclick={() => {
               filter = "all";
               orderIds = localDoors.map((d) => d.id);
-            }}>{l("Reorder doors", "Riordina porte")}</button
-          >{/if}{/if}
+            }}>{l("Reorder doors", "Riordina porte")}</Button
+          >{/if}
+      {/if}
     </div>
-    {#if orderIds}<p class="muted">
-        {l(
-          "Drag a door or use the arrow buttons. Save to apply this order for hosts and guests.",
-          "Trascina una porta o usa le frecce. Salva per applicare l’ordine per host e ospiti.",
-        )}
-      </p>{/if}
-    <ul class="door-list item-group">
-      {#each visibleDoors as door, index (door.id)}<li
-          class="door-row"
-          draggable={!!orderIds && !pending}
-          ondragstart={(e) => {
-            dragged = door.id;
-            e.dataTransfer?.setData("text/plain", door.id);
-          }}
-          ondragover={(e) => {
-            if (orderIds) e.preventDefault();
-          }}
-          ondrop={(e) => {
-            e.preventDefault();
-            if (orderIds) drop(door.id);
-          }}
-          ondragend={() => (dragged = "")}
-        >
-          {#if orderIds}<GripVertical size={18} />{/if}
-          <button
-            class="door-summary"
-            aria-label={door.name}
-            disabled={!!orderIds}
-            onclick={() => {
-              detailId = door.id;
-              selectedPhoto = "";
-              confirmation = null;
-              result = null;
-            }}
+    {#if orderIds}<Alert.Root
+        ><Alert.Description
+          >{l(
+            "Drag a door or use the arrow buttons. Save to apply this order for hosts and guests.",
+            "Trascina una porta o usa le frecce. Salva per applicare l’ordine per host e ospiti.",
+          )}</Alert.Description
+        ></Alert.Root
+      >{/if}
+    {#if visibleDoors.length}
+      <Card.Root class="gap-0 py-0">
+        <ul class="door-list divide-y">
+          {#each visibleDoors as door, index (door.id)}
+            <li
+              class="door-row flex items-center gap-3 px-4 py-2"
+              draggable={!!orderIds && !pending}
+              ondragstart={(e) => {
+                dragged = door.id;
+                e.dataTransfer?.setData("text/plain", door.id);
+              }}
+              ondragover={(e) => {
+                if (orderIds) e.preventDefault();
+              }}
+              ondrop={(e) => {
+                e.preventDefault();
+                if (orderIds) drop(door.id);
+              }}
+              ondragend={() => (dragged = "")}
+            >
+              {#if orderIds}<GripVertical
+                  class="shrink-0 text-muted-foreground"
+                  size={18}
+                />{/if}
+              <Button
+                variant="ghost"
+                class="h-auto min-w-0 flex-1 justify-start gap-3 whitespace-normal px-2 py-3 text-left"
+                aria-label={door.name}
+                disabled={!!orderIds}
+                onclick={() => {
+                  detailId = door.id;
+                  selectedPhoto = "";
+                  confirmation = null;
+                  result = null;
+                }}
+              >
+                {#if primary(door)}<img
+                    class="size-11 shrink-0 rounded-lg object-cover"
+                    src={primary(door)?.url}
+                    alt=""
+                  />{:else}<span
+                    class="flex size-11 shrink-0 items-center justify-center rounded-lg bg-muted"
+                    ><DoorOpen size={21} /></span
+                  >{/if}
+                <span class="grid min-w-0 flex-1 gap-1"
+                  ><strong class="truncate text-sm font-medium"
+                    >{door.name}</strong
+                  ><span class="truncate text-xs text-muted-foreground"
+                    >{door.integration === "none"
+                      ? t("Not connected yet")
+                      : door.integration === "shelly"
+                        ? "Shelly Cloud"
+                        : "eWeLink"}{#if door.enabled === false}
+                      · {l("Disabled", "Disabilitata")}{/if}</span
+                  ></span
+                >
+                {#if !orderIds}<ChevronRight
+                    class="shrink-0 text-muted-foreground"
+                    size={18}
+                  />{/if}
+              </Button>
+              {#if orderIds}
+                <div class="flex shrink-0 gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={l("Move up: ", "Sposta su: ") + door.name}
+                    disabled={pending || index === 0}
+                    onclick={() => move(door.id, -1)}
+                    ><ArrowUp size={18} /></Button
+                  ><Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={l("Move down: ", "Sposta giù: ") + door.name}
+                    disabled={pending || index === visibleDoors.length - 1}
+                    onclick={() => move(door.id, 1)}
+                    ><ArrowDown size={18} /></Button
+                  >
+                </div>
+              {:else if door.integration !== "none"}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  class="shrink-0"
+                  aria-label={door.testAction?.status === "uncertain"
+                    ? l("Check uncertain test", "Verifica test incerto")
+                    : l("Test opening", "Prova apertura")}
+                  title={door.testAction?.status === "uncertain"
+                    ? l("Check uncertain test", "Verifica test incerto")
+                    : l("Test opening", "Prova apertura")}
+                  disabled={pending ||
+                    door.testAction?.status === "pending" ||
+                    (door.enabled === false &&
+                      door.testAction?.status !== "uncertain")}
+                  onclick={() =>
+                    ask(
+                      door.testAction?.status === "uncertain"
+                        ? "resolve"
+                        : "test",
+                      door,
+                    )}
+                  >{#if door.testAction?.status === "uncertain"}<CircleAlert
+                      size={20}
+                    />{:else}<DoorOpen size={20} />{/if}</Button
+                >
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      </Card.Root>
+    {:else}
+      <Card.Root class="py-10 text-center"
+        ><Card.Content class="flex flex-col items-center gap-3"
+          ><div
+            class="flex size-14 items-center justify-center rounded-xl bg-muted"
           >
-            {#if primary(door)}<img
-                class="door-thumb"
-                src={primary(door)?.url}
-                alt=""
-              />{:else}<span class="door-icon"><DoorOpen size={21} /></span
-              >{/if}
-            <span class="door-copy"
-              ><strong>{door.name}</strong><small
-                >{door.integration === "none"
-                  ? t("Not connected yet")
-                  : door.integration === "shelly"
-                    ? "Shelly Cloud"
-                    : "eWeLink"}{#if door.enabled === false}
-                  · {l("Disabled", "Disabilitata")}{/if}</small
-              ></span
+            <DoorOpen size={28} />
+          </div>
+          <h2 class="text-lg font-semibold">
+            {localDoors.length
+              ? l("No matching doors", "Nessuna porta corrispondente")
+              : t("No doors yet")}
+          </h2>
+          {#if !localDoors.length}<p
+              class="max-w-sm text-sm text-muted-foreground"
             >
-            {#if !orderIds}<ChevronRight size={18} />{/if}
-          </button>
-          {#if orderIds}<div class="row order-actions">
-              <button
-                class="icon-button"
-                aria-label={l("Move up: ", "Sposta su: ") + door.name}
-                disabled={pending || index === 0}
-                onclick={() => move(door.id, -1)}><ArrowUp size={18} /></button
-              >
-              <button
-                class="icon-button"
-                aria-label={l("Move down: ", "Sposta giù: ") + door.name}
-                disabled={pending || index === visibleDoors.length - 1}
-                onclick={() => move(door.id, 1)}><ArrowDown size={18} /></button
-              >
-            </div>
-          {:else if door.integration !== "none"}
-            <button
-              class="icon-button test-button"
-              aria-label={door.testAction?.status === "uncertain"
-                ? l("Check uncertain test", "Verifica test incerto")
-                : l("Test opening", "Prova apertura")}
-              title={door.testAction?.status === "uncertain"
-                ? l("Check uncertain test", "Verifica test incerto")
-                : l("Test opening", "Prova apertura")}
-              disabled={pending ||
-                door.testAction?.status === "pending" ||
-                (door.enabled === false &&
-                  door.testAction?.status !== "uncertain")}
-              onclick={() =>
-                ask(
-                  door.testAction?.status === "uncertain" ? "resolve" : "test",
-                  door,
-                )}
-            >
-              {#if door.testAction?.status === "uncertain"}<CircleAlert
-                  size={20}
-                />{:else}<DoorOpen size={20} />{/if}
-            </button>
-          {/if}
-        </li>{/each}
-    </ul>
-    {#if !visibleDoors.length}<div class="card empty-state">
-        <DoorOpen size={36} />
-        <h2>
-          {localDoors.length
-            ? l("No matching doors", "Nessuna porta corrispondente")
-            : t("No doors yet")}
-        </h2>
-        {#if !localDoors.length}<p>
-            {t(
-              "Add an entrance or room, connect its device, and choose its default access rules.",
-            )}
-          </p>
-          {#if !owner}<small>{t("An owner can add doors for your team.")}</small
-            >{/if}{/if}
-      </div>{/if}
+              {t(
+                "Add an entrance or room, connect its device, and choose its default access rules.",
+              )}
+            </p>
+            {#if !owner}<p class="text-sm text-muted-foreground">
+                {t("An owner can add doors for your team.")}
+              </p>{/if}{/if}</Card.Content
+        ></Card.Root
+      >
+    {/if}
   {/if}
 </section>
 
 {#snippet doorActions(door: Door)}
-  <div class="row actions">
-    {#if door.testAction?.status === "uncertain"}<button
+  <div class="flex w-full flex-wrap gap-2">
+    {#if door.testAction?.status === "uncertain"}<Button
+        variant="outline"
         disabled={pending}
         onclick={() => ask("resolve", door)}
-        >{l("Check uncertain test", "Verifica test incerto")}</button
-      >{:else}<button
+        >{l("Check uncertain test", "Verifica test incerto")}</Button
+      >
+    {:else}<Button
         disabled={pending ||
           door.integration === "none" ||
           door.enabled === false ||
           door.testAction?.status === "pending"}
         onclick={() => ask("test", door)}
-        >{door.testAction?.status === "pending"
+        ><DoorOpen size={16} />{door.testAction?.status === "pending"
           ? l("Test pending", "Test in corso")
-          : l("Test opening", "Prova apertura")}</button
+          : l("Test opening", "Prova apertura")}</Button
       >{/if}
-    {#if owner}<button disabled={pending} onclick={() => editDoor(door)}
-        >{t("Edit")}</button
-      ><button disabled={pending} onclick={() => ask("delete", door)}
-        >{l("Delete", "Elimina")}</button
+    {#if owner}<Button
+        variant="outline"
+        disabled={pending}
+        onclick={() => editDoor(door)}>{t("Edit")}</Button
+      ><Button
+        variant="destructive"
+        class="sm:ml-auto"
+        disabled={pending}
+        onclick={() => ask("delete", door)}>{l("Delete", "Elimina")}</Button
       >{/if}
   </div>
 {/snippet}
-
-<style>
-  .door-list {
-    list-style: none;
-    padding: 0;
-  }
-  .door-list .door-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--border);
-  }
-  .door-list .door-row:last-child {
-    border-bottom: 0;
-  }
-  .door-summary {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: transparent;
-    border: 0;
-    border-radius: 0;
-    padding: 8px 0;
-    text-align: left;
-  }
-  .door-copy {
-    display: grid;
-    gap: 5px;
-    min-width: 0;
-    flex: 1;
-  }
-  .door-copy strong,
-  .door-copy small {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .door-copy strong {
-    font-size: 14px;
-    font-weight: 600;
-  }
-  .door-copy small {
-    font-size: 12px;
-    color: var(--muted-foreground);
-  }
-  .test-button,
-  .order-actions {
-    flex-shrink: 0;
-  }
-  .door-summary > :global(svg) {
-    color: var(--muted-foreground);
-    flex-shrink: 0;
-  }
-  .filter-row {
-    margin: 16px 0;
-  }
-  .photo-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 16px;
-  }
-  .photo-card {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-  .photo-card img {
-    width: 100%;
-    height: 150px;
-    object-fit: cover;
-    border-radius: 8px;
-  }
-  .detail-photo {
-    width: 100%;
-    max-height: 450px;
-    object-fit: contain;
-    border-radius: 10px;
-  }
-  .thumbnails {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-  .thumbnails button {
-    padding: 3px;
-  }
-  .thumbnails img {
-    width: 74px;
-    height: 60px;
-    object-fit: cover;
-  }
-  .thumbnails .chosen {
-    outline: 2px solid var(--primary);
-  }
-  .door-thumb {
-    width: 44px;
-    height: 44px;
-    flex-shrink: 0;
-    object-fit: cover;
-    border-radius: 8px;
-  }
-  .description {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-  }
-  .confirmation {
-    border: 2px solid var(--destructive);
-  }
-  .actions {
-    flex-wrap: wrap;
-  }
-  fieldset {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 16px;
-  }
-  dl {
-    display: grid;
-    grid-template-columns: minmax(100px, 1fr) 2fr;
-    gap: 10px;
-  }
-  dt {
-    font-weight: 600;
-  }
-  dd {
-    margin: 0;
-  }
-  small {
-    display: block;
-  }
-  .row button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-  }
-  @media (max-width: 600px) {
-    .actions {
-      width: 100%;
-    }
-    .actions button {
-      flex: 1;
-    }
-    .photo-grid {
-      grid-template-columns: 1fr 1fr;
-    }
-    .photo-card img {
-      height: 120px;
-    }
-  }
-</style>

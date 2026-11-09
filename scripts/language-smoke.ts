@@ -42,6 +42,8 @@ try {
   await page.getByRole("button", { name: "Create workspace" }).click();
   const chooser = page.getByRole("dialog", { name: /Choose your language/ });
   await expect(chooser).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(chooser).toBeVisible();
   await expect(chooser.getByRole("radio")).toHaveCount(2);
   await expect(
     chooser.getByRole("radio", { name: "Italiano", exact: true }),
@@ -103,6 +105,16 @@ try {
   await page.getByRole("checkbox", { name: /Ingresso di esempio/ }).check();
   await page
     .getByRole("button", { name: "Salva codice di accesso", exact: true })
+    .click();
+  await expect(tour.getByRole("heading")).toHaveText("Installa l’app host");
+  await page
+    .locator('[data-tour="install-app"]')
+    .getByRole("button", { name: "Continua", exact: true })
+    .click();
+  await expect(tour.getByRole("heading")).toHaveText("Scegli le notifiche");
+  await page
+    .locator('[data-tour="enable-notifications"]')
+    .getByRole("button", { name: "Continua", exact: true })
     .click();
   await expect(tour.getByRole("heading")).toHaveText(
     "Il tuo primo codice di accesso è pronto",

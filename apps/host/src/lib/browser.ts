@@ -32,10 +32,10 @@ export async function copyText(text: string): Promise<boolean> {
   field.setAttribute("aria-label", "Text to copy");
   field.style.cssText =
     "position:fixed;top:0;left:0;width:1px;height:1px;padding:0;border:0;opacity:0;font-size:16px;pointer-events:none;";
-  // A native modal prevents focus outside its subtree.
+  // Native dialogs and Bits UI focus traps both require a field inside the modal.
   const host =
-    focused?.closest("dialog[open]") ??
-    document.querySelector("dialog[open]") ??
+    focused?.closest('dialog[open], [role="dialog"]') ??
+    document.querySelector('dialog[open], [role="dialog"]') ??
     document.body;
   let copied = false;
   try {

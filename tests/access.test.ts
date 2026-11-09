@@ -900,3 +900,60 @@ test("staff tests cannot resolve a request that is still running or dispatch it 
     f.db.close();
   }
 });
+
+test("device onboarding progress resumes per user across sessions without altering other preferences", async () => {
+  const f = await fixture();
+  try {
+    const saved = await f.req(
+      "me/preferences",
+      {
+        tour: "pending",
+        tourStep: "install",
+        tourCodeId: f.code.id,
+        language: "it",
+        theme: "dark",
+      },
+      { method: "PATCH" },
+    );
+    expect(saved.r.status).toBe(200);
+    const login = await f.req("auth/login", {
+      email: "owner@example.com",
+      password: "secure-password!",
+    });
+    expect(login.data.user.preferences).toMatchObject({
+      tour: "pending",
+      tourStep: "install",
+      tourCodeId: f.code.id,
+      language: "it",
+      theme: "dark",
+    });
+    const invalid = await f.req(
+      "me/preferences",
+      { tourStep: "automatic-permission" },
+      { method: "PATCH" },
+    );
+    expect(invalid.r.status).toBe(400);
+    const advanced = await f.req(
+      "me/preferences",
+      { tourStep: "notifications" },
+      { method: "PATCH" },
+    );
+    expect(advanced.data.preferences).toMatchObject({
+      tourStep: "notifications",
+      language: "it",
+      theme: "dark",
+    });
+    const finished = await f.req(
+      "me/preferences",
+      { tour: "completed", tourStep: null, tourCodeId: null },
+      { method: "PATCH" },
+    );
+    expect(finished.data.preferences).toMatchObject({
+      tour: "completed",
+      tourStep: null,
+      tourCodeId: null,
+    });
+  } finally {
+    f.db.close();
+  }
+});

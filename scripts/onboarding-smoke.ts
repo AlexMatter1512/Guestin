@@ -64,6 +64,25 @@ try {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
   });
+  await context.addInitScript(() => {
+    const browser = window as typeof window & {
+      permissionCalls: number;
+      installCalls: number;
+    };
+    browser.permissionCalls = 0;
+    browser.installCalls = 0;
+    Object.defineProperty(Notification, "requestPermission", {
+      configurable: true,
+      value: async () => {
+        browser.permissionCalls++;
+        Object.defineProperty(Notification, "permission", {
+          configurable: true,
+          get: () => "denied",
+        });
+        return "denied";
+      },
+    });
+  });
   const page = await context.newPage();
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("request", (request) => {
@@ -203,6 +222,69 @@ try {
   await page
     .getByRole("button", { name: "Save access code", exact: true })
     .click();
+  await expect(
+    tour.getByRole("heading"),
+    "Install stage after first code save",
+  ).toHaveText("Install the host app");
+  await expect(page.locator('[data-tour="install-app"]')).toHaveAttribute(
+    "data-tour-highlighted",
+    "true",
+  );
+  expect(await page.evaluate(() => (window as any).permissionCalls)).toBe(0);
+  // Installation is optional, but the server must confirm progress before reopening.
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        async () =>
+          (await (await fetch("/api/v1/me")).json()).user.preferences.tourStep,
+      ),
+    )
+    .toBe("install");
+  await page.reload();
+  await page.locator("[data-code-id]").first().waitFor();
+  await expect(
+    tour.getByRole("heading"),
+    "Install stage after page reload",
+  ).toHaveText("Install the host app");
+  await page.evaluate(() => {
+    const event = new Event("beforeinstallprompt", { cancelable: true });
+    Object.assign(event, {
+      prompt: async () => {
+        (window as any).installCalls++;
+      },
+      userChoice: Promise.resolve({ outcome: "dismissed" }),
+    });
+    window.dispatchEvent(event);
+  });
+  await page
+    .getByRole("button", { name: "Install host app", exact: true })
+    .click();
+  expect(await page.evaluate(() => (window as any).installCalls)).toBe(1);
+  await expect(
+    page.getByRole("status").filter({ hasText: "You can install later" }),
+  ).toBeVisible();
+  await page
+    .locator('[data-tour="install-app"]')
+    .getByRole("button", { name: "Continue", exact: true })
+    .click();
+  await expect(tour.getByRole("heading")).toHaveText(
+    "Choose your notifications",
+  );
+  await expect(
+    page.locator('[data-tour="enable-notifications"]'),
+  ).toHaveAttribute("data-tour-highlighted", "true");
+  expect(await page.evaluate(() => (window as any).permissionCalls)).toBe(0);
+  await page
+    .getByRole("button", { name: "Enable notifications", exact: true })
+    .click();
+  expect(await page.evaluate(() => (window as any).permissionCalls)).toBe(1);
+  await expect(
+    page.getByRole("status").filter({ hasText: "Notifications are blocked" }),
+  ).toBeVisible();
+  await page
+    .locator('[data-tour="enable-notifications"]')
+    .getByRole("button", { name: "Continue", exact: true })
+    .click();
   await expect(tour.getByRole("heading")).toHaveText(
     "Your first access code is ready",
   );
@@ -229,6 +311,63 @@ try {
     .getByRole("heading", { name: "Access codes", exact: true })
     .waitFor();
   await expect(tour).not.toBeVisible();
+
+  // iOS needs Home Screen instructions, not a fabricated browser install prompt.
+  await page.evaluate(async (codeId) => {
+    const { csrf } = await (await fetch("/api/v1/me")).json();
+    const response = await fetch("/api/v1/me/preferences", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+      body: JSON.stringify({
+        tour: "pending",
+        tourStep: "install",
+        tourCodeId: codeId,
+      }),
+    });
+    if (!response.ok) throw Error("Could not prepare iOS tour resume");
+  }, complete.codes[0].id);
+  const iphone = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1",
+    storageState: await context.storageState(),
+  });
+  const iphonePage = await iphone.newPage();
+  iphonePage.on("pageerror", (error) => errors.push(error.message));
+  await iphonePage.goto(origin + "/host/");
+  const iphoneTour = iphonePage.getByRole("region", { name: "Guided setup" });
+  await expect(iphoneTour.getByRole("heading")).toHaveText(
+    "Install the host app",
+  );
+  await expect(
+    iphonePage.getByText("Choose Add to Home Screen, then Add.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    iphonePage.getByRole("button", { name: "Install host app", exact: true }),
+  ).toHaveCount(0);
+  await iphonePage
+    .locator('[data-tour="install-app"]')
+    .getByRole("button", { name: "Continue", exact: true })
+    .click();
+  await expect(
+    iphonePage.getByText(
+      /On iPhone and iPad, open oshost from its Home Screen icon/,
+    ),
+  ).toBeVisible();
+  await expect(
+    iphonePage.getByRole("button", {
+      name: "Enable notifications",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await iphoneTour
+    .getByRole("button", { name: "Skip tour", exact: true })
+    .click();
+  await expect(iphoneTour).not.toBeVisible();
+  await noSideEffects(iphonePage, [1, 1, 1]);
+  await iphone.close();
 
   // A replay in a configured workspace reuses existing records and leaves a
   // draft alone; it must not silently start over or create duplicate examples.
@@ -343,6 +482,15 @@ try {
   await codeForm.getByRole("checkbox", { name: /Second example door/ }).check();
   await codeForm
     .getByRole("button", { name: "Save access code", exact: true })
+    .click();
+  await expect(tour.getByRole("heading")).toHaveText("Install the host app");
+  await page
+    .locator('[data-tour="install-app"]')
+    .getByRole("button", { name: "Continue", exact: true })
+    .click();
+  await page
+    .locator('[data-tour="enable-notifications"]')
+    .getByRole("button", { name: "Continue", exact: true })
     .click();
   await expect(tour.getByRole("heading")).toHaveText(
     "Your first access code is ready",

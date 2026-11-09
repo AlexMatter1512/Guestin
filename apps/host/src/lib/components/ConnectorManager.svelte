@@ -11,7 +11,19 @@
     ArrowRight,
     X,
     Plus,
+    DoorOpen,
+    FileUp,
+    ShieldCheck,
+    LoaderCircle,
   } from "@lucide/svelte";
+  import { Button } from "$lib/components/ui/button";
+  import * as Card from "$lib/components/ui/card";
+  import * as Alert from "$lib/components/ui/alert";
+  import { Input } from "$lib/components/ui/input";
+  import { Label } from "$lib/components/ui/label";
+  import { Badge } from "$lib/components/ui/badge";
+  import * as NativeSelect from "$lib/components/ui/native-select";
+  import { Separator } from "$lib/components/ui/separator";
   import { hostLanguage, t } from "$lib/i18n.svelte";
   import { randomUUID } from "$lib/browser";
   import {
@@ -87,7 +99,8 @@
     calendarName = $state(""),
     addingCalendar = $state(false),
     calendarResults = $state<Partial<AccessCodeDraft>[]>([]),
-    calendarFileName = $state("");
+    calendarFileName = $state(""),
+    calendarText = $state("");
   let geminiKey = $state(""),
     geminiModel = $state("gemini-2.5-flash"),
     imageFile = $state<File | null>(null),
@@ -132,6 +145,7 @@
       codeSent = false;
       calendarResults = [];
       calendarFileName = "";
+      calendarText = "";
       extraction = null;
       calendarDoor = "";
       calendarUrl = "";
@@ -166,6 +180,14 @@
       if (!savedDevice) localStorage.setItem("oshost.kross.device", deviceId);
       connected = Boolean(source?.data.authenticated);
       if (source?.data.model) geminiModel = String(source.data.model);
+      if (view === "ical") {
+        calendarDoor = localDoors.some((d) => d.id === source?.data.doorId)
+          ? String(source!.data.doorId)
+          : "";
+        calendarResults = [];
+        calendarFileName = "";
+        calendarText = "";
+      }
       if (view === "kross" && connected)
         void perform(async (current) => {
           await loadProperties(source!.id, current);
@@ -442,26 +464,55 @@
   }
   function parseCalendar(text: string) {
     const door = localDoors.find((d) => d.id === calendarDoor);
-    if (!door)
-      throw Error(
-        l(
-          "Choose the door this calendar belongs to.",
-          "Scegli la porta associata al calendario.",
-        ),
-      );
-    calendarResults = calendarDrafts(text, {
+    const results = calendarDrafts(text, {
       propertyId,
-      doorId: door.id,
+      doorId: door?.id ?? "",
       timezone: property.timezone,
       checkIn: property.checkIn,
       checkOut: property.checkOut,
-      singleUse: door.singleUse,
+      singleUse: door?.singleUse ?? false,
     });
+    calendarText = text;
+    calendarResults = results;
     if (!calendarResults.length)
       notice = l(
         "No upcoming events were found in this calendar.",
         "Nessun evento futuro trovato in questo calendario.",
       );
+  }
+  function mapCalendarDoor(event: Event) {
+    calendarDoor = (event.currentTarget as HTMLSelectElement).value;
+    if (calendarText) parseCalendar(calendarText);
+  }
+  function reviewCalendar(value: Partial<AccessCodeDraft>) {
+    const door = localDoors.find((d) => d.id === calendarDoor);
+    if (!door) return;
+    review({
+      ...value,
+      grants: value.grants?.map((grant) => ({
+        ...grant,
+        doorId: door.id,
+        singleUse: door.singleUse,
+      })),
+    });
+  }
+  function calendarDates(value: Partial<AccessCodeDraft>) {
+    const grant = value.grants?.[0];
+    if (!grant) return "";
+    const format = new Intl.DateTimeFormat(
+      hostLanguage.current === "it" ? "it-IT" : "en-GB",
+      {
+        timeZone: property.timezone,
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      },
+    );
+    return (
+      format.format(new Date(grant.start)) +
+      " → " +
+      format.format(new Date(grant.end))
+    );
   }
   async function saveCalendar(current: () => boolean) {
     const r = await api("connections", {
@@ -469,7 +520,7 @@
       kind: "ical",
       name: calendarName.trim() || l("Calendar", "Calendario"),
       secret: { url: calendarUrl.trim() },
-      data: {},
+      data: calendarDoor ? { doorId: calendarDoor } : {},
     });
     if (!current()) return;
     calendarUrl = "";
@@ -484,7 +535,10 @@
   }
   async function fetchCalendar(current: () => boolean) {
     const r = await api(`connections/${selectedId}/request`, {});
-    if (current()) parseCalendar(r.text);
+    if (current()) {
+      parseCalendar(r.text);
+      calendarFileName = "";
+    }
   }
   async function readCalendar(file: File, current: () => boolean) {
     if (file.size > 4 * 1024 * 1024)
@@ -496,8 +550,8 @@
       );
     const text = await file.text();
     if (current()) {
-      calendarFileName = file.name;
       parseCalendar(text);
+      calendarFileName = file.name;
     }
   }
   async function saveGemini(current: () => boolean) {
@@ -578,764 +632,861 @@
 </script>
 
 <section
-  class="connectors"
+  class="mx-auto grid w-full max-w-3xl gap-6"
   aria-label={l("Booking connectors", "Connettori prenotazioni")}
 >
-  {#if !propertyId}<div class="empty-state">
-      <Plug size={32} />
-      <h2>{l("Select a property first", "Seleziona prima una struttura")}</h2>
-      <p class="muted">
-        {l(
-          "Each property has its own shared connections.",
-          "Ogni struttura ha le proprie connessioni condivise.",
-        )}
-      </p>
-    </div>
+  {#if !propertyId}
+    <Card.Root
+      ><Card.Content class="flex flex-col items-center gap-3 py-8 text-center">
+        <Plug class="size-8 text-muted-foreground" />
+        <h2 class="text-lg font-semibold">
+          {l("Select a property first", "Seleziona prima una struttura")}
+        </h2>
+        <p class="text-sm text-muted-foreground">
+          {l(
+            "Each property has its own shared connections.",
+            "Ogni struttura ha le proprie connessioni condivise.",
+          )}
+        </p>
+      </Card.Content></Card.Root
+    >
   {:else if view === "list"}
-    <div class="intro">
-      <h2>{l("Booking connectors", "Connettori prenotazioni")}</h2>
-      <p class="muted">
-        {l(
-          "Bring guest details into a draft. You review and save every access code.",
-          "Importa i dettagli degli ospiti in una bozza. Ogni codice viene controllato e salvato da te.",
-        )}
-      </p>
-    </div>
-    <div class="provider-list">
-      {#each providers as provider (provider.id)}{@const saved =
-          localConnections.filter((c) => c.kind === provider.id)}<button
-          class="provider-row"
-          onclick={() => (view = provider.id)}
-        >
-          <span class="provider-icon"><provider.icon size={22} /></span><span
-            class="provider-copy"
-            ><strong>{provider.name}</strong><small
+    <p class="max-w-xl text-sm leading-6 text-muted-foreground">
+      {l(
+        "Start with the guest details you already have. Every import opens an editable draft; you choose when to create the access code.",
+        "Parti dai dettagli degli ospiti che hai già. Ogni importazione apre una bozza modificabile: scegli tu quando creare il codice di accesso.",
+      )}
+    </p>
+    <div class="grid gap-4 sm:grid-cols-3">
+      {#each providers as provider (provider.id)}
+        {@const saved = localConnections.filter((c) => c.kind === provider.id)}
+        <Card.Root class="h-full">
+          <Card.Header class="gap-3">
+            <div class="flex items-center justify-between gap-2">
+              <span
+                class="flex size-10 items-center justify-center rounded-lg bg-muted"
+                ><provider.icon class="size-5 text-muted-foreground" /></span
+              >
+              {#if saved.length}<Badge variant="secondary"
+                  >{l("Configured", "Configurato")}</Badge
+                >{/if}
+            </div>
+            <Card.Title>{provider.name}</Card.Title>
+            <Card.Description class="leading-6"
               >{provider.id === "kross"
                 ? l(
-                    "Find a reservation and prefill guest access",
-                    "Cerca una prenotazione e precompila l’accesso ospite",
+                    "Find a reservation and prefill guest access.",
+                    "Cerca una prenotazione e precompila l’accesso ospite.",
                   )
                 : provider.id === "ical"
                   ? l(
-                      "Upload a calendar or connect a calendar URL",
-                      "Carica un calendario o collega il suo URL",
+                      "Turn calendar events into access code drafts.",
+                      "Trasforma gli eventi del calendario in bozze di codici.",
                     )
                   : l(
-                      "Extract guest details from an image",
-                      "Estrai i dettagli degli ospiti da un’immagine",
-                    )}</small
-            ></span
+                      "Read guest details from a screenshot.",
+                      "Leggi i dettagli degli ospiti da uno screenshot.",
+                    )}</Card.Description
+            >
+          </Card.Header>
+          <Card.Footer class="mt-auto"
+            ><Button
+              variant="outline"
+              class="w-full"
+              onclick={() => (view = provider.id)}
+              >{l("Open", "Apri")}
+              {provider.name}<ChevronRight class="size-4" /></Button
+            ></Card.Footer
           >
-          {#if saved.length}<span
-              class="status-dot"
-              aria-label={l("Configured", "Configurato")}
-            ></span>{/if}<ChevronRight size={18} />
-        </button>{/each}
+        </Card.Root>
+      {/each}
     </div>
+    <Alert.Root role="note"
+      ><ShieldCheck /><Alert.Title
+        >{l("You stay in control", "Decidi sempre tu")}</Alert.Title
+      ><Alert.Description
+        >{l(
+          "No background imports or automatic access codes. Guests receive nothing until you review, save and share their link.",
+          "Nessuna importazione in background o codice automatico. Gli ospiti non ricevono nulla finché non controlli, salvi e condividi il loro link.",
+        )}</Alert.Description
+      ></Alert.Root
+    >
   {:else}
-    {#if error}<p class="error" role="alert">{error}</p>{/if}
-    {#if notice}<p class="notice" role="status">{notice}</p>{/if}
-    {#if currentConnections.length > 1}<label
-        >{l("Connection", "Connessione")}<select
+    {#if error}<Alert.Root variant="destructive"
+        ><Alert.Title
+          >{l(
+            "Something needs your attention",
+            "C’è qualcosa da controllare",
+          )}</Alert.Title
+        ><Alert.Description>{error}</Alert.Description></Alert.Root
+      >{/if}
+    {#if notice}<Alert.Root role="status"
+        ><Check /><Alert.Description>{notice}</Alert.Description></Alert.Root
+      >{/if}
+    {#if currentConnections.length > 1}
+      <div class="grid gap-2">
+        <Label for="connector-connection"
+          >{l("Connection", "Connessione")}</Label
+        ><NativeSelect.Root
+          id="connector-connection"
+          class="w-full"
           bind:value={selectedId}
           disabled={pending}
-          aria-label={l("Connection", "Connessione")}
-          >{#each currentConnections as c (c.id)}<option value={c.id}
-              >{c.name}</option
-            >{/each}</select
-        ></label
-      >{/if}
-    {#if view === "kross"}
-      {#if connected}<div class="connected-line">
-          <Check size={18} /><strong>{l("Connected", "Collegato")}</strong><span
-            >{hotelId}</span
-          >{#if owner}<button
-              class="text-action"
-              disabled={pending}
-              onclick={() => perform(removeConnection)}
-              >{l("Disconnect", "Disconnetti")}</button
-            >{/if}
-        </div>
-        <section class="connector-form">
-          <label
-            >{l("KrossBooking property", "Struttura KrossBooking")}<select
-              bind:value={providerProperty}
-              disabled={pending}
-              aria-label={l("KrossBooking property", "Struttura KrossBooking")}
-              onchange={() => {
-                records = [];
-                searched = false;
-                page = 0;
-              }}
-              ><option value=""
-                >{l("Select a property", "Seleziona una struttura")}</option
-              >{#each providerProperties as p (p.id_property)}<option
-                  value={String(p.id_property)}
-                  >{p.name ?? p.name_property ?? p.id_property}</option
-                >{/each}</select
-            ></label
-          >
-          {#if !providerProperties.length}<button
-              disabled={pending}
-              onclick={() =>
-                perform((current) => loadProperties(selectedId, current))}
-              >{l("Load properties", "Carica strutture")}</button
-            >{/if}
-          <form
-            class="search-row"
-            onsubmit={(e) => {
-              e.preventDefault();
-              void perform((current) =>
-                listReservations(current, 0, "arrivals"),
-              );
-            }}
-          >
-            <label
-              >{l("Arrivals date", "Data arrivi")}<input
-                type="date"
-                bind:value={arrivalDate}
-                required
-                disabled={pending}
-              /></label
-            ><button class="primary" disabled={pending || !providerProperty}
-              >{l("Find arrivals", "Cerca arrivi")}</button
-            >
-          </form>
-          <form
-            class="search-row"
-            onsubmit={(e) => {
-              e.preventDefault();
-              void perform((current) => listReservations(current, 0, "search"));
-            }}
-          >
-            <label
-              >{l("Search reservations", "Cerca prenotazioni")}<input
-                placeholder={l(
-                  "Guest name or reservation number",
-                  "Nome ospite o numero prenotazione",
-                )}
-                bind:value={searchTerm}
-                disabled={pending}
-              /></label
-            ><button
-              disabled={pending || !providerProperty || !searchTerm.trim()}
-              aria-label={l("Search", "Cerca")}><Search size={18} /></button
-            >
-          </form>
-        </section>
-        {#if searched}<div class="results-heading">
-            <h3>{l("Reservations", "Prenotazioni")}</h3>
-            <small>{l("Page", "Pagina")} {page + 1}</small>
-          </div>
-          <div class="result-list">
-            {#each records as record, i (record.id_reservation ?? record.id ?? i)}<button
-                class="result-row"
-                disabled={pending}
-                onclick={() =>
-                  perform((current) => reviewReservation(record, current))}
-                ><span
-                  ><strong
-                    >{record.label ??
-                      record.name ??
-                      l("Guest details", "Dettagli ospite")}</strong
-                  ><small>{dates(record)}</small></span
-                ><span class="review-label"
-                  >{l("Review draft", "Controlla bozza")}
-                  <ChevronRight size={16} /></span
-                ></button
-              >{:else}<div class="empty-result">
-                {l(
-                  "No reservations found. Try another date or search.",
-                  "Nessuna prenotazione trovata. Prova un’altra data o ricerca.",
-                )}
-              </div>{/each}
-          </div>
-          <div class="pagination">
-            <button
-              disabled={pending || page === 0}
-              onclick={() =>
-                perform((current) => listReservations(current, page - 1))}
-              ><ArrowLeft size={16} />{l("Previous", "Precedente")}</button
-            ><button
-              disabled={pending || !hasNext}
-              onclick={() =>
-                perform((current) => listReservations(current, page + 1))}
-              >{l("Next", "Successiva")}<ArrowRight size={16} /></button
-            >
-          </div>{/if}
-      {:else if owner}
-        <p class="muted">
-          {l(
-            "Use your KrossBooking credentials. Your password is used for sign-in only and is never saved.",
-            "Usa le credenziali KrossBooking. La password viene usata solo per l’accesso e non viene mai salvata.",
-          )}
-        </p>
-        <form
-          class="connector-form"
-          onsubmit={(e) => {
-            e.preventDefault();
-            void perform(login);
-          }}
+          >{#each currentConnections as connection (connection.id)}<NativeSelect.Option
+              value={connection.id}>{connection.name}</NativeSelect.Option
+            >{/each}</NativeSelect.Root
         >
-          <label
-            >{l("Hotel ID", "ID hotel")}<input
-              bind:value={hotelId}
-              required
-              autocomplete="off"
-              disabled={pending || factors.length > 0}
-            /></label
-          >
-          <label
-            >{l("Username", "Nome utente")}<input
-              bind:value={username}
-              required
-              autocomplete="username"
-              disabled={pending || factors.length > 0}
-            /></label
-          >
-          <label
-            >{l("Password", "Password")}<input
-              type="password"
-              bind:value={password}
-              required
-              autocomplete="current-password"
-              disabled={pending || factors.length > 0}
-            /></label
-          >
-          {#if !factors.length}<button
-              class="primary"
-              disabled={pending ||
-                !hotelId.trim() ||
-                !username.trim() ||
-                !password}
-              >{pending
-                ? l("Connecting…", "Connessione…")
-                : l("Connect KrossBooking", "Collega KrossBooking")}</button
-            >{/if}
-        </form>
-        {#if selected && !factors.length}<button
-            class="text-action"
-            disabled={pending}
-            onclick={() => perform(removeConnection)}
-            >{l(
-              "Remove saved connection",
-              "Rimuovi connessione salvata",
-            )}</button
-          >{/if}
-        {#if factors.length}<section class="connector-form verification">
-            <h3>{l("Verify your identity", "Verifica la tua identità")}</h3>
-            <label
-              >{l("Verification method", "Metodo di verifica")}<select
-                bind:value={factorIndex}
-                disabled={pending}
-                aria-label={l("Verification method", "Metodo di verifica")}
-                onchange={() => {
-                  codeSent = false;
-                  verification = "";
-                }}
-                ><option value=""
-                  >{l("Choose a method", "Scegli un metodo")}</option
-                >{#each factors as factor, i (i)}<option value={String(i)}
-                    >{factor["2fa_device"] ?? factor["2fa_type"]}</option
-                  >{/each}</select
-              ></label
-            ><button
-              disabled={pending || factorIndex === ""}
-              onclick={() => perform(sendVerification)}
-              >{codeSent
-                ? l("Send another code", "Invia un altro codice")
-                : l(
-                    "Send verification code",
-                    "Invia codice di verifica",
-                  )}</button
-            >{#if codeSent}<form
-                class="connector-form"
-                onsubmit={(e) => {
-                  e.preventDefault();
-                  void perform(verify);
-                }}
-              >
-                <label
-                  >{l("Verification code", "Codice di verifica")}<input
-                    bind:value={verification}
-                    autocomplete="one-time-code"
-                    inputmode="numeric"
-                    required
-                    disabled={pending}
-                  /></label
-                ><button
-                  class="primary"
-                  disabled={pending || !verification.trim()}
-                  >{l("Verify and connect", "Verifica e collega")}</button
-                >
-              </form>{/if}<button disabled={pending} onclick={cancel}
-              >{t("Cancel")}</button
-            >
-          </section>{/if}
-      {:else}<div class="empty-result">
-          <p>
-            {l(
-              "An owner needs to connect KrossBooking before the team can use it.",
-              "Un proprietario deve collegare KrossBooking prima che il team possa usarlo.",
-            )}
-          </p>
-        </div>{/if}
-    {:else if view === "ical"}
-      <p class="muted">
-        {l(
-          "Choose the door for these events. All imported details stay in a draft until you save.",
-          "Scegli la porta per questi eventi. I dettagli importati restano in bozza finché non salvi.",
-        )}
-      </p>
-      <label
-        >{l("Calendar door", "Porta del calendario")}<select
-          bind:value={calendarDoor}
-          disabled={pending}
-          aria-label={l("Calendar door", "Porta del calendario")}
-          onchange={() => {
-            calendarResults = [];
-            calendarFileName = "";
-          }}
-          ><option value="">{l("Choose a door", "Scegli una porta")}</option
-          >{#each localDoors as door (door.id)}<option value={door.id}
-              >{door.name}</option
-            >{/each}</select
-        ></label
-      >
-      <section class="connector-form">
-        <h3>{l("Upload a calendar", "Carica un calendario")}</h3>
-        <label
-          >{l("Calendar file (.ics)", "File calendario (.ics)")}<input
-            type="file"
-            accept=".ics,text/calendar"
-            disabled={pending || !calendarDoor}
-            onchange={(e) => {
-              const f = e.currentTarget.files?.[0];
-              e.currentTarget.value = "";
-              if (f) void perform((current) => readCalendar(f, current));
-            }}
-          /></label
-        >{#if calendarFileName}<small>{calendarFileName}</small>{/if}
-      </section>
-      <section class="connector-form separated">
-        <div class="results-heading">
-          <h3>{l("Connected calendars", "Calendari collegati")}</h3>
-          {#if owner && selected && !addingCalendar}<button
-              class="text-action"
-              onclick={() => (addingCalendar = true)}
-              ><Plus size={16} />{l("Add", "Aggiungi")}</button
-            >{/if}
-        </div>
-        {#if selected && !addingCalendar}<div class="connected-line">
-            <CalendarDays size={18} /><strong>{selected.name}</strong
-            >{#if owner}<button
-                class="text-action"
-                disabled={pending}
-                onclick={() => perform(removeConnection)}
-                >{l("Disconnect", "Disconnetti")}</button
-              >{/if}
-          </div>
-          <button
-            class="primary"
-            disabled={pending || !calendarDoor}
-            onclick={() => perform(fetchCalendar)}
-            >{l("Fetch calendar now", "Carica calendario ora")}</button
-          >
-        {:else if owner}<form
-            class="connector-form"
-            onsubmit={(e) => {
-              e.preventDefault();
-              void perform(saveCalendar);
-            }}
-          >
-            <label
-              >{l("Calendar name", "Nome calendario")}<input
-                bind:value={calendarName}
-                placeholder={l("e.g. Room 1", "es. Camera 1")}
-                required
-                disabled={pending}
-              /></label
-            ><label
-              >{l("Calendar URL", "URL calendario")}<input
-                type="url"
-                bind:value={calendarUrl}
-                placeholder="https://…"
-                required
-                disabled={pending}
-              /></label
-            ><small
-              >{l(
-                "The private URL is stored encrypted and is never displayed to staff.",
-                "L’URL privato viene salvato cifrato e non viene mai mostrato allo staff.",
-              )}</small
-            >
-            <div class="actions">
-              <button class="primary" disabled={pending || !calendarUrl.trim()}
-                >{l("Save calendar", "Salva calendario")}</button
-              >{#if selected}<button
-                  type="button"
-                  onclick={() => (addingCalendar = false)}>{t("Cancel")}</button
+      </div>
+    {/if}
+    {#if view === "kross"}
+      {#if connected}
+        <Card.Root>
+          <Card.Header class="gap-3"
+            ><div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <Badge variant="secondary"
+                  ><Check class="size-3" />{l("Connected", "Collegato")}</Badge
+                ><span class="text-sm text-muted-foreground">{hotelId}</span>
+              </div>
+              {#if owner}<Button
+                  variant="ghost"
+                  disabled={pending}
+                  onclick={() => perform(removeConnection)}
+                  >{l("Disconnect", "Disconnetti")}</Button
                 >{/if}
             </div>
-          </form>
-        {:else}<p class="muted">
-            {l(
-              "An owner can connect a calendar URL. You can upload a file above.",
-              "Un proprietario può collegare un URL calendario. Puoi caricare un file qui sopra.",
-            )}
-          </p>{/if}
-      </section>
-      {#if calendarResults.length}<div class="results-heading">
-          <h3>{l("Calendar events", "Eventi del calendario")}</h3>
-          <small>{calendarResults.length}</small>
-        </div>
-        <div class="result-list">
-          {#each calendarResults as draft, i (i)}<button
-              class="result-row"
-              onclick={() => review(draft)}
-              ><span
-                ><strong
-                  >{draft.label ||
-                    l("Guest name missing", "Nome ospite mancante")}</strong
-                ><small
-                  >{draft.grants?.[0]?.start.slice(0, 10)} → {draft.grants?.[0]?.end.slice(
-                    0,
-                    10,
-                  )}</small
-                ></span
-              ><span class="review-label"
-                >{l("Review draft", "Controlla bozza")}<ChevronRight
-                  size={16}
-                /></span
-              ></button
-            >{/each}
-        </div>{/if}
-    {:else if view === "gemini"}
-      {#if !selected && owner}<p class="muted">
-          {l(
-            "Connect your team’s Gemini key to extract details from screenshots.",
-            "Collega la chiave Gemini del team per estrarre dettagli dagli screenshot.",
-          )}
-        </p>
-        <form
-          class="connector-form"
-          onsubmit={(e) => {
-            e.preventDefault();
-            void perform(saveGemini);
-          }}
-        >
-          <label
-            >{l("Gemini API key", "Chiave API Gemini")}<input
-              type="password"
-              bind:value={geminiKey}
-              autocomplete="off"
-              required
-              disabled={pending}
-            /></label
-          ><label
-            >{l("Model", "Modello")}<input
-              bind:value={geminiModel}
-              required
-              disabled={pending}
-            /></label
-          ><small
-            >{l(
-              "The key is encrypted on the server and never returned to the browser.",
-              "La chiave viene cifrata sul server e non viene mai restituita al browser.",
-            )}</small
-          ><button
-            class="primary"
-            disabled={pending || !geminiKey.trim() || !geminiModel.trim()}
-            >{l("Connect Gemini", "Collega Gemini")}</button
+            <Card.Title>{l("Find a guest", "Trova un ospite")}</Card.Title
+            ><Card.Description
+              >{l(
+                "Choose a property, then look up arrivals or search a reservation.",
+                "Scegli una struttura, poi consulta gli arrivi o cerca una prenotazione.",
+              )}</Card.Description
+            ></Card.Header
           >
-        </form>
-      {:else if !selected}<p class="empty-result">
-          {l(
-            "An owner needs to connect Gemini for the team first.",
-            "Un proprietario deve prima collegare Gemini per il team.",
-          )}
-        </p>
-      {:else}<div class="connected-line">
-          <Check size={18} /><strong>{l("Connected", "Collegato")}</strong><span
-            >{selected.data.model ?? "Gemini"}</span
-          >{#if owner}<button
-              class="text-action"
-              disabled={pending}
-              onclick={() => perform(removeConnection)}
-              >{l("Disconnect", "Disconnetti")}</button
-            >{/if}
-        </div>
-        <p class="muted">
-          {l(
-            "Select an image, then extract its details. The image is sent to Gemini and is not saved by oshost. Review all results before creating a code.",
-            "Seleziona un’immagine, poi estrai i dettagli. L’immagine viene inviata a Gemini e non viene salvata da oshost. Controlla i risultati prima di creare un codice.",
-          )}
-        </p>
-        <div class="connector-form">
-          <label
-            >{l("Screenshot", "Screenshot")}<input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              disabled={pending}
-              onchange={(e) => {
-                const f = e.currentTarget.files?.[0];
-                e.currentTarget.value = "";
-                if (f) chooseImage(f);
-              }}
-            /></label
-          >{#if imageUrl}<img
-              class="screenshot-preview"
-              src={imageUrl}
-              alt={l("Selected screenshot", "Screenshot selezionato")}
-            />
-            <div class="actions">
-              <button
-                class="primary"
+          <Card.Content class="grid gap-5">
+            <div class="grid gap-2">
+              <Label for="kross-property"
+                >{l("KrossBooking property", "Struttura KrossBooking")}</Label
+              ><NativeSelect.Root
+                id="kross-property"
+                class="w-full"
+                bind:value={providerProperty}
                 disabled={pending}
-                onclick={() => perform(extract)}
-                >{pending
-                  ? l("Extracting…", "Estrazione…")
-                  : l("Extract details", "Estrai dettagli")}</button
-              ><button
-                onclick={() => {
-                  cancel();
-                  clearImage();
-                }}><X size={16} />{t("Cancel")}</button
+                onchange={() => {
+                  records = [];
+                  searched = false;
+                  page = 0;
+                }}
+                ><NativeSelect.Option value=""
+                  >{l(
+                    "Select a property",
+                    "Seleziona una struttura",
+                  )}</NativeSelect.Option
+                >{#each providerProperties as item (item.id_property)}<NativeSelect.Option
+                    value={String(item.id_property)}
+                    >{item.name ??
+                      item.name_property ??
+                      item.id_property}</NativeSelect.Option
+                  >{/each}</NativeSelect.Root
               >
-            </div>{/if}
-        </div>
-        {#if extraction}<section class="extraction-preview">
-            <h3>
-              {l("Review extracted details", "Controlla i dettagli estratti")}
+            </div>
+            {#if !providerProperties.length}<Button
+                variant="outline"
+                disabled={pending}
+                onclick={() =>
+                  perform((current) => loadProperties(selectedId, current))}
+                >{l("Load properties", "Carica strutture")}</Button
+              >{/if}
+            <form
+              class="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
+              onsubmit={(event) => {
+                event.preventDefault();
+                void perform((current) =>
+                  listReservations(current, 0, "arrivals"),
+                );
+              }}
+            >
+              <div class="grid gap-2">
+                <Label for="kross-arrivals"
+                  >{l("Arrivals date", "Data arrivi")}</Label
+                ><Input
+                  id="kross-arrivals"
+                  type="date"
+                  bind:value={arrivalDate}
+                  required
+                  disabled={pending}
+                />
+              </div>
+              <Button type="submit" disabled={pending || !providerProperty}
+                ><CalendarDays class="size-4" />{l(
+                  "Find arrivals",
+                  "Cerca arrivi",
+                )}</Button
+              >
+            </form>
+            <Separator />
+            <form
+              class="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
+              onsubmit={(event) => {
+                event.preventDefault();
+                void perform((current) =>
+                  listReservations(current, 0, "search"),
+                );
+              }}
+            >
+              <div class="grid gap-2">
+                <Label for="kross-search"
+                  >{l("Search reservations", "Cerca prenotazioni")}</Label
+                ><Input
+                  id="kross-search"
+                  placeholder={l(
+                    "Guest name or reservation number",
+                    "Nome ospite o numero prenotazione",
+                  )}
+                  bind:value={searchTerm}
+                  disabled={pending}
+                />
+              </div>
+              <Button
+                type="submit"
+                variant="outline"
+                disabled={pending || !providerProperty || !searchTerm.trim()}
+                ><Search class="size-4" />{l("Search", "Cerca")}</Button
+              >
+            </form>
+          </Card.Content>
+        </Card.Root>
+        {#if searched}
+          <Card.Root
+            ><Card.Header
+              ><div class="flex items-center justify-between gap-3">
+                <Card.Title>{l("Reservations", "Prenotazioni")}</Card.Title
+                ><Badge variant="outline"
+                  >{l("Page", "Pagina")} {page + 1}</Badge
+                >
+              </div></Card.Header
+            ><Card.Content class="grid gap-2">
+              {#each records as record, index (record.id_reservation ?? record.id ?? index)}
+                <Button
+                  variant="ghost"
+                  class="h-auto min-h-16 w-full justify-between gap-4 whitespace-normal rounded-lg border p-4 text-left"
+                  disabled={pending}
+                  onclick={() =>
+                    perform((current) => reviewReservation(record, current))}
+                  ><span class="grid min-w-0 gap-1"
+                    ><strong
+                      >{record.label ??
+                        record.name ??
+                        l("Guest details", "Dettagli ospite")}</strong
+                    ><span class="text-xs font-normal text-muted-foreground"
+                      >{dates(record)}</span
+                    ></span
+                  ><span class="flex shrink-0 items-center gap-1 text-xs"
+                    >{l("Review draft", "Controlla bozza")}<ChevronRight
+                      class="size-4"
+                    /></span
+                  ></Button
+                >
+              {:else}<p class="py-6 text-center text-sm text-muted-foreground">
+                  {l(
+                    "No reservations found. Try another date or search.",
+                    "Nessuna prenotazione trovata. Prova un’altra data o ricerca.",
+                  )}
+                </p>{/each}
+            </Card.Content><Card.Footer class="flex justify-between gap-3"
+              ><Button
+                variant="outline"
+                disabled={pending || page === 0}
+                onclick={() =>
+                  perform((current) => listReservations(current, page - 1))}
+                ><ArrowLeft class="size-4" />{l(
+                  "Previous",
+                  "Precedente",
+                )}</Button
+              ><Button
+                variant="outline"
+                disabled={pending || !hasNext}
+                onclick={() =>
+                  perform((current) => listReservations(current, page + 1))}
+                >{l("Next", "Successiva")}<ArrowRight class="size-4" /></Button
+              ></Card.Footer
+            ></Card.Root
+          >
+        {/if}
+      {:else if owner}
+        <Card.Root
+          ><Card.Header
+            ><Card.Title
+              >{l("Connect KrossBooking", "Collega KrossBooking")}</Card.Title
+            ><Card.Description
+              >{l(
+                "Use your KrossBooking credentials. Your password is used for sign-in only and is never saved.",
+                "Usa le credenziali KrossBooking. La password viene usata solo per l’accesso e non viene mai salvata.",
+              )}</Card.Description
+            ></Card.Header
+          ><Card.Content class="grid gap-5">
+            <form
+              class="grid gap-4"
+              onsubmit={(event) => {
+                event.preventDefault();
+                void perform(login);
+              }}
+            >
+              <div class="grid gap-2">
+                <Label for="kross-hotel">{l("Hotel ID", "ID hotel")}</Label
+                ><Input
+                  id="kross-hotel"
+                  bind:value={hotelId}
+                  required
+                  autocomplete="off"
+                  disabled={pending || factors.length > 0}
+                />
+              </div>
+              <div class="grid gap-2">
+                <Label for="kross-username"
+                  >{l("Username", "Nome utente")}</Label
+                ><Input
+                  id="kross-username"
+                  bind:value={username}
+                  required
+                  autocomplete="username"
+                  disabled={pending || factors.length > 0}
+                />
+              </div>
+              <div class="grid gap-2">
+                <Label for="kross-password">{l("Password", "Password")}</Label
+                ><Input
+                  id="kross-password"
+                  type="password"
+                  bind:value={password}
+                  required
+                  autocomplete="current-password"
+                  disabled={pending || factors.length > 0}
+                />
+              </div>
+              {#if !factors.length}<Button
+                  type="submit"
+                  disabled={pending ||
+                    !hotelId.trim() ||
+                    !username.trim() ||
+                    !password}
+                  >{#if pending}<LoaderCircle
+                      class="size-4 animate-spin"
+                    />{/if}{pending
+                    ? l("Connecting…", "Connessione…")
+                    : l("Connect KrossBooking", "Collega KrossBooking")}</Button
+                >{/if}
+            </form>
+            {#if factors.length}
+              <Separator />
+              <div class="grid gap-4">
+                <h3 class="text-sm font-semibold">
+                  {l("Verify your identity", "Verifica la tua identità")}
+                </h3>
+                <div class="grid gap-2">
+                  <Label for="kross-factor"
+                    >{l("Verification method", "Metodo di verifica")}</Label
+                  ><NativeSelect.Root
+                    id="kross-factor"
+                    class="w-full"
+                    bind:value={factorIndex}
+                    disabled={pending}
+                    onchange={() => {
+                      codeSent = false;
+                      verification = "";
+                    }}
+                    ><NativeSelect.Option value=""
+                      >{l(
+                        "Choose a method",
+                        "Scegli un metodo",
+                      )}</NativeSelect.Option
+                    >{#each factors as factor, index (index)}<NativeSelect.Option
+                        value={String(index)}
+                        >{factor["2fa_device"] ??
+                          factor["2fa_type"]}</NativeSelect.Option
+                      >{/each}</NativeSelect.Root
+                  >
+                </div>
+                <Button
+                  variant="outline"
+                  disabled={pending || factorIndex === ""}
+                  onclick={() => perform(sendVerification)}
+                  >{codeSent
+                    ? l("Send another code", "Invia un altro codice")
+                    : l(
+                        "Send verification code",
+                        "Invia codice di verifica",
+                      )}</Button
+                >
+                {#if codeSent}<form
+                    class="grid gap-4"
+                    onsubmit={(event) => {
+                      event.preventDefault();
+                      void perform(verify);
+                    }}
+                  >
+                    <div class="grid gap-2">
+                      <Label for="kross-otp"
+                        >{l("Verification code", "Codice di verifica")}</Label
+                      ><Input
+                        id="kross-otp"
+                        bind:value={verification}
+                        autocomplete="one-time-code"
+                        inputmode="numeric"
+                        required
+                        disabled={pending}
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      disabled={pending || !verification.trim()}
+                      >{l("Verify and connect", "Verifica e collega")}</Button
+                    >
+                  </form>{/if}<Button
+                  variant="ghost"
+                  disabled={pending}
+                  onclick={cancel}>{t("Cancel")}</Button
+                >
+              </div>
+            {:else if selected}<Button
+                variant="ghost"
+                disabled={pending}
+                onclick={() => perform(removeConnection)}
+                >{l(
+                  "Remove saved connection",
+                  "Rimuovi connessione salvata",
+                )}</Button
+              >{/if}
+          </Card.Content></Card.Root
+        >
+      {:else}<Alert.Root role="note"
+          ><Plug /><Alert.Title
+            >{l(
+              "Ask an owner to connect KrossBooking",
+              "Chiedi a un proprietario di collegare KrossBooking",
+            )}</Alert.Title
+          ><Alert.Description
+            >{l(
+              "Once connected, everyone on the team can prepare drafts from reservations.",
+              "Una volta collegato, tutto il team potrà preparare bozze dalle prenotazioni.",
+            )}</Alert.Description
+          ></Alert.Root
+        >{/if}
+    {:else if view === "ical"}
+      <p class="text-sm leading-6 text-muted-foreground">
+        {l(
+          "A calendar provides names and dates. You choose which door those events should give access to, then review each code before saving.",
+          "Un calendario fornisce nomi e date. Scegli tu a quale porta danno accesso gli eventi, poi controlli ogni codice prima di salvarlo.",
+        )}
+      </p>
+      <Card.Root
+        ><Card.Header
+          ><div class="flex items-center gap-2">
+            <Badge variant="secondary">1</Badge><Card.Title
+              >{l("Choose a calendar", "Scegli un calendario")}</Card.Title
+            >
+          </div>
+          <Card.Description
+            >{l(
+              "Upload an .ics file or fetch a saved calendar. Nothing is imported automatically.",
+              "Carica un file .ics o recupera un calendario salvato. Nessuna importazione è automatica.",
+            )}</Card.Description
+          ></Card.Header
+        ><Card.Content class="grid gap-5">
+          <div class="grid gap-2">
+            <Label for="calendar-file"
+              >{l("Calendar file (.ics)", "File calendario (.ics)")}</Label
+            ><Input
+              id="calendar-file"
+              type="file"
+              accept=".ics,text/calendar"
+              disabled={pending}
+              onchange={(event) => {
+                const input = event.currentTarget as HTMLInputElement;
+                const file = input.files?.[0];
+                input.value = "";
+                if (file)
+                  void perform((current) => readCalendar(file, current));
+              }}
+            />
+            <p class="text-xs text-muted-foreground">
+              {l(
+                "Up to 4 MB. Events are read in your browser.",
+                "Fino a 4 MB. Gli eventi vengono letti nel browser.",
+              )}
+            </p>
+            {#if calendarFileName}<Badge variant="outline" class="w-fit"
+                ><FileUp class="size-3" />{calendarFileName}</Badge
+              >{/if}
+          </div>
+          <Separator />
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="text-sm font-semibold">
+              {l("Connected calendars", "Calendari collegati")}
             </h3>
-            <p>
-              <strong
+            {#if owner && selected && !addingCalendar}<Button
+                variant="ghost"
+                size="sm"
+                onclick={() => (addingCalendar = true)}
+                ><Plus class="size-4" />{l("Add", "Aggiungi")}</Button
+              >{/if}
+          </div>
+          {#if selected && !addingCalendar}<div
+              class="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3"
+            >
+              <div class="flex items-center gap-2">
+                <CalendarDays class="size-4 text-muted-foreground" /><strong
+                  class="text-sm">{selected.name}</strong
+                >
+              </div>
+              {#if owner}<Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={pending}
+                  onclick={() => perform(removeConnection)}
+                  >{l("Disconnect", "Disconnetti")}</Button
+                >{/if}
+            </div>
+            <Button
+              variant="outline"
+              disabled={pending}
+              onclick={() => perform(fetchCalendar)}
+              >{l("Fetch calendar now", "Carica calendario ora")}</Button
+            >
+          {:else if owner}<form
+              class="grid gap-4"
+              onsubmit={(event) => {
+                event.preventDefault();
+                void perform(saveCalendar);
+              }}
+            >
+              <div class="grid gap-2">
+                <Label for="calendar-name"
+                  >{l("Calendar name", "Nome calendario")}</Label
+                ><Input
+                  id="calendar-name"
+                  bind:value={calendarName}
+                  placeholder={l(
+                    "e.g. Room 1 calendar",
+                    "es. Calendario Camera 1",
+                  )}
+                  required
+                  disabled={pending}
+                />
+              </div>
+              <div class="grid gap-2">
+                <Label for="calendar-url"
+                  >{l("Calendar URL", "URL calendario")}</Label
+                ><Input
+                  id="calendar-url"
+                  type="url"
+                  bind:value={calendarUrl}
+                  placeholder="https://…"
+                  required
+                  disabled={pending}
+                />
+                <p class="text-xs leading-5 text-muted-foreground">
+                  {l(
+                    "The private URL is stored encrypted and is never displayed to staff.",
+                    "L’URL privato viene salvato cifrato e non viene mai mostrato allo staff.",
+                  )}
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <Button
+                  type="submit"
+                  variant="outline"
+                  disabled={pending || !calendarUrl.trim()}
+                  >{l("Save calendar", "Salva calendario")}</Button
+                >{#if selected}<Button
+                    variant="ghost"
+                    onclick={() => (addingCalendar = false)}
+                    >{t("Cancel")}</Button
+                  >{/if}
+              </div>
+            </form>
+          {:else}<p class="text-sm text-muted-foreground">
+              {l(
+                "An owner can connect a calendar URL. You can upload a file above.",
+                "Un proprietario può collegare un URL calendario. Puoi caricare un file qui sopra.",
+              )}
+            </p>{/if}
+        </Card.Content></Card.Root
+      >
+      <Card.Root
+        ><Card.Header
+          ><div class="flex items-center gap-2">
+            <Badge variant="secondary">2</Badge><Card.Title
+              >{l(
+                "Choose the access door",
+                "Scegli la porta di accesso",
+              )}</Card.Title
+            >
+          </div>
+          <Card.Description
+            >{l(
+              "Calendar events do not know which oshost door to unlock. For example, map a Room 1 calendar to the Room 1 door.",
+              "Gli eventi del calendario non sanno quale porta di oshost aprire. Ad esempio, associa il calendario Camera 1 alla porta Camera 1.",
+            )}</Card.Description
+          ></Card.Header
+        ><Card.Content class="grid gap-3"
+          ><div class="grid gap-2">
+            <Label for="calendar-door"
+              >{l(
+                "Access door for these events",
+                "Porta di accesso per questi eventi",
+              )}</Label
+            ><NativeSelect.Root
+              id="calendar-door"
+              class="w-full"
+              bind:value={calendarDoor}
+              disabled={pending || !localDoors.length}
+              onchange={mapCalendarDoor}
+              ><NativeSelect.Option value=""
+                >{l("Choose a door", "Scegli una porta")}</NativeSelect.Option
+              >{#each localDoors as door (door.id)}<NativeSelect.Option
+                  value={door.id}>{door.name}</NativeSelect.Option
+                >{/each}</NativeSelect.Root
+            >
+          </div>
+          <p class="text-xs leading-5 text-muted-foreground">
+            {l(
+              "Every draft will preselect this door using the event's dates. You can add entrance doors, change dates or remove permissions in the draft.",
+              "Ogni bozza preseleziona questa porta con le date dell’evento. Nella bozza puoi aggiungere gli ingressi, cambiare le date o rimuovere i permessi.",
+            )}
+          </p>
+          {#if !localDoors.length}<Alert.Root role="note"
+              ><DoorOpen /><Alert.Description
+                >{l(
+                  "Add a door in Doors first, then return here to choose it. You can already preview calendar events below.",
+                  "Aggiungi prima una porta nella sezione Porte, poi torna qui per sceglierla. Puoi già vedere l’anteprima degli eventi qui sotto.",
+                )}</Alert.Description
+              ></Alert.Root
+            >{/if}</Card.Content
+        ></Card.Root
+      >
+      {#if calendarText}<Card.Root
+          ><Card.Header
+            ><div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <Badge variant="secondary">3</Badge><Card.Title
+                  >{l("Review an event", "Controlla un evento")}</Card.Title
+                >
+              </div>
+              <Badge variant="outline">{calendarResults.length}</Badge>
+            </div>
+            <Card.Description
+              >{calendarDoor
+                ? l(
+                    "Open a draft to check the guest name, doors and access times. You still need to save the code yourself.",
+                    "Apri una bozza per controllare nome, porte e orari. Devi ancora salvare personalmente il codice.",
+                  )
+                : l(
+                    "Choose an access door above to turn an event into a draft. You can preview names and dates now.",
+                    "Scegli una porta di accesso qui sopra per trasformare un evento in bozza. Puoi già vedere nomi e date.",
+                  )}</Card.Description
+            ></Card.Header
+          ><Card.Content class="grid gap-2">
+            {#each calendarResults as draft, index (index)}<Button
+                variant="ghost"
+                class="h-auto min-h-16 w-full justify-between gap-4 whitespace-normal rounded-lg border p-4 text-left"
+                disabled={pending ||
+                  !calendarDoor ||
+                  !localDoors.some((door) => door.id === calendarDoor)}
+                onclick={() => reviewCalendar(draft)}
+                ><span class="grid min-w-0 gap-1"
+                  ><strong
+                    >{draft.label ||
+                      l("Guest name missing", "Nome ospite mancante")}</strong
+                  ><span class="text-xs font-normal text-muted-foreground"
+                    >{calendarDates(draft)}</span
+                  ></span
+                ><span class="flex shrink-0 items-center gap-1 text-xs"
+                  >{l("Review draft", "Controlla bozza")}<ChevronRight
+                    class="size-4"
+                  /></span
+                ></Button
+              >{:else}<p class="py-5 text-center text-sm text-muted-foreground">
+                {l(
+                  "No upcoming events were found in this calendar.",
+                  "Nessun evento futuro trovato in questo calendario.",
+                )}
+              </p>{/each}
+          </Card.Content></Card.Root
+        >{/if}
+    {:else if view === "gemini"}
+      {#if !selected && owner}<Card.Root
+          ><Card.Header
+            ><Card.Title>{l("Connect Gemini", "Collega Gemini")}</Card.Title
+            ><Card.Description
+              >{l(
+                "Use your team’s Gemini key to prepare a draft from a screenshot.",
+                "Usa la chiave Gemini del team per preparare una bozza da uno screenshot.",
+              )}</Card.Description
+            ></Card.Header
+          ><Card.Content
+            ><form
+              class="grid gap-4"
+              onsubmit={(event) => {
+                event.preventDefault();
+                void perform(saveGemini);
+              }}
+            >
+              <div class="grid gap-2">
+                <Label for="gemini-key"
+                  >{l("Gemini API key", "Chiave API Gemini")}</Label
+                ><Input
+                  id="gemini-key"
+                  type="password"
+                  bind:value={geminiKey}
+                  autocomplete="off"
+                  required
+                  disabled={pending}
+                />
+              </div>
+              <div class="grid gap-2">
+                <Label for="gemini-model">{l("Model", "Modello")}</Label><Input
+                  id="gemini-model"
+                  bind:value={geminiModel}
+                  required
+                  disabled={pending}
+                />
+              </div>
+              <p class="text-xs leading-5 text-muted-foreground">
+                {l(
+                  "The key is encrypted on the server and never returned to the browser.",
+                  "La chiave viene cifrata sul server e non viene mai restituita al browser.",
+                )}
+              </p>
+              <Button
+                type="submit"
+                disabled={pending || !geminiKey.trim() || !geminiModel.trim()}
+                >{l("Connect Gemini", "Collega Gemini")}</Button
+              >
+            </form></Card.Content
+          ></Card.Root
+        >
+      {:else if !selected}<Alert.Root role="note"
+          ><Plug /><Alert.Description
+            >{l(
+              "An owner needs to connect Gemini for the team first.",
+              "Un proprietario deve prima collegare Gemini per il team.",
+            )}</Alert.Description
+          ></Alert.Root
+        >
+      {:else}<Card.Root
+          ><Card.Header
+            ><div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <Badge variant="secondary"
+                  ><Check class="size-3" />{l("Connected", "Collegato")}</Badge
+                ><span class="text-sm text-muted-foreground"
+                  >{selected.data.model ?? "Gemini"}</span
+                >
+              </div>
+              {#if owner}<Button
+                  variant="ghost"
+                  disabled={pending}
+                  onclick={() => perform(removeConnection)}
+                  >{l("Disconnect", "Disconnetti")}</Button
+                >{/if}
+            </div>
+            <Card.Title
+              >{l("Read a screenshot", "Leggi uno screenshot")}</Card.Title
+            ><Card.Description
+              >{l(
+                "The image is sent to Gemini and is not saved by oshost. Review every extracted field before saving a code.",
+                "L’immagine viene inviata a Gemini e non viene salvata da oshost. Controlla ogni campo estratto prima di salvare un codice.",
+              )}</Card.Description
+            ></Card.Header
+          ><Card.Content class="grid gap-4"
+            ><div class="grid gap-2">
+              <Label for="gemini-screenshot"
+                >{l("Screenshot", "Screenshot")}</Label
+              ><Input
+                id="gemini-screenshot"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                disabled={pending}
+                onchange={(event) => {
+                  const input = event.currentTarget as HTMLInputElement;
+                  const file = input.files?.[0];
+                  input.value = "";
+                  if (file) chooseImage(file);
+                }}
+              />
+            </div>
+            {#if imageUrl}<img
+                class="max-h-64 w-full rounded-lg border object-contain"
+                src={imageUrl}
+                alt={l("Selected screenshot", "Screenshot selezionato")}
+              />
+              <div class="flex flex-wrap gap-2">
+                <Button disabled={pending} onclick={() => perform(extract)}
+                  >{#if pending}<LoaderCircle
+                      class="size-4 animate-spin"
+                    />{/if}{pending
+                    ? l("Extracting…", "Estrazione…")
+                    : l("Extract details", "Estrai dettagli")}</Button
+                ><Button
+                  variant="outline"
+                  onclick={() => {
+                    cancel();
+                    clearImage();
+                  }}><X class="size-4" />{t("Cancel")}</Button
+                >
+              </div>{/if}</Card.Content
+          ></Card.Root
+        >
+        {#if extraction}<Card.Root
+            ><Card.Header
+              ><Card.Title
+                >{l(
+                  "Review extracted details",
+                  "Controlla i dettagli estratti",
+                )}</Card.Title
+              ><Card.Description
+                >{l(
+                  "Missing or uncertain fields need manual completion. Nothing has been saved yet.",
+                  "Completa manualmente i campi mancanti o incerti. Non è stato ancora salvato nulla.",
+                )}</Card.Description
+              ></Card.Header
+            ><Card.Content class="grid gap-3"
+              ><strong
                 >{extraction.label ||
                   l("Guest name missing", "Nome ospite mancante")}</strong
               >
-            </p>
-            <p>
-              {extraction.grants?.length ?? 0}
-              {l("matched doors", "porte corrispondenti")}
-            </p>
-            {#if extractionBreakfast !== undefined}<p>
-                {l("Breakfast quantity found", "Colazioni rilevate")}: {extractionBreakfast}.
-                {l(
-                  "Choose breakfast dates in the draft.",
-                  "Scegli le date della colazione nella bozza.",
-                )}
-              </p>{/if}<small
-              >{l(
-                "Missing or uncertain fields need manual completion. Nothing has been saved yet.",
-                "Completa manualmente i campi mancanti o incerti. Non è stato ancora salvato nulla.",
-              )}</small
-            ><button class="primary" onclick={() => review(extraction!)}
-              >{l("Review draft", "Controlla bozza")}</button
-            >
-          </section>{/if}{/if}
+              <p class="text-sm text-muted-foreground">
+                {extraction.grants?.length ?? 0}
+                {l("matched doors", "porte corrispondenti")}
+              </p>
+              {#if extractionBreakfast !== undefined}<p
+                  class="text-sm text-muted-foreground"
+                >
+                  {l("Breakfast quantity found", "Colazioni rilevate")}: {extractionBreakfast}.
+                  {l(
+                    "Choose breakfast dates in the draft.",
+                    "Scegli le date della colazione nella bozza.",
+                  )}
+                </p>{/if}</Card.Content
+            ><Card.Footer
+              ><Button onclick={() => review(extraction!)}
+                >{l("Review draft", "Controlla bozza")}<ArrowRight
+                  class="size-4"
+                /></Button
+              ></Card.Footer
+            ></Card.Root
+          >{/if}
+      {/if}
     {/if}
-    {#if pending}<p class="muted" role="status">
-        {l("Working…", "Operazione in corso…")}
+    {#if pending}<p
+        class="flex items-center gap-2 text-sm text-muted-foreground"
+        role="status"
+      >
+        <LoaderCircle class="size-4 animate-spin" />{l(
+          "Working…",
+          "Operazione in corso…",
+        )}
       </p>{/if}
   {/if}
 </section>
-
-<style>
-  .connectors {
-    max-width: 44rem;
-    margin: 0 auto;
-  }
-  .intro {
-    padding: 0 0 1.25rem;
-  }
-  .intro h2 {
-    margin-bottom: 0.5rem;
-  }
-  .intro p {
-    margin: 0;
-  }
-  .provider-list,
-  .result-list {
-    border-top: 1px solid var(--border);
-  }
-  .provider-row,
-  .result-row {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    width: 100%;
-    border: 0;
-    border-bottom: 1px solid var(--border);
-    border-radius: 0;
-    background: transparent;
-    text-align: left;
-    padding: 1.15rem 0.25rem;
-    color: inherit;
-  }
-  .provider-row:hover,
-  .result-row:hover {
-    background: var(--muted);
-  }
-  .provider-icon {
-    display: grid;
-    place-items: center;
-    flex: none;
-    width: 2.75rem;
-    height: 2.75rem;
-    border-radius: 0.75rem;
-    background: var(--muted);
-    color: var(--muted-foreground);
-  }
-  .provider-copy,
-  .result-row > span:first-child {
-    display: grid;
-    gap: 0.3rem;
-    flex: 1;
-    min-width: 0;
-  }
-  .provider-copy small,
-  .result-row small {
-    line-height: 1.45;
-    font-weight: 400;
-  }
-  .status-dot {
-    width: 0.5rem;
-    height: 0.5rem;
-    border-radius: 50%;
-    background: var(--primary);
-  }
-  .connector-form {
-    display: grid;
-    gap: 1rem;
-    margin: 1.5rem 0;
-  }
-  .connector-form .connector-form {
-    margin: 0;
-  }
-  .connector-form h3 {
-    margin: 0;
-  }
-  .connected-line {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-    padding: 1rem 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .connected-line span {
-    font-size: 0.8rem;
-    color: var(--muted-foreground);
-  }
-  .connected-line .text-action {
-    margin-left: auto;
-  }
-  .text-action {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    border: 0;
-    background: transparent;
-    padding: 0.3rem;
-    font-size: 0.8rem;
-    color: var(--muted-foreground);
-  }
-  .search-row {
-    display: flex;
-    align-items: end;
-    gap: 0.6rem;
-  }
-  .search-row label {
-    flex: 1;
-    min-width: 0;
-  }
-  .search-row button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 42px;
-  }
-  .results-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    margin: 1.5rem 0 0.6rem;
-  }
-  .results-heading h3 {
-    margin: 0;
-  }
-  .review-label {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    font-size: 0.8rem;
-    flex-shrink: 0;
-  }
-  .pagination {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-top: 1rem;
-  }
-  .pagination button,
-  .actions button {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
-  .empty-result {
-    padding: 1.5rem 0;
-    color: var(--muted-foreground);
-    line-height: 1.6;
-  }
-  .separated,
-  .verification {
-    border-top: 1px solid var(--border);
-    padding-top: 1.25rem;
-  }
-  .actions {
-    display: flex;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-  }
-  .screenshot-preview {
-    display: block;
-    max-width: 100%;
-    max-height: 240px;
-    object-fit: contain;
-    border-radius: 0.5rem;
-  }
-  .extraction-preview {
-    display: grid;
-    gap: 0.75rem;
-    padding: 1rem;
-    border: 1px solid var(--border);
-    border-radius: 0.75rem;
-  }
-  .extraction-preview p {
-    margin: 0;
-  }
-  .extraction-preview h3 {
-    margin: 0;
-  }
-  @media (max-width: 480px) {
-    .review-label {
-      font-size: 0;
-      gap: 0;
-    }
-    .provider-row {
-      gap: 0.75rem;
-    }
-    .provider-copy small {
-      font-size: 0.78rem;
-    }
-    .search-row {
-      align-items: end;
-    }
-    .search-row button {
-      font-size: 0.82rem;
-      padding: 0.6rem 0.7rem;
-    }
-  }
-</style>

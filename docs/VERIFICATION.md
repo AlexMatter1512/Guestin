@@ -4,14 +4,14 @@
 
 - Root TypeScript check and Svelte checks for both PWAs: no errors or warnings.
 - Both static PWA production builds.
-- 36 Bun tests with 334 assertions: manual creation without connectors or booking tables; single-use and concurrent device claims; duplicate requests; uncertain results and host resolution; concurrent breakfast redemptions and allocation floors; revocation and token replacement; owner/staff authorization; origin enforcement; aggregate-only public responses; encrypted credential fields; property-local dates and DST; iCal recurrence, exclusive dates and timezone identifiers; two-factor request construction; provider relay allowlisting and 401 versus transient errors; malformed extraction; blocked calendar destinations; bounded push retries and expired-subscription cleanup; migrations, restart recovery, and backup restoration including encryption keys.
+- Production Docker build, container startup, generated first-run secrets, encrypted-data persistence across restart and container replacement, and backup restoration were verified locally and in GitHub Actions.
+- 46 Bun tests with 408 assertions: manual creation without connectors or booking tables; single-use and concurrent device claims; duplicate requests; uncertain results and host resolution; concurrent breakfast redemptions and allocation floors; revocation and token replacement; owner/staff authorization; origin enforcement; aggregate-only public responses; encrypted credential fields; property-local dates and DST; iCal recurrence, exclusive dates and timezone identifiers; two-factor request construction; provider relay allowlisting and 401 versus transient errors; malformed extraction; blocked calendar destinations; bounded push retries and expired-subscription cleanup; migrations, restart recovery, and backup restoration including encryption keys.
 - Headless Google Chrome smoke: first-run setup, property and door creation, manual code creation, guest breakfast redemption, separate service-worker scopes, offline draft restoration, and 390px mobile layout. No JavaScript page errors. Desktop host/guest screenshots visually inspected.
 
 Tests inject fake device results or mock provider transport. No real unlocks, notification messages, Gemini requests, or authenticated Kross requests were performed.
 
 ## Checks requiring the deployment environment
 
-- Docker build/run/restart has not been executed: the local Docker daemon was stopped. The application itself, database restart recovery, and static production output were tested outside Docker.
 - Install both PWAs and test notifications on actual iOS and Android devices. The automated browser test validates scopes, but cannot establish real mobile OS installation or push delivery.
 - Kross login, email two-factor completion and a properties read have been verified live with the user-authorized account. Validate reservation response shapes, pagination and privileges for deployment. The API is unofficial; raw read responses can be inspected within the connector screen. Always review imported drafts.
 - Validate actual eWeLink scenes and Shelly devices, including momentary relay configuration. Shelly Cloud v2 uses HTTP 200 as provider acceptance, not proof that a door physically opened.
@@ -68,3 +68,17 @@ The guest UI copies the original `BnB_Server_Bot/BnBFrontend` Tailwind markup an
 `scripts/guest-parity-smoke.ts` renders a disposable copy of the untouched original frontend and oshost with identical fixtures. It compares header/navigation/main/title/image/action geometry and computed styles at 390px and 1100px, with screenshots of both doors and breakfast. Required safety differences remain: device acceptance is not presented as physical opening, ambiguous unlocks cannot automatically retry, and disabled/paused/unconnected doors stay unavailable. Tests never call real devices.
 
 `scripts/bnb-breakfast-smoke.ts` verifies increment/decrement/Clear/Max, explicit confirmation and cancellation, one ledger write after confirmation, final-credit success popup, depleted state, inclusive independent dates and mobile dialog sizing. Existing guest gallery/state and full PWA/offline tests use the restored original interactions.
+
+## shadcn-svelte host UI and device onboarding
+
+The host now composes official shadcn-svelte components throughout its code, door, connector, settings and onboarding screens. Legacy broad element rules exclude library controls. Mobile bottom navigation becomes a compact desktop sidebar; navigation reflow does not animate flex sizing. Modal focus and clipboard fallback work with Bits UI dialogs. File uploads bind files without attempting to restore browser-protected filenames.
+
+Verified in Chrome with fixture providers and disposable databases:
+
+- Host details/forms, permission edits, filters, sharing and manual clipboard fallback, templates, profile and guarded reset.
+- Door settings, photos, languages, ordering, disabled states and fake/uncertain device tests.
+- Kross verification/search/pagination/token retention, calendar preview before mapping, door selection/remapping and all-day draft dates, malformed/cancelled Gemini extraction.
+- Interactive property/door/code tour followed by installation and notification steps; install dismissal, permission denial, per-user database resume, iPhone Home Screen guidance, skipping/replaying, and English/Italian language choice.
+- Mobile overflow, dark/light themes, desktop navigation layout and screenshots inspected manually.
+
+These browser checks do not perform a real OS installation, real push delivery, provider login, or physical unlock. Real iOS/Android installation and notification delivery remain deployment checks.

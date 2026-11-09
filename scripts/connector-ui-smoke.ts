@@ -198,7 +198,10 @@ try {
   ]);
   const page = await context.newPage();
   const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("pageerror", (e) => {
+    errors.push(e.message);
+    console.error("Connector page error:", e.message);
+  });
   // Match phone testing: crypto.randomUUID may be missing on an HTTP LAN origin.
   await page.addInitScript(() =>
     Object.defineProperty(crypto, "randomUUID", {
@@ -295,7 +298,6 @@ try {
   expect((await api("connections"))[0].data.authenticated).toBe(false);
   providerState = "normal";
   await page.goto(origin + "/host/#/connectors/ical");
-  await page.getByLabel("Calendar door", { exact: true }).selectOption(door.id);
   // Use relative dates so recurrence-window checks are independent of the test date.
   const start = new Date(Date.now() + 86400000)
       .toISOString()
@@ -312,12 +314,40 @@ try {
       `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:upcoming\r\nDTSTART;VALUE=DATE:${start}\r\nDTEND;VALUE=DATE:${end}\r\nSUMMARY:Calendar Guest\r\nEND:VEVENT\r\nEND:VCALENDAR`,
     ),
   });
+  const calendarPreview = page.getByRole("button", {
+    name: /Calendar Guest.*Review draft/,
+  });
+  await expect(calendarPreview).toBeVisible();
+  await expect(calendarPreview).toBeDisabled();
+  expect((await api("codes")).length).toBe(0);
+  await page
+    .getByLabel("Access door for these events", { exact: true })
+    .selectOption(door.id);
+  await expect(calendarPreview).toBeEnabled();
+  await expect(page.getByText("upcoming.ics", { exact: true })).toBeVisible();
+  await page
+    .getByLabel("Access door for these events", { exact: true })
+    .selectOption("");
+  await expect(calendarPreview).toBeVisible();
+  await expect(calendarPreview).toBeDisabled();
+  await page
+    .getByLabel("Access door for these events", { exact: true })
+    .selectOption(door.id);
   await page
     .getByRole("button", { name: /Calendar Guest.*Review draft/ })
     .click();
   await expect(
     page.getByLabel("Guest name / label", { exact: true }),
   ).toHaveValue("Calendar Guest");
+  await expect(
+    page.getByRole("checkbox", { name: "Suite 1", exact: true }),
+  ).toBeChecked();
+  await expect(page.getByLabel("Valid from", { exact: true })).toHaveValue(
+    `${start.slice(0, 4)}-${start.slice(4, 6)}-${start.slice(6, 8)}T15:00`,
+  );
+  await expect(page.getByLabel("Valid until", { exact: true })).toHaveValue(
+    `${end.slice(0, 4)}-${end.slice(4, 6)}-${end.slice(6, 8)}T11:00`,
+  );
   expect((await api("codes")).length).toBe(0);
   await page.goto(origin + "/host/#/connectors/gemini");
   await page.getByLabel("Gemini API key", { exact: true }).fill("fixture-key");

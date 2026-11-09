@@ -43,12 +43,13 @@
     "apps/host": {
       "name": "@oshost/host",
       "dependencies": {
-        "@lucide/svelte": "latest",
+        "@lucide/svelte": "^1.70.0",
         "@sveltejs/kit": "^2.48.0",
-        "bits-ui": "^2.14.0",
+        "bits-ui": "^2.20.0",
         "svelte": "^5.43.0",
       },
       "devDependencies": {
+        "@internationalized/date": "^3.12.0",
         "@sveltejs/adapter-static": "^3.0.10",
         "@sveltejs/vite-plugin-svelte": "^6.2.0",
         "@tailwindcss/vite": "^4.1.0",

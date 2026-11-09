@@ -1,6 +1,8 @@
 <script lang="ts">
   import { tick } from "svelte";
   import { t } from "$lib/i18n.svelte";
+  import Button from "$lib/components/ui/button/button.svelte";
+  import { Progress } from "$lib/components/ui/progress";
   let {
     open,
     stage,
@@ -17,7 +19,15 @@
     onfinish: (result: "completed" | "skipped") => void;
   } = $props();
   const step = $derived(
-    stage === "property" ? 1 : stage === "door" ? 2 : stage === "code" ? 3 : 4,
+    stage === "property"
+      ? 1
+      : stage === "door"
+        ? 2
+        : stage === "code"
+          ? 3
+          : stage === "install"
+            ? 4
+            : 5,
   );
   type Spotlight = { left: number; top: number; width: number; height: number };
   let spotlight = $state<Spotlight | null>(null);
@@ -125,18 +135,19 @@
 {/if}
 {#if open}<section class="guided-setup" aria-label={t("Guided setup")}>
     <div class="guide-top">
-      <span>{t("GUIDED SETUP")} · {Math.min(step, 3)} / 3</span><button
-        class="quiet"
-        onclick={() => onfinish("skipped")}>{t("Skip tour")}</button
+      <span>{t("GUIDED SETUP")} · {step} / 5</span><Button
+        variant="ghost"
+        size="sm"
+        onclick={() => onfinish("skipped")}>{t("Skip tour")}</Button
       >
     </div>
+    <Progress value={step * 20} aria-label={t("Guided setup")} class="mb-3" />
     <div aria-live="polite" aria-atomic="true">
       <h2>{title}</h2>
       <p>{text}</p>
     </div>
-    {#if stage === "done"}<button
-        class="primary"
-        onclick={() => onfinish("completed")}>{t("Finish setup")}</button
+    {#if stage === "done"}<Button onclick={() => onfinish("completed")}
+        >{t("Finish setup")}</Button
       >{:else}<small
         >{t(
           "Follow the highlighted part of the app. You can skip whenever you like.",
@@ -178,13 +189,7 @@
     font-weight: 700;
     color: var(--muted-foreground);
   }
-  .guide-top button {
-    padding: 5px 8px;
-    font-size: 12px;
-    color: var(--foreground);
-    background: var(--background);
-    white-space: nowrap;
-  }
+
   .guided-setup h2 {
     font-size: 19px;
     margin: 0 0 8px;
@@ -200,10 +205,7 @@
     font-size: 11px;
     color: var(--muted-foreground);
   }
-  .guided-setup > .primary {
-    font-size: 13px;
-    margin-top: calc(68px + env(safe-area-inset-top));
-  }
+
   :global(:root[data-theme="dark"]) .guided-setup {
     color: var(--foreground);
     background: var(--muted);
@@ -217,14 +219,7 @@
   :global(:root[data-theme="dark"]) .guide-top span {
     color: var(--muted-foreground);
   }
-  :global(:root[data-theme="dark"]) .guide-top button {
-    color: var(--foreground);
-    background: var(--background);
-    border-color: var(--border);
-  }
-  :global(:root[data-theme="dark"]) .guide-top button:hover {
-    background: var(--secondary);
-  }
+
   @media (max-width: 760px) {
     .guided-setup {
       top: calc(68px + env(safe-area-inset-top));

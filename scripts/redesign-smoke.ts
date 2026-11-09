@@ -127,7 +127,10 @@ try {
   const page = await context.newPage();
   const errors: string[] = [];
   const nativeRequests: string[] = [];
-  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("pageerror", (error) => {
+    errors.push(error.message);
+    console.error("Browser error:", error.message);
+  });
   page.on("request", (request) => {
     if (/capacitor:|ionic:|cordova:/i.test(request.url()))
       nativeRequests.push(request.url());
@@ -248,6 +251,13 @@ try {
     path: join(dir, "settings-desktop-dark.png"),
     fullPage: true,
   });
+  await expect(page.locator(".app-nav button").first()).toHaveCSS(
+    "flex-grow",
+    "0",
+  );
+  await expect(page.locator(".app-nav .quick-create")).toHaveCSS("order", "-1");
+  await page.evaluate(() => scrollTo(0, 0));
+  await page.screenshot({ path: join(dir, "settings-desktop-viewport.png") });
   expect(errors).toEqual([]);
   expect(nativeRequests).toEqual([]);
   console.log(
