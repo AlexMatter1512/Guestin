@@ -122,7 +122,7 @@ try {
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await readable(
     page,
-    "dialog[open] h2, dialog[open] h2 span, dialog[open] p, dialog[open] legend, dialog[open] label, dialog[open] button",
+    `[role="dialog"] [data-slot="dialog-title"], [role="dialog"] [data-slot="dialog-title"] span, [role="dialog"] [data-slot="dialog-description"], [role="dialog"] legend, [role="dialog"] label, [role="dialog"] button`,
   );
   await page.screenshot({ path: join(directory, "dark-language-choice.png") });
   await language.getByRole("radio", { name: "English", exact: true }).check();
