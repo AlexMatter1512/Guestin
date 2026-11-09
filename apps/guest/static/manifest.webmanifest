@@ -5,8 +5,8 @@
   "start_url": "/guest/",
   "scope": "/guest/",
   "display": "standalone",
-  "background_color": "#f5f7f7",
-  "theme_color": "#172b29",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "icons": [
     {
       "src": "/guest/icon-192.png",

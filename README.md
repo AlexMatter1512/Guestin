@@ -10,6 +10,14 @@ One Docker container serves the host app, guest app, and a public breakfast coun
 
 ![oshost host workspace in dark mode, with grouped preferences and property settings](docs/images/host-workspace.png)
 
+## On your phone
+
+<p>
+  <img src="docs/images/host-codes-mobile.png" width="240" alt="Host access codes on a phone in light mode" />
+  <img src="docs/images/host-doors-mobile.png" width="240" alt="Host door list on a phone" />
+  <img src="docs/images/host-create-mobile-dark.png" width="240" alt="The full-width Create drawer in dark mode" />
+</p>
+
 ## A workspace for you. A simple welcome for guests.
 
 - **Create access codes in seconds.** Give each guest the doors they need, with separate dates and single-use rules for each door. Copy a link or prepare a welcome message in Italian or English.
@@ -76,6 +84,8 @@ You can keep using the app if you skip installation or notifications. Door openi
 All connectors are optional. You can create your first access code without configuring any of them.
 
 ## Updates and backups
+
+Docker images are released from version tags. Changes pushed to `main` run checks; they do not update the published image.
 
 In Portainer, update the stack with **Re-pull image** enabled. With Compose:
 

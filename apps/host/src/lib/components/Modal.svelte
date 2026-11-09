@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import { MediaQuery } from "svelte/reactivity";
   import * as Dialog from "$lib/components/ui/dialog";
+  import * as Drawer from "$lib/components/ui/drawer";
   import { Button } from "$lib/components/ui/button";
   import { X } from "@lucide/svelte";
   import { t } from "$lib/i18n.svelte";
@@ -9,55 +11,72 @@
     title,
     onclose,
     children,
-  }: { open: boolean; title: string; onclose: () => void; children: Snippet } =
-    $props();
+  }: {
+    open: boolean;
+    title: string;
+    onclose: () => void;
+    children: Snippet;
+  } = $props();
+  const desktop = new MediaQuery("(min-width: 768px)");
+  function changed(value: boolean) {
+    if (!value) onclose();
+  }
 </script>
 
-<Dialog.Root
-  {open}
-  onOpenChange={(value) => {
-    if (!value) onclose();
-  }}
->
-  <Dialog.Content
-    showCloseButton={false}
-    class="workspace-dialog gap-0 p-0 sm:max-w-xl"
+{#snippet closeButton()}
+  <Button variant="ghost" size="icon" aria-label={t("Close")} onclick={onclose}
+    ><X size={20} /></Button
   >
-    <Dialog.Header
-      class="flex-row items-center justify-between border-b px-6 py-5"
+{/snippet}
+{#snippet body()}
+  <div
+    class="modal-scroll min-h-0 overflow-y-auto overscroll-contain p-5 sm:p-6"
+  >
+    {#if open}{@render children()}{/if}
+  </div>
+{/snippet}
+
+{#if desktop.current}
+  <Dialog.Root {open} onOpenChange={changed}>
+    <Dialog.Content
+      showCloseButton={false}
+      class="workspace-dialog max-h-[85dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl"
     >
-      <Dialog.Title class="text-lg font-semibold">{title}</Dialog.Title>
-      <Dialog.Description class="sr-only">{title}</Dialog.Description>
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label={t("Close")}
-        onclick={onclose}><X size={20} /></Button
+      <Dialog.Header
+        class="flex-row items-center justify-between border-b px-6 py-4"
       >
-    </Dialog.Header>
-    <div class="min-h-0 overflow-y-auto p-6">
-      {#if open}{@render children()}{/if}
-    </div>
-  </Dialog.Content>
-</Dialog.Root>
+        <Dialog.Title class="text-lg font-semibold">{title}</Dialog.Title>
+        <Dialog.Description class="sr-only">{title}</Dialog.Description>
+        {@render closeButton()}
+      </Dialog.Header>
+      {@render body()}
+    </Dialog.Content>
+  </Dialog.Root>
+{:else}
+  <Drawer.Root {open} onOpenChange={changed} shouldScaleBackground={false}>
+    <Drawer.Content
+      class="workspace-drawer overflow-hidden pb-[env(safe-area-inset-bottom)]"
+    >
+      <Drawer.Header
+        class="flex-row items-center justify-between border-b px-5 py-3 text-left"
+      >
+        <Drawer.Title class="text-lg font-semibold">{title}</Drawer.Title>
+        <Drawer.Description class="sr-only">{title}</Drawer.Description>
+        {@render closeButton()}
+      </Drawer.Header>
+      {@render body()}
+    </Drawer.Content>
+  </Drawer.Root>
+{/if}
 
 <style>
   :global(.workspace-dialog) {
-    max-height: 85dvh;
     display: flex;
-    flex-direction: column;
   }
-  @media (max-width: 640px) {
-    :global(.workspace-dialog) {
-      top: auto;
-      bottom: 0;
-      left: 0;
-      transform: none;
-      width: 100%;
-      max-width: 100%;
-      max-height: 90dvh;
-      border-radius: 20px 20px 0 0;
-      padding-bottom: env(safe-area-inset-bottom);
-    }
+  :global(.workspace-drawer) {
+    max-height: 90dvh;
+  }
+  .modal-scroll {
+    scrollbar-gutter: stable;
   }
 </style>

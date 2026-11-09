@@ -131,6 +131,7 @@ bun scripts/bnb-breakfast-smoke.ts
 bun scripts/host-features-smoke.ts
 bun scripts/clipboard-smoke.ts
 bun scripts/redesign-smoke.ts
+bun scripts/mobile-ui-smoke.ts
 bun scripts/connector-ui-smoke.ts
 ```
 
@@ -159,7 +160,16 @@ Use `tail -f data/logs/server.jsonl` during local testing, or collect container 
 
 `.github/workflows/docker.yml` runs frozen-lockfile installation, type checks, tests, and a Docker build for pull requests to `main`. The packaged container is started against a disposable volume, checked for both PWAs and SQLite access, then restarted to verify persistence. No real device/provider calls are made.
 
-Pushes to `main` publish `alexmatter/oshost:latest`, `:main`, and `:sha-<full-commit>`. Version tags such as `v1.2.3` also publish `:1.2.3` and `:1.2`. Images support `linux/amd64` and `linux/arm64`. Manual workflow runs publish only from `main` or a `v*` tag; pull requests never use registry credentials or publish images.
+Only pushes of version tags publish images. A tag such as `v1.2.3` publishes `alexmatter/oshost:1.2.3`, `:1.2`, `:sha-<full-commit>` and `:latest`. Prerelease tags such as `v1.2.3-rc.1` publish a versioned image without moving `latest`. Images support `linux/amd64` and `linux/arm64`. Pushes to `main`, pull requests, and manual workflow runs perform checks only; they never log into Docker Hub or publish an image. The old `:main` alias is no longer updated.
+
+To publish a release after reviewing the commit:
+
+```sh
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+Use a new version number for each release. Do not move an existing release tag.
 
 Configure this repository in GitHub **Settings → Secrets and variables → Actions**:
 
@@ -167,6 +177,6 @@ Configure this repository in GitHub **Settings → Secrets and variables → Act
 - Actions secret `DOCKERHUB_TOKEN`: a Docker Hub access token with write permission for the `alexmatter/oshost` repository. Never commit it or put it in the image.
 - Optional Actions variable `DOCKERHUB_IMAGE`: another lowercase `namespace/image`; defaults to `<DOCKERHUB_USERNAME>/oshost`.
 
-Publication fails with a configuration message until the variable and token are set. After adding them, rerun the workflow from GitHub Actions. `compose.yaml` already uses `alexmatter/oshost:latest`; use `docker compose pull && docker compose up -d` to deploy a published update while retaining the data volume, which also holds runtime keys.
+Publication fails with a configuration message until the variable and token are set. After adding them, push a new version tag; manual workflow runs only verify the build. `compose.yaml` already uses `alexmatter/oshost:latest`; use `docker compose pull && docker compose up -d` to deploy a published update while retaining the data volume, which also holds runtime keys.
 
 To run the same disposable image check locally: `bash scripts/container-smoke.sh oshost:ci` after building with `docker build -t oshost:ci .`.

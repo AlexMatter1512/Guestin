@@ -10,6 +10,9 @@
   import * as Table from "$lib/components/ui/table";
   import { cn } from "$lib/utils";
   import { onMount } from "svelte";
+  import { MediaQuery } from "svelte/reactivity";
+  import { fly } from "svelte/transition";
+  import { cubicOut } from "svelte/easing";
   import {
     KeyRound,
     DoorOpen,
@@ -121,6 +124,12 @@
     manualCopy = $state(""),
     copyDialog = $state(false),
     filtersOpen = $state(false);
+  const reducedMotion = new MediaQuery("(prefers-reduced-motion: reduce)");
+  const browserThemeColor = $derived(
+    (theme === "system" ? systemDark : theme === "dark")
+      ? "#0a0a0a"
+      : "#ffffff",
+  );
   let copyInput = $state<HTMLTextAreaElement | null>(null);
   const settingItems = [
     {
@@ -1370,7 +1379,7 @@
   ><title>{t("oshost · Host workspace")}</title><meta
     name="description"
     content="Your properties, doors and guest access in one place."
-  /></svelte:head
+  /><meta name="theme-color" content={browserThemeColor} /></svelte:head
 >
 {#if !ready}<div class="auth">{t("Opening your workspace…")}</div>
 {:else if !user}<main class="auth">
@@ -1549,1089 +1558,1136 @@
             onclick={() => (notice = "")}><X size={16} /></Button
           >
         </div>{/if}
-      {#if tab === "Codes"}
-        {#if editing}<form
-            data-tour="code-form"
-            class="stack"
-            onsubmit={(e) => {
-              e.preventDefault();
-              void act(save);
-            }}
-          >
-            <Card.Root class="workspace-card stack">
-              <div class="row spread">
-                <h2>{t(editId ? "Edit access code" : "Create access code")}</h2>
-                <Button
-                  variant="outline"
-                  type="button"
-                  onclick={() => {
-                    editing = false;
-                    localStorage.removeItem("oshost.draft." + user.id);
-                  }}>{t("Discard")}</Button
-                >
-              </div>
-              <div class="form-grid">
-                <Label class="field-label"
-                  >{t("Guest name / label")}<Input
-                    bind:value={draft.label}
-                    required
-                    placeholder={t("e.g. Maria Rossi")}
-                  /></Label
-                ><Label class="field-label"
-                  >{t("Property")}<NativeSelect.Root
-                    class="w-full"
-                    bind:value={draft.propertyId}
-                    onchange={() => {
-                      draft.grants = [];
-                      if (tourVisible) changeTourProperty(draft.propertyId);
-                    }}
-                    >{#each properties as p, index (p.id ?? index)}<NativeSelect.Option
-                        value={p.id}>{p.name}</NativeSelect.Option
-                      >{/each}</NativeSelect.Root
-                  ></Label
-                >
-              </div>
-              <Label class="field-label"
-                >{t("Internal notes")}<Textarea bind:value={draft.notes}
-                ></Textarea></Label
+      {#key tab + ":" + settingsPage}
+        <div
+          class="view-content"
+          in:fly={{
+            y: reducedMotion.current ? 0 : 8,
+            duration: reducedMotion.current ? 0 : 180,
+            easing: cubicOut,
+          }}
+        >
+          {#if tab === "Codes"}
+            {#if editing}<form
+                data-tour="code-form"
+                class="stack"
+                onsubmit={(e) => {
+                  e.preventDefault();
+                  void act(save);
+                }}
               >
-              <div class="form-grid">
-                <Label class="field-label"
-                  >{t("Online check-in link")}<Input
-                    bind:value={draft.checkinLink}
-                    type="url"
-                  /></Label
-                ><Label class="field-label"
-                  >{t("Instructions link")}<Input
-                    bind:value={draft.instructionsLink}
-                    type="url"
-                  /></Label
-                >
-              </div>
-            </Card.Root>
-            <Card.Root class="workspace-card">
-              <h2>{t("Door permissions")}</h2>
-              <p class="muted">
-                {t("Times use")}
-                {properties.find((p) => p.id === draft.propertyId)?.timezone}{t(
-                  ". Each door has its own rules.",
-                )}
-              </p>
-              {#each doors.filter((d) => d.propertyId === draft.propertyId) as d, index (d.id ?? index)}{@const grant =
-                  draft.grants.find((g) => g.doorId === d.id)}
-                <div class="door">
+                <Card.Root class="workspace-card stack">
+                  <div class="row spread">
+                    <h2>
+                      {t(editId ? "Edit access code" : "Create access code")}
+                    </h2>
+                    <Button
+                      variant="outline"
+                      type="button"
+                      onclick={() => {
+                        editing = false;
+                        localStorage.removeItem("oshost.draft." + user.id);
+                      }}>{t("Discard")}</Button
+                    >
+                  </div>
+                  <div class="form-grid">
+                    <Label class="field-label"
+                      >{t("Guest name / label")}<Input
+                        bind:value={draft.label}
+                        required
+                        placeholder={t("e.g. Maria Rossi")}
+                      /></Label
+                    ><Label class="field-label"
+                      >{t("Property")}<NativeSelect.Root
+                        class="w-full"
+                        bind:value={draft.propertyId}
+                        onchange={() => {
+                          draft.grants = [];
+                          if (tourVisible) changeTourProperty(draft.propertyId);
+                        }}
+                        >{#each properties as p, index (p.id ?? index)}<NativeSelect.Option
+                            value={p.id}>{p.name}</NativeSelect.Option
+                          >{/each}</NativeSelect.Root
+                      ></Label
+                    >
+                  </div>
+                  <Label class="field-label"
+                    >{t("Internal notes")}<Textarea bind:value={draft.notes}
+                    ></Textarea></Label
+                  >
+                  <div class="form-grid">
+                    <Label class="field-label"
+                      >{t("Online check-in link")}<Input
+                        bind:value={draft.checkinLink}
+                        type="url"
+                      /></Label
+                    ><Label class="field-label"
+                      >{t("Instructions link")}<Input
+                        bind:value={draft.instructionsLink}
+                        type="url"
+                      /></Label
+                    >
+                  </div>
+                </Card.Root>
+                <Card.Root class="workspace-card">
+                  <h2>{t("Door permissions")}</h2>
+                  <p class="muted">
+                    {t("Times use")}
+                    {properties.find((p) => p.id === draft.propertyId)
+                      ?.timezone}{t(". Each door has its own rules.")}
+                  </p>
+                  {#each doors.filter((d) => d.propertyId === draft.propertyId) as d, index (d.id ?? index)}{@const grant =
+                      draft.grants.find((g) => g.doorId === d.id)}
+                    <div class="door">
+                      <Label class="inline"
+                        ><Checkbox
+                          checked={!!grant}
+                          onCheckedChange={(checked) => selectDoor(d, checked)}
+                        />{d.name}{d.common
+                          ? " · " + t("Common door")
+                          : ""}</Label
+                      >{#if grant}<div
+                          class="form-grid"
+                          style="margin-top:14px"
+                        >
+                          <Label class="field-label"
+                            >{t("Valid from")}<Input
+                              type="datetime-local"
+                              value={dateInput(grant.start)}
+                              onchange={(e) =>
+                                changeDate(
+                                  grant,
+                                  "start",
+                                  e.currentTarget.value,
+                                )}
+                              required
+                            /></Label
+                          ><Label class="field-label"
+                            >{t("Valid until")}<Input
+                              type="datetime-local"
+                              value={dateInput(grant.end)}
+                              onchange={(e) =>
+                                changeDate(grant, "end", e.currentTarget.value)}
+                              required
+                            /></Label
+                          ><Label class="inline"
+                            ><Checkbox bind:checked={grant.singleUse} />{t(
+                              "Single use",
+                            )}</Label
+                          >
+                        </div>{/if}
+                    </div>{/each}{#if !doors.length}<p>
+                      {t(
+                        "Add a property in Settings, then connect a door in Doors.",
+                      )}
+                    </p>{/if}
+                </Card.Root>
+                <Card.Root class="workspace-card stack">
                   <Label class="inline"
                     ><Checkbox
-                      checked={!!grant}
-                      onCheckedChange={(checked) => selectDoor(d, checked)}
-                    />{d.name}{d.common ? " · " + t("Common door") : ""}</Label
-                  >{#if grant}<div class="form-grid" style="margin-top:14px">
+                      checked={!!draft.breakfast}
+                      onCheckedChange={(checked) =>
+                        (draft.breakfast = checked
+                          ? { total: 1, start: date, end: date }
+                          : null)}
+                    />{t("Include breakfast")}</Label
+                  >{#if draft.breakfast}<div class="form-grid">
                       <Label class="field-label"
-                        >{t("Valid from")}<Input
-                          type="datetime-local"
-                          value={dateInput(grant.start)}
-                          onchange={(e) =>
-                            changeDate(grant, "start", e.currentTarget.value)}
+                        >{t("Total breakfasts")}<Input
+                          type="number"
+                          min="0"
+                          bind:value={draft.breakfast.total}
                           required
                         /></Label
                       ><Label class="field-label"
-                        >{t("Valid until")}<Input
-                          type="datetime-local"
-                          value={dateInput(grant.end)}
-                          onchange={(e) =>
-                            changeDate(grant, "end", e.currentTarget.value)}
+                        >{t("First breakfast date")}<Input
+                          type="date"
+                          bind:value={draft.breakfast.start}
                           required
                         /></Label
-                      ><Label class="inline"
-                        ><Checkbox bind:checked={grant.singleUse} />{t(
-                          "Single use",
-                        )}</Label
+                      ><Label class="field-label"
+                        >{t("Last breakfast date")}<Input
+                          type="date"
+                          bind:value={draft.breakfast.end}
+                          required
+                        /></Label
                       >
                     </div>{/if}
-                </div>{/each}{#if !doors.length}<p>
-                  {t(
-                    "Add a property in Settings, then connect a door in Doors.",
-                  )}
-                </p>{/if}
-            </Card.Root>
-            <Card.Root class="workspace-card stack">
-              <Label class="inline"
-                ><Checkbox
-                  checked={!!draft.breakfast}
-                  onCheckedChange={(checked) =>
-                    (draft.breakfast = checked
-                      ? { total: 1, start: date, end: date }
-                      : null)}
-                />{t("Include breakfast")}</Label
-              >{#if draft.breakfast}<div class="form-grid">
-                  <Label class="field-label"
-                    >{t("Total breakfasts")}<Input
-                      type="number"
-                      min="0"
-                      bind:value={draft.breakfast.total}
-                      required
-                    /></Label
-                  ><Label class="field-label"
-                    >{t("First breakfast date")}<Input
-                      type="date"
-                      bind:value={draft.breakfast.start}
-                      required
-                    /></Label
-                  ><Label class="field-label"
-                    >{t("Last breakfast date")}<Input
-                      type="date"
-                      bind:value={draft.breakfast.end}
-                      required
-                    /></Label
-                  >
-                </div>{/if}
-            </Card.Root>
-            {#if duplicateCodes.length}<p class="notice" role="status">
-                {t(
-                  "An identical access code already exists. Saving requires confirmation.",
-                )}
-              </p>{/if}
-            <Button
-              type="submit"
-              variant="default"
-              class="primary"
-              disabled={busy || !draft.propertyId}
-              >{t("Save access code")}</Button
-            ><small
-              >{t(
-                "Active permissions are published after the server confirms this save.",
-              )}</small
-            >
-          </form>
-        {:else if detailCode}
-          <Card.Root class="workspace-card stack" data-code-id={detailCode.id}>
-            <div class="row spread">
-              <h2>{detailCode.label}</h2>
-              <Badge variant="secondary" class="badge"
-                >{t(statusOf(detailCode))}</Badge
-              >
-            </div>
-            <p>{detailCode.notes}</p>
-            <small
-              >{t("Created by")}
-              {detailCode.creatorName ??
-                users.find((u) => u.id === detailCode.creator)?.name ??
-                t("Former staff")} · {formatInstant(
-                detailCode.created,
-                detailCode.propertyId,
-              )}</small
-            >
-            <div class="detail-actions">
-              <Button
-                type="button"
-                variant="default"
-                class="primary"
-                disabled={!!detailCode.revoked}
-                onclick={() => act(() => prepareShare(detailCode))}
-                ><Share2 size={17} />{t("Prepare message")}</Button
-              ><Button
-                type="button"
-                variant="outline"
-                onclick={() => edit(detailCode)}
-                ><Pencil size={17} />{t("Edit")}</Button
-              ><a
-                class="button"
-                href={detailCode.link}
-                target="_blank"
-                rel="noreferrer"
-                ><ExternalLink size={17} />{t("Visit guest page")}</a
-              >
-            </div>
-            <section class="copy-fields">
-              <Label class="field-label"
-                >{t("Access code")}
-                <div class="input-action">
-                  <Input
-                    readonly
-                    value={guestToken(detailCode.link)}
-                    aria-label={t("Access code value")}
-                  /><Button
-                    type="button"
-                    variant="outline"
-                    disabled={!!detailCode.revoked}
-                    onclick={() => void copy(guestToken(detailCode.link))}
-                    ><Copy size={16} />{t("Copy code")}</Button
-                  >
-                </div></Label
-              ><Label class="field-label"
-                >{t("Guest link")}
-                <div class="input-action">
-                  <Input
-                    readonly
-                    value={detailCode.link}
-                    aria-label={t("Guest link value")}
-                  /><Button
-                    type="button"
-                    variant="outline"
-                    disabled={!!detailCode.revoked}
-                    onclick={() => void copy(detailCode.link)}
-                    ><Link size={16} />{t("Copy link")}</Button
-                  >
-                </div></Label
-              >
-            </section>
-            <h3>{t("Door permissions")}</h3>
-            {#each detailCode.grants as g (g.doorId)}<section
-                class="door stack"
-              >
-                <div class="row spread">
-                  <strong>{doors.find((d) => d.id === g.doorId)?.name}</strong
-                  ><Badge variant="secondary" class="badge"
-                    >{t(grantStatus(g))}</Badge
-                  >
-                </div>
-                <p>
-                  {formatInstant(g.start, detailCode.propertyId)} → {formatInstant(
-                    g.end,
-                    detailCode.propertyId,
-                  )}<br /><small
-                    >{properties.find((p) => p.id === detailCode.propertyId)
-                      ?.timezone}</small
-                  >
-                </p>
-                <small
-                  >{t("Successful requests")}: {g.used} · {t(
-                    g.singleUse ? "Single use" : "Multiple uses",
+                </Card.Root>
+                {#if duplicateCodes.length}<p class="notice" role="status">
+                    {t(
+                      "An identical access code already exists. Saving requires confirmation.",
+                    )}
+                  </p>{/if}
+                <Button
+                  type="submit"
+                  variant="default"
+                  class="primary"
+                  disabled={busy || !draft.propertyId}
+                  >{t("Save access code")}</Button
+                ><small
+                  >{t(
+                    "Active permissions are published after the server confirms this save.",
                   )}</small
                 >
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={busy || !!detailCode.revoked}
-                  onclick={() =>
-                    act(async () => {
-                      await api(
-                        `codes/${detailCode.id}/grants/${g.doorId}`,
-                        { active: g.active === false },
-                        "PATCH",
-                      );
-                      await reload();
-                    })}
-                  >{t(
-                    g.active === false
-                      ? "Resume permission"
-                      : "Pause permission",
-                  )}</Button
-                >
-                {#if g.claim}<div class="error">
-                    <p>
-                      {t("Uncertain device request:")}
-                      {t("Check the door before allowing another request.")}
-                    </p>
-                    <div class="row">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onclick={() =>
-                          act(async () => {
-                            await api(`codes/${detailCode.id}/resolve`, {
-                              doorId: g.doorId,
-                              consumed: true,
-                            });
-                            await reload();
-                          })}>{t("Mark consumed")}</Button
-                      ><Button
-                        type="button"
-                        variant="outline"
-                        onclick={() =>
-                          act(async () => {
-                            await api(`codes/${detailCode.id}/resolve`, {
-                              doorId: g.doorId,
-                              consumed: false,
-                            });
-                            await reload();
-                          })}>{t("Permit retry")}</Button
-                      >
-                    </div>
-                  </div>{/if}
-              </section>{/each}
-            {#if detailCode.breakfast}<section>
-                <h3>{t("Breakfast")}</h3>
-                <p>
-                  {detailCode.breakfastUsed} / {detailCode.breakfast.total} · {detailCode
-                    .breakfast.start} → {detailCode.breakfast.end}
-                </p>
-              </section>{/if}
-            <details class="manage-access">
-              <summary>{t("Manage access")}</summary>
-              <p class="muted">
-                {t("Replacing or revoking a link takes effect immediately.")}
-              </p>
-              <div class="row">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!!detailCode.revoked || busy}
-                  onclick={() => act(() => replaceLink(detailCode))}
-                  >{t("Replace link")}</Button
-                ><Button
-                  type="button"
-                  variant="destructive"
-                  class="danger"
-                  disabled={!!detailCode.revoked || busy}
-                  onclick={() => act(() => revoke(detailCode))}
-                  >{t("Revoke")}</Button
-                >
-              </div>
-            </details>
-          </Card.Root>
-        {:else}
-          <div class="list-toolbar">
-            <div class="search-field">
-              <Search size={18} /><Input
-                aria-label={t("Search codes")}
-                placeholder={t("Search guest access…")}
-                bind:value={search}
-              />
-            </div>
-            <Button
-              type="button"
-              variant="default"
-              class="primary"
-              onclick={() => newCode()}
-              disabled={!propertyId}
-              ><Plus size={17} /><span>{t("New code")}</span></Button
-            >
-          </div>
-          <div class="calendar-bar">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              class="icon-button"
-              aria-label={t("Previous day")}
-              onclick={() => shiftDay(-1)}><ChevronLeft size={18} /></Button
-            ><Label class="date-filter"
-              ><CalendarDays size={17} /><Input
-                aria-label={t("Valid on date")}
-                type="date"
-                bind:value={codeDate}
-              /></Label
-            ><Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              class="icon-button"
-              aria-label={t("Next day")}
-              onclick={() => shiftDay(1)}><ChevronRight size={18} /></Button
-            ><Button
-              type="button"
-              variant="ghost"
-              class="quiet"
-              onclick={() =>
-                (codeDate = dayAt(new Date().toISOString(), propertyId))}
-              >{t("Today")}</Button
-            ><Button
-              type="button"
-              variant="ghost"
-              class={cn("quiet", { selected: !codeDate })}
-              onclick={() => (codeDate = "")}>{t("All dates")}</Button
-            ><Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              class="icon-button"
-              aria-label={t("Filters")}
-              title={t("Filters")}
-              aria-expanded={filtersOpen}
-              onclick={() => (filtersOpen = !filtersOpen)}
-              ><ListFilter size={17} />{codeStatus !== "all" ? "1" : ""}</Button
-            >
-          </div>
-          {#if filtersOpen}<div class="filter-panel">
-              <Label class="field-label"
-                >{t("Status")}<NativeSelect.Root
-                  class="w-full"
-                  aria-label={t("Status")}
-                  bind:value={codeStatus}
-                  ><NativeSelect.Option value="all"
-                    >{t("All codes")}</NativeSelect.Option
-                  >{#each ["Valid now", "Upcoming", "Expired", "Revoked", "No available doors"] as state (state)}<NativeSelect.Option
-                      value={state}>{t(state)}</NativeSelect.Option
-                    >{/each}</NativeSelect.Root
-                ></Label
-              ><Button
-                type="button"
-                variant="ghost"
-                class="quiet"
-                onclick={() => {
-                  codeDate = "";
-                  codeStatus = "all";
-                  search = "";
-                }}>{t("Clear filters")}</Button
+              </form>
+            {:else if detailCode}
+              <Card.Root
+                class="workspace-card stack"
+                data-code-id={detailCode.id}
               >
-            </div>{/if}
-          <Item.Group class="code-list workspace-list">
-            {#each filtered as c (c.id)}<article
-                class="code-row"
-                data-code-id={c.id}
-              >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  class="code-summary"
-                  onclick={() => (detailCodeId = c.id)}
-                  ><span class="row"
-                    ><strong>{c.label}</strong>{#if c.revoked}<Badge
-                        variant="secondary"
-                        class="badge">{t("Revoked")}</Badge
-                      >{:else if c.grants.some((g: any) => g.claim)}<Badge
-                        variant="secondary"
-                        class="badge attention">{t("Needs review")}</Badge
-                      >{/if}</span
-                  ><span class="muted validity">{codeRange(c)}</span><span
-                    class="row badges"
-                    >{#each c.grants.slice(0, 3) as g (g.doorId)}<Badge
-                        variant="secondary"
-                        class="badge"
-                        >{doors.find((d) => d.id === g.doorId)?.name}</Badge
-                      >{/each}{#if c.grants.length > 3}<Badge
-                        variant="secondary"
-                        class="badge">+{c.grants.length - 3}</Badge
-                      >{/if}{#if c.breakfast}<span class="muted"
-                        ><Coffee size={13} />
-                        {c.breakfast.total - c.breakfastUsed}</span
-                      >{/if}</span
-                  ></Button
-                >
-                <div class="row row-actions">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    class="icon-button"
-                    aria-label={t("Copy link")}
-                    title={t("Copy link")}
-                    disabled={!!c.revoked}
-                    onclick={() => void copy(c.link)}><Link size={19} /></Button
-                  ><Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    class="icon-button"
-                    aria-label={t("Prepare message")}
-                    title={t("Prepare message")}
-                    disabled={!!c.revoked}
-                    onclick={() => act(() => prepareShare(c))}
-                    ><Share2 size={19} /></Button
+                <div class="row spread">
+                  <h2>{detailCode.label}</h2>
+                  <Badge variant="secondary" class="badge"
+                    >{t(statusOf(detailCode))}</Badge
                   >
                 </div>
-              </article>{:else}<div class="empty-state">
-                <KeyRound size={36} />
-                <h2>
-                  {t(
-                    search || codeDate || codeStatus !== "all"
-                      ? "No matching codes"
-                      : "Your next guest starts here",
-                  )}
-                </h2>
-                <p>
-                  {t(
-                    "Create a link with just the doors and breakfast allowance they need.",
-                  )}
-                </p>
-                {#if !propertyId}{#if user.role === "owner"}<Button
+                <p>{detailCode.notes}</p>
+                <small
+                  >{t("Created by")}
+                  {detailCode.creatorName ??
+                    users.find((u) => u.id === detailCode.creator)?.name ??
+                    t("Former staff")} · {formatInstant(
+                    detailCode.created,
+                    detailCode.propertyId,
+                  )}</small
+                >
+                <div class="detail-actions">
+                  <Button
+                    type="button"
+                    variant="default"
+                    class="primary"
+                    disabled={!!detailCode.revoked}
+                    onclick={() => act(() => prepareShare(detailCode))}
+                    ><Share2 size={17} />{t("Prepare message")}</Button
+                  ><Button
+                    type="button"
+                    variant="outline"
+                    onclick={() => edit(detailCode)}
+                    ><Pencil size={17} />{t("Edit")}</Button
+                  ><a
+                    class="button"
+                    href={detailCode.link}
+                    target="_blank"
+                    rel="noreferrer"
+                    ><ExternalLink size={17} />{t("Visit guest page")}</a
+                  >
+                </div>
+                <section class="copy-fields">
+                  <Label class="field-label"
+                    >{t("Access code")}
+                    <div class="input-action">
+                      <Input
+                        readonly
+                        value={guestToken(detailCode.link)}
+                        aria-label={t("Access code value")}
+                      /><Button
+                        type="button"
+                        variant="outline"
+                        disabled={!!detailCode.revoked}
+                        onclick={() => void copy(guestToken(detailCode.link))}
+                        ><Copy size={16} />{t("Copy code")}</Button
+                      >
+                    </div></Label
+                  ><Label class="field-label"
+                    >{t("Guest link")}
+                    <div class="input-action">
+                      <Input
+                        readonly
+                        value={detailCode.link}
+                        aria-label={t("Guest link value")}
+                      /><Button
+                        type="button"
+                        variant="outline"
+                        disabled={!!detailCode.revoked}
+                        onclick={() => void copy(detailCode.link)}
+                        ><Link size={16} />{t("Copy link")}</Button
+                      >
+                    </div></Label
+                  >
+                </section>
+                <h3>{t("Door permissions")}</h3>
+                {#each detailCode.grants as g (g.doorId)}<section
+                    class="door stack"
+                  >
+                    <div class="row spread">
+                      <strong
+                        >{doors.find((d) => d.id === g.doorId)?.name}</strong
+                      ><Badge variant="secondary" class="badge"
+                        >{t(grantStatus(g))}</Badge
+                      >
+                    </div>
+                    <p>
+                      {formatInstant(g.start, detailCode.propertyId)} → {formatInstant(
+                        g.end,
+                        detailCode.propertyId,
+                      )}<br /><small
+                        >{properties.find((p) => p.id === detailCode.propertyId)
+                          ?.timezone}</small
+                      >
+                    </p>
+                    <small
+                      >{t("Successful requests")}: {g.used} · {t(
+                        g.singleUse ? "Single use" : "Multiple uses",
+                      )}</small
+                    >
+                    <Button
                       type="button"
                       variant="outline"
-                      onclick={() => openSettings("properties")}
-                      >{t("Set up a property")}</Button
-                    >{:else}<p>
-                      {t("Ask an owner to set up a property and its doors.")}
-                    </p>{/if}{:else if search || codeDate || codeStatus !== "all"}<Button
-                    type="button"
-                    variant="outline"
-                    onclick={() => {
-                      search = "";
-                      codeDate = "";
-                      codeStatus = "all";
-                    }}>{t("Clear filters")}</Button
-                  >{:else}<Button
-                    type="button"
-                    variant="outline"
-                    onclick={() => newCode()}
-                    disabled={!propertyId}>{t("Create access code")}</Button
-                  >{/if}
-              </div>{/each}
-          </Item.Group>{/if}
-      {:else if tab === "Activity"}<div class="row spread">
-          <p class="muted">
-            {t("Access attempts, device responses and breakfast usage.")}
-          </p>
-          <Button onclick={() => act(reload)}>{t("Refresh")}</Button>
-        </div>
-        {#each events.filter((e) => !e.property_id || e.property_id === propertyId) as e, index (e.id ?? index)}<Card.Root
-            class="workspace-card"
-          >
-            <div class="row spread">
-              <strong>{e.type}</strong><small
-                >{new Date(e.created).toLocaleString(
-                  hostLanguage.current,
-                )}</small
-              >
-            </div>
-            <p>{e.message}</p>
-            {#if e.code_id}<small
-                >{codes.find((c) => c.id === e.code_id)?.label}</small
-              >{/if}
-          </Card.Root>{/each}
-      {:else if tab === "Reports"}<Card.Root class="workspace-card">
-          <h2>{t("Code creation and usage")}</h2>
-          <p class="muted">
-            {t(
-              "Grouped by creation month in the property timezone. Attempts and accepted requests are lifetime totals for those codes.",
-            )}
-          </p>
-          <Table.Root>
-            <Table.Header
-              ><Table.Row
-                ><Table.Head>{t("Host / month")}</Table.Head><Table.Head
-                  >{t("Created")}</Table.Head
-                ><Table.Head>{t("Used")}</Table.Head><Table.Head
-                  >{t("Attempts")}</Table.Head
-                ><Table.Head>{t("Accepted")}</Table.Head></Table.Row
-              ></Table.Header
-            ><Table.Body
-              >{#each stats as s, index (s.name + s.month)}<Table.Row
-                  ><Table.Cell
-                    >{s.name}<br /><small>{s.month}</small></Table.Cell
-                  ><Table.Cell>{s.created}</Table.Cell><Table.Cell
-                    >{s.used}</Table.Cell
-                  ><Table.Cell>{s.attempts}</Table.Cell><Table.Cell
-                    >{s.accepted}</Table.Cell
-                  ></Table.Row
-                >{/each}</Table.Body
-            >
-          </Table.Root>
-        </Card.Root>
-      {:else if tab === "Connectors"}<ConnectorManager
-          {api}
-          {reload}
-          {connections}
-          {propertyId}
-          {doors}
-          {property}
-          owner={user.role === "owner"}
-          onDraft={newCode}
-          bind:view={connectorView}
-        />
-      {:else if tab === "Messages"}<div class="page-intro">
-          <p>{t("Personalize what you share with guests")}</p>
-        </div>
-        <div class="form-grid form-controls">
-          <Label class="field-label"
-            >{t("Language")}<NativeSelect.Root
-              class="w-full"
-              aria-label={t("Template language")}
-              bind:value={templateLang}
-              ><NativeSelect.Option value="en">English</NativeSelect.Option
-              ><NativeSelect.Option value="it">Italiano</NativeSelect.Option
-              ></NativeSelect.Root
-            ></Label
-          ><Label class="field-label"
-            >{t("Message")}<NativeSelect.Root
-              class="w-full"
-              aria-label={t("Template type")}
-              bind:value={templateKind}
-              ><NativeSelect.Option value="access"
-                >{t("Access link")}</NativeSelect.Option
-              ><NativeSelect.Option value="checkin"
-                >{t("Check-in")}</NativeSelect.Option
-              ><NativeSelect.Option value="instructions"
-                >{t("Instructions")}</NativeSelect.Option
-              ></NativeSelect.Root
-            ></Label
-          >
-        </div>
-        <Card.Root class="workspace-card stack">
-          <h2>{t("Property templates")}</h2>
-          <small
-            >{t("Placeholders:")}
-            {"{{guest}}, {{link}}, {{checkinLink}}, {{instructionsLink}}, {{host}}"}</small
-          ><Textarea
-            disabled={busy || templatesLoading}
-            bind:ref={templateInput}
-            aria-label={t("Message template")}
-            bind:value={templates[templateLang][templateKind]}
-          ></Textarea>
-          <div class="row">
-            {#each ["guest", "link", "checkinLink", "instructionsLink", "host"] as key (key)}<Button
-                type="button"
-                variant="outline"
-                disabled={busy || templatesLoading}
-                onclick={() => insertPlaceholder(key)}
-                >{"{{" + key + "}}"}</Button
-              >{/each}
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={busy || templatesLoading}
-            onclick={() => {
-              if (
-                confirm(
-                  t(
-                    "Reset this template to its default text? Save templates to publish the change.",
-                  ),
-                )
-              )
-                templates[templateLang][templateKind] =
-                  defaultTemplates[templateLang as "en" | "it"][
-                    templateKind as "access" | "checkin" | "instructions"
-                  ];
-            }}>{t("Reset to default")}</Button
-          >
-          <h3>{t("Live sample preview")}</h3>
-          <pre class="message-preview">{preview(
-              templates[templateLang]?.[templateKind] ?? "",
-              codes.find((c) => c.id === messageCode),
-            )}</pre>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={busy || templatesLoading || !propertyId}
-            onclick={() =>
-              act(async () => {
-                await api("templates/" + propertyId, templates, "PUT");
-                notice = "Templates saved.";
-              })}>{t("Save templates")}</Button
-          >
-        </Card.Root>
-      {:else if tab === "Doors"}<DoorManager
-          {doors}
-          {propertyId}
-          propertyName={property?.name ?? ""}
-          owner={user.role === "owner"}
-          {api}
-          {reload}
-          onSaved={doorSaved}
-          onSetup={() => navigate("Settings")}
-          bind:editor={doorEditor}
-          bind:editId={editingDoor}
-          bind:detailId={detailDoorId}
-        />
-      {:else if tab === "Profile"}<Card.Root class="workspace-card stack">
-          <h2>{t("Your account")}</h2>
-          <Label class="field-label"
-            >{t("Your name")}<Input readonly value={user.name} /></Label
-          ><Label class="field-label"
-            >{t("Email")}<Input readonly value={user.email ?? ""} /></Label
-          >
-          <p>{t("Role")}: {t(user.role)}</p>
-          <small>{t("Account ID")}: {user.id}</small><Button
-            type="button"
-            variant="outline"
-            disabled={busy}
-            onclick={() => act(logout)}
-            ><LogOut size={17} />{t("Sign out")}</Button
-          >
-        </Card.Root>
-      {:else if tab === "Settings"}
-        {#if !settingsPage}<div class="page-intro">
-            <p>{t("Manage your workspace and preferences")}</p>
-          </div>
-          {#each ["Preferences", "Workspace", "Administration"] as group (group)}{@const items =
-              settingItems.filter(
-                (i) => i.group === group && (!i.owner || user.role === "owner"),
-              )}{#if items.length}<section class="settings-group">
-                <h2>{t(group)}</h2>
-                <Item.Group class="workspace-list">
-                  {#each items as item (item.id)}
-                    <Item.Root class="p-0 rounded-none">
-                      {#snippet child({ props })}
-                        <Button
-                          {...props}
-                          variant="ghost"
-                          class="settings-row"
-                          data-tour={"nav-" + item.id}
-                          onclick={() => openSettings(item.id)}
-                        >
-                          <Item.Media variant="icon"
-                            ><item.icon size={20} /></Item.Media
+                      disabled={busy || !!detailCode.revoked}
+                      onclick={() =>
+                        act(async () => {
+                          await api(
+                            `codes/${detailCode.id}/grants/${g.doorId}`,
+                            { active: g.active === false },
+                            "PATCH",
+                          );
+                          await reload();
+                        })}
+                      >{t(
+                        g.active === false
+                          ? "Resume permission"
+                          : "Pause permission",
+                      )}</Button
+                    >
+                    {#if g.claim}<div class="error">
+                        <p>
+                          {t("Uncertain device request:")}
+                          {t("Check the door before allowing another request.")}
+                        </p>
+                        <div class="row">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onclick={() =>
+                              act(async () => {
+                                await api(`codes/${detailCode.id}/resolve`, {
+                                  doorId: g.doorId,
+                                  consumed: true,
+                                });
+                                await reload();
+                              })}>{t("Mark consumed")}</Button
+                          ><Button
+                            type="button"
+                            variant="outline"
+                            onclick={() =>
+                              act(async () => {
+                                await api(`codes/${detailCode.id}/resolve`, {
+                                  doorId: g.doorId,
+                                  consumed: false,
+                                });
+                                await reload();
+                              })}>{t("Permit retry")}</Button
                           >
-                          <Item.Content
-                            ><Item.Title>{t(item.title)}</Item.Title
-                            ><Item.Description
-                              >{t(item.description)}</Item.Description
-                            ></Item.Content
-                          >
-                          <Item.Actions><ChevronRight size={18} /></Item.Actions
-                          >
-                        </Button>
-                      {/snippet}
-                    </Item.Root>
-                  {/each}
-                </Item.Group>
-              </section>{/if}{/each}
-          <Item.Group class="workspace-list">
-            <Button
-              type="button"
-              variant="ghost"
-              class="settings-row"
-              onclick={startTour}
-              ><CircleHelp size={21} /><span
-                ><strong>{t("App tour")}</strong><small
-                  >{t("A quick guide to your host workspace")}</small
-                ></span
-              ><ChevronRight size={18} /></Button
-            >
-          </Item.Group>
-        {:else if settingsPage === "appearance"}<div class="page-intro">
-            <p>{t("Light, dark or follow your device")}</p>
-          </div>
-          <div class="theme-options" role="radiogroup" aria-label={t("Theme")}>
-            {#each [{ id: "light", title: "Light", icon: Sun }, { id: "dark", title: "Dark", icon: Moon }, { id: "system", title: "System", icon: Monitor }] as option (option.id)}<Button
-                type="button"
-                variant="outline"
-                class={cn({ selected: theme === option.id })}
-                role="radio"
-                aria-checked={theme === option.id}
-                disabled={busy}
-                onclick={() => act(() => preferences({ theme: option.id }))}
-                ><span class={"theme-preview " + option.id}
-                  ><span></span><span></span><span></span></span
-                ><span class="row"
-                  ><option.icon size={17} />{t(
-                    option.title,
-                  )}{#if theme === option.id}<Check size={16} />{/if}</span
-                ></Button
-              >{/each}
-          </div>
-        {:else if settingsPage === "language"}<div class="page-intro">
-            <p>
-              {t(
-                "Your choice is saved to your account across devices. Guest language is independent.",
-              )}
-            </p>
-          </div>
-          <Item.Group
-            class="workspace-list"
-            role="radiogroup"
-            aria-label={t("App language")}
-          >
-            {#each [{ id: "it", name: "Italiano", detail: "Italian" }, { id: "en", name: "English", detail: "English" }] as language (language.id)}<Button
-                type="button"
-                variant="ghost"
-                class="settings-row"
-                role="radio"
-                aria-checked={hostLanguage.current === language.id}
-                disabled={busy}
-                onclick={() =>
-                  act(() => chooseLanguage(language.id as HostLocale))}
-                ><span class="language-badge">{language.id.toUpperCase()}</span
-                ><span
-                  ><strong>{language.name}</strong><small
-                    >{t(language.detail)}</small
-                  ></span
-                >{#if hostLanguage.current === language.id}<Check
-                    size={19}
-                  />{/if}</Button
-              >{/each}
-          </Item.Group>
-        {:else if settingsPage === "notifications"}
-          <Card.Root class="workspace-card stack">
-            <h2>{t("Notifications & installation")}</h2>
-            <p class="muted">
-              {t(
-                "Install this app from your browser menu. On iPhone: Share → Add to Home Screen, then enable notifications here.",
-              )}
-            </p>
-            <small
-              >{t("Permission:")}
-              {permission}{t(
-                ". Leave filters empty to receive all activity.",
-              )}</small
-            >
-            <div class="row">
-              {#each properties as p, index (p.id ?? index)}<Label
-                  class="inline"
-                  ><input
-                    type="checkbox"
-                    value={p.id}
-                    bind:group={pushProperties}
-                  />{p.name}</Label
-                >{/each}
-            </div>
-            <fieldset class="stack">
-              <legend>{t("Notify me about")}</legend
-              >{#each [["access.accepted", "Access accepted"], ["access.denied", "Access denied"], ["access.failed", "Device failures"], ["access.uncertain", "Uncertain requests"], ["access.invalid", "Invalid guest links"], ["breakfast.redeemed", "Breakfast usage"], ["breakfast.denied", "Rejected breakfasts"]] as option (option[0])}<Label
-                  class="inline"
-                  ><input
-                    type="checkbox"
-                    checked={pushEvents.split(",").includes(option[0])}
-                    onchange={(e) => {
-                      const values = pushEvents
-                        .split(",")
-                        .filter(Boolean)
-                        .filter((v) => v !== option[0]);
-                      if (e.currentTarget.checked) values.push(option[0]);
-                      pushEvents = values.join(",");
-                    }}
-                  />{t(option[1])}</Label
-                >{/each}
-            </fieldset>
-            <div class="row">
-              <Button
-                type="button"
-                variant="outline"
-                onclick={() => act(enablePush)}
-                >{t("Enable / update notifications")}</Button
-              ><Button
-                type="button"
-                variant="outline"
-                onclick={() =>
-                  act(async () => {
-                    await api("push/subscriptions", undefined, "DELETE");
-                    if ("serviceWorker" in navigator) {
-                      const r =
-                        await navigator.serviceWorker.getRegistration("/host/");
-                      await (
-                        await r?.pushManager.getSubscription()
-                      )?.unsubscribe();
-                    }
-                    notice = "Notifications disabled.";
-                  })}>{t("Disable notifications")}</Button
-              >
-            </div>
-          </Card.Root>
-        {:else if settingsPage === "properties"}
-          {#if propertyForm && user.role === "owner"}<form
-              data-tour="property-form"
-              class="card stack"
-              onsubmit={(e) => {
-                e.preventDefault();
-                void act(async () => {
-                  const savedProperty = await api(
-                    "properties" + (pEditing ? "/" + pEditing : ""),
-                    {
-                      name: pName,
-                      timezone: pZone,
-                      checkIn: pIn,
-                      checkOut: pOut,
-                    },
-                    pEditing ? "PUT" : "POST",
-                  );
-                  propertySaved(savedProperty.id ?? pEditing);
-                  pEditing = "";
-                  pName = "";
-                  propertyForm = false;
-                  await reload();
-                });
-              }}
-            >
-              <h2>{t(pEditing ? "Edit property" : "Add property")}</h2>
-              <div class="form-grid">
-                <Label class="field-label"
-                  >{t("Name")}<Input bind:value={pName} required /></Label
-                ><Label class="field-label"
-                  >{t("Timezone")}<Input
-                    bind:value={pZone}
-                    required
-                    placeholder={t("Europe/Rome")}
-                  /></Label
-                ><Label class="field-label"
-                  >{t("Default arrival time")}<Input
-                    type="time"
-                    bind:value={pIn}
-                    required
-                  /></Label
-                ><Label class="field-label"
-                  >{t("Default departure time")}<Input
-                    type="time"
-                    bind:value={pOut}
-                    required
-                  /></Label
-                >
-              </div>
-              <Button type="submit" variant="outline"
-                >{t(pEditing ? "Save property" : "Add property")}</Button
-              >
-            </form>
-          {:else}<div class="section-intro row spread">
-              <p class="muted">{t("Names, timezones and arrival defaults")}</p>
-              {#if user.role === "owner"}<Button
+                        </div>
+                      </div>{/if}
+                  </section>{/each}
+                {#if detailCode.breakfast}<section>
+                    <h3>{t("Breakfast")}</h3>
+                    <p>
+                      {detailCode.breakfastUsed} / {detailCode.breakfast.total} ·
+                      {detailCode.breakfast.start} → {detailCode.breakfast.end}
+                    </p>
+                  </section>{/if}
+                <details class="manage-access">
+                  <summary>{t("Manage access")}</summary>
+                  <p class="muted">
+                    {t(
+                      "Replacing or revoking a link takes effect immediately.",
+                    )}
+                  </p>
+                  <div class="row">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!!detailCode.revoked || busy}
+                      onclick={() => act(() => replaceLink(detailCode))}
+                      >{t("Replace link")}</Button
+                    ><Button
+                      type="button"
+                      variant="destructive"
+                      class="danger"
+                      disabled={!!detailCode.revoked || busy}
+                      onclick={() => act(() => revoke(detailCode))}
+                      >{t("Revoke")}</Button
+                    >
+                  </div>
+                </details>
+              </Card.Root>
+            {:else}
+              <div class="list-toolbar">
+                <div class="search-field">
+                  <Search size={18} /><Input
+                    aria-label={t("Search codes")}
+                    placeholder={t("Search guest access…")}
+                    bind:value={search}
+                  />
+                </div>
+                <Button
                   type="button"
                   variant="default"
                   class="primary"
-                  data-tour="add-property"
-                  onclick={() => editProperty()}
-                  ><Plus size={17} />{t("Add property")}</Button
-                >{/if}
+                  onclick={() => newCode()}
+                  disabled={!propertyId}
+                  ><Plus size={17} /><span>{t("New code")}</span></Button
+                >
+              </div>
+              <div class="calendar-bar">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  class="icon-button"
+                  aria-label={t("Previous day")}
+                  onclick={() => shiftDay(-1)}><ChevronLeft size={18} /></Button
+                ><Label class="date-filter"
+                  ><CalendarDays size={17} /><Input
+                    aria-label={t("Valid on date")}
+                    type="date"
+                    bind:value={codeDate}
+                  /></Label
+                ><Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  class="icon-button"
+                  aria-label={t("Next day")}
+                  onclick={() => shiftDay(1)}><ChevronRight size={18} /></Button
+                ><Button
+                  type="button"
+                  variant="ghost"
+                  class="quiet"
+                  onclick={() =>
+                    (codeDate = dayAt(new Date().toISOString(), propertyId))}
+                  >{t("Today")}</Button
+                ><Button
+                  type="button"
+                  variant="ghost"
+                  class={cn("quiet", { selected: !codeDate })}
+                  onclick={() => (codeDate = "")}>{t("All dates")}</Button
+                ><Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  class="icon-button"
+                  aria-label={t("Filters")}
+                  title={t("Filters")}
+                  aria-expanded={filtersOpen}
+                  onclick={() => (filtersOpen = !filtersOpen)}
+                  ><ListFilter size={17} />{codeStatus !== "all"
+                    ? "1"
+                    : ""}</Button
+                >
+              </div>
+              {#if filtersOpen}<div class="filter-panel">
+                  <Label class="field-label"
+                    >{t("Status")}<NativeSelect.Root
+                      class="w-full"
+                      aria-label={t("Status")}
+                      bind:value={codeStatus}
+                      ><NativeSelect.Option value="all"
+                        >{t("All codes")}</NativeSelect.Option
+                      >{#each ["Valid now", "Upcoming", "Expired", "Revoked", "No available doors"] as state (state)}<NativeSelect.Option
+                          value={state}>{t(state)}</NativeSelect.Option
+                        >{/each}</NativeSelect.Root
+                    ></Label
+                  ><Button
+                    type="button"
+                    variant="ghost"
+                    class="quiet"
+                    onclick={() => {
+                      codeDate = "";
+                      codeStatus = "all";
+                      search = "";
+                    }}>{t("Clear filters")}</Button
+                  >
+                </div>{/if}
+              <Item.Group class="code-list workspace-list">
+                {#each filtered as c (c.id)}<article
+                    class="code-row"
+                    data-code-id={c.id}
+                  >
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      class="code-summary"
+                      onclick={() => (detailCodeId = c.id)}
+                      ><span class="row"
+                        ><strong>{c.label}</strong>{#if c.revoked}<Badge
+                            variant="secondary"
+                            class="badge">{t("Revoked")}</Badge
+                          >{:else if c.grants.some((g: any) => g.claim)}<Badge
+                            variant="secondary"
+                            class="badge attention">{t("Needs review")}</Badge
+                          >{/if}</span
+                      ><span class="muted validity">{codeRange(c)}</span><span
+                        class="row badges"
+                        >{#each c.grants.slice(0, 3) as g (g.doorId)}<Badge
+                            variant="secondary"
+                            class="badge"
+                            >{doors.find((d) => d.id === g.doorId)?.name}</Badge
+                          >{/each}{#if c.grants.length > 3}<Badge
+                            variant="secondary"
+                            class="badge">+{c.grants.length - 3}</Badge
+                          >{/if}{#if c.breakfast}<span class="muted"
+                            ><Coffee size={13} />
+                            {c.breakfast.total - c.breakfastUsed}</span
+                          >{/if}</span
+                      ></Button
+                    >
+                    <div class="row row-actions">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        class="icon-button"
+                        aria-label={t("Copy link")}
+                        title={t("Copy link")}
+                        disabled={!!c.revoked}
+                        onclick={() => void copy(c.link)}
+                        ><Link size={19} /></Button
+                      ><Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        class="icon-button"
+                        aria-label={t("Prepare message")}
+                        title={t("Prepare message")}
+                        disabled={!!c.revoked}
+                        onclick={() => act(() => prepareShare(c))}
+                        ><Share2 size={19} /></Button
+                      >
+                    </div>
+                  </article>{:else}<div class="empty-state">
+                    <KeyRound size={36} />
+                    <h2>
+                      {t(
+                        search || codeDate || codeStatus !== "all"
+                          ? "No matching codes"
+                          : "Your next guest starts here",
+                      )}
+                    </h2>
+                    <p>
+                      {t(
+                        "Create a link with just the doors and breakfast allowance they need.",
+                      )}
+                    </p>
+                    {#if !propertyId}{#if user.role === "owner"}<Button
+                          type="button"
+                          variant="outline"
+                          onclick={() => openSettings("properties")}
+                          >{t("Set up a property")}</Button
+                        >{:else}<p>
+                          {t(
+                            "Ask an owner to set up a property and its doors.",
+                          )}
+                        </p>{/if}{:else if search || codeDate || codeStatus !== "all"}<Button
+                        type="button"
+                        variant="outline"
+                        onclick={() => {
+                          search = "";
+                          codeDate = "";
+                          codeStatus = "all";
+                        }}>{t("Clear filters")}</Button
+                      >{:else}<Button
+                        type="button"
+                        variant="outline"
+                        onclick={() => newCode()}
+                        disabled={!propertyId}>{t("Create access code")}</Button
+                      >{/if}
+                  </div>{/each}
+              </Item.Group>{/if}
+          {:else if tab === "Activity"}<div class="row spread">
+              <p class="muted">
+                {t("Access attempts, device responses and breakfast usage.")}
+              </p>
+              <Button onclick={() => act(reload)}>{t("Refresh")}</Button>
             </div>
-            <Item.Group class="workspace-list">
-              {#each properties as p (p.id)}<Button
+            {#each events.filter((e) => !e.property_id || e.property_id === propertyId) as e, index (e.id ?? index)}<Card.Root
+                class="workspace-card"
+              >
+                <div class="row spread">
+                  <strong>{e.type}</strong><small
+                    >{new Date(e.created).toLocaleString(
+                      hostLanguage.current,
+                    )}</small
+                  >
+                </div>
+                <p>{e.message}</p>
+                {#if e.code_id}<small
+                    >{codes.find((c) => c.id === e.code_id)?.label}</small
+                  >{/if}
+              </Card.Root>{/each}
+          {:else if tab === "Reports"}<Card.Root class="workspace-card">
+              <h2>{t("Code creation and usage")}</h2>
+              <p class="muted">
+                {t(
+                  "Grouped by creation month in the property timezone. Attempts and accepted requests are lifetime totals for those codes.",
+                )}
+              </p>
+              <Table.Root>
+                <Table.Header
+                  ><Table.Row
+                    ><Table.Head>{t("Host / month")}</Table.Head><Table.Head
+                      >{t("Created")}</Table.Head
+                    ><Table.Head>{t("Used")}</Table.Head><Table.Head
+                      >{t("Attempts")}</Table.Head
+                    ><Table.Head>{t("Accepted")}</Table.Head></Table.Row
+                  ></Table.Header
+                ><Table.Body
+                  >{#each stats as s, index (s.name + s.month)}<Table.Row
+                      ><Table.Cell
+                        >{s.name}<br /><small>{s.month}</small></Table.Cell
+                      ><Table.Cell>{s.created}</Table.Cell><Table.Cell
+                        >{s.used}</Table.Cell
+                      ><Table.Cell>{s.attempts}</Table.Cell><Table.Cell
+                        >{s.accepted}</Table.Cell
+                      ></Table.Row
+                    >{/each}</Table.Body
+                >
+              </Table.Root>
+            </Card.Root>
+          {:else if tab === "Connectors"}<ConnectorManager
+              {api}
+              {reload}
+              {connections}
+              {propertyId}
+              {doors}
+              {property}
+              owner={user.role === "owner"}
+              onDraft={newCode}
+              bind:view={connectorView}
+            />
+          {:else if tab === "Messages"}<div class="page-intro">
+              <p>{t("Personalize what you share with guests")}</p>
+            </div>
+            <div class="form-grid form-controls">
+              <Label class="field-label"
+                >{t("Language")}<NativeSelect.Root
+                  class="w-full"
+                  aria-label={t("Template language")}
+                  bind:value={templateLang}
+                  ><NativeSelect.Option value="en">English</NativeSelect.Option
+                  ><NativeSelect.Option value="it">Italiano</NativeSelect.Option
+                  ></NativeSelect.Root
+                ></Label
+              ><Label class="field-label"
+                >{t("Message")}<NativeSelect.Root
+                  class="w-full"
+                  aria-label={t("Template type")}
+                  bind:value={templateKind}
+                  ><NativeSelect.Option value="access"
+                    >{t("Access link")}</NativeSelect.Option
+                  ><NativeSelect.Option value="checkin"
+                    >{t("Check-in")}</NativeSelect.Option
+                  ><NativeSelect.Option value="instructions"
+                    >{t("Instructions")}</NativeSelect.Option
+                  ></NativeSelect.Root
+                ></Label
+              >
+            </div>
+            <Card.Root class="workspace-card stack">
+              <h2>{t("Property templates")}</h2>
+              <small
+                >{t("Placeholders:")}
+                {"{{guest}}, {{link}}, {{checkinLink}}, {{instructionsLink}}, {{host}}"}</small
+              ><Textarea
+                disabled={busy || templatesLoading}
+                bind:ref={templateInput}
+                aria-label={t("Message template")}
+                bind:value={templates[templateLang][templateKind]}
+              ></Textarea>
+              <div class="row">
+                {#each ["guest", "link", "checkinLink", "instructionsLink", "host"] as key (key)}<Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy || templatesLoading}
+                    onclick={() => insertPlaceholder(key)}
+                    >{"{{" + key + "}}"}</Button
+                  >{/each}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy || templatesLoading}
+                onclick={() => {
+                  if (
+                    confirm(
+                      t(
+                        "Reset this template to its default text? Save templates to publish the change.",
+                      ),
+                    )
+                  )
+                    templates[templateLang][templateKind] =
+                      defaultTemplates[templateLang as "en" | "it"][
+                        templateKind as "access" | "checkin" | "instructions"
+                      ];
+                }}>{t("Reset to default")}</Button
+              >
+              <h3>{t("Live sample preview")}</h3>
+              <pre class="message-preview">{preview(
+                  templates[templateLang]?.[templateKind] ?? "",
+                  codes.find((c) => c.id === messageCode),
+                )}</pre>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy || templatesLoading || !propertyId}
+                onclick={() =>
+                  act(async () => {
+                    await api("templates/" + propertyId, templates, "PUT");
+                    notice = "Templates saved.";
+                  })}>{t("Save templates")}</Button
+              >
+            </Card.Root>
+          {:else if tab === "Doors"}<DoorManager
+              {doors}
+              {propertyId}
+              propertyName={property?.name ?? ""}
+              owner={user.role === "owner"}
+              {api}
+              {reload}
+              onSaved={doorSaved}
+              onSetup={() => navigate("Settings")}
+              bind:editor={doorEditor}
+              bind:editId={editingDoor}
+              bind:detailId={detailDoorId}
+            />
+          {:else if tab === "Profile"}<Card.Root class="workspace-card stack">
+              <h2>{t("Your account")}</h2>
+              <Label class="field-label"
+                >{t("Your name")}<Input readonly value={user.name} /></Label
+              ><Label class="field-label"
+                >{t("Email")}<Input readonly value={user.email ?? ""} /></Label
+              >
+              <p>{t("Role")}: {t(user.role)}</p>
+              <small>{t("Account ID")}: {user.id}</small><Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onclick={() => act(logout)}
+                ><LogOut size={17} />{t("Sign out")}</Button
+              >
+            </Card.Root>
+          {:else if tab === "Settings"}
+            {#if !settingsPage}<div class="page-intro">
+                <p>{t("Manage your workspace and preferences")}</p>
+              </div>
+              {#each ["Preferences", "Workspace", "Administration"] as group (group)}{@const items =
+                  settingItems.filter(
+                    (i) =>
+                      i.group === group && (!i.owner || user.role === "owner"),
+                  )}{#if items.length}<section class="settings-group">
+                    <h2>{t(group)}</h2>
+                    <Item.Group class="workspace-list">
+                      {#each items as item (item.id)}
+                        <Item.Root class="p-0 rounded-none">
+                          {#snippet child({ props })}
+                            <Button
+                              {...props}
+                              variant="ghost"
+                              class="settings-row"
+                              data-tour={"nav-" + item.id}
+                              onclick={() => openSettings(item.id)}
+                            >
+                              <Item.Media variant="icon"
+                                ><item.icon size={20} /></Item.Media
+                              >
+                              <Item.Content
+                                ><Item.Title>{t(item.title)}</Item.Title
+                                ><Item.Description
+                                  >{t(item.description)}</Item.Description
+                                ></Item.Content
+                              >
+                              <Item.Actions
+                                ><ChevronRight size={18} /></Item.Actions
+                              >
+                            </Button>
+                          {/snippet}
+                        </Item.Root>
+                      {/each}
+                    </Item.Group>
+                  </section>{/if}{/each}
+              <Item.Group class="workspace-list">
+                <Button
                   type="button"
                   variant="ghost"
                   class="settings-row"
-                  disabled={user.role !== "owner"}
-                  onclick={() => editProperty(p)}
-                  ><Building2 size={21} /><span
-                    ><strong>{p.name}</strong><small
-                      >{p.timezone} · {p.checkIn} / {p.checkOut}</small
+                  onclick={startTour}
+                  ><CircleHelp size={21} /><span
+                    ><strong>{t("App tour")}</strong><small
+                      >{t("A quick guide to your host workspace")}</small
                     ></span
-                  >{#if user.role === "owner"}<ChevronRight
-                      size={18}
-                    />{/if}</Button
-                >{:else}<div class="empty-state">
-                  <Building2 size={32} />
-                  <h2>{t("Add your property first")}</h2>
-                  <p>{t("Then connect the doors guests will access.")}</p>
-                </div>{/each}
-            </Item.Group>{/if}
-        {:else if settingsPage === "team" && user.role === "owner"}
-          <Card.Root class="workspace-card stack">
-            <h2>{t("Team")}</h2>
-            <Button
-              type="button"
-              variant="outline"
-              onclick={() =>
-                act(async () => {
-                  invitationLink = (await api("invites", {})).link;
-                })}>{t("Create invitation")}</Button
-            >{#if invitationLink}<div class="input-action">
-                <Input
-                  readonly
-                  aria-label={t("Invitation link")}
-                  value={invitationLink}
-                /><Button
-                  type="button"
-                  variant="outline"
-                  onclick={() => void copy(invitationLink)}
-                  ><Copy size={16} />{t("Copy invitation")}</Button
+                  ><ChevronRight size={18} /></Button
                 >
-              </div>{/if}<small
-              >{t(
-                "Invitations expire after 24 hours and can be used once.",
-              )}</small
-            >{#each users as u, index (u.id ?? index)}<div class="row spread">
-                <span>{u.name} · {t(u.role)}</span
-                >{#if u.role === "staff"}<Button
+              </Item.Group>
+            {:else if settingsPage === "appearance"}<div class="page-intro">
+                <p>{t("Light, dark or follow your device")}</p>
+              </div>
+              <div
+                class="theme-options"
+                role="radiogroup"
+                aria-label={t("Theme")}
+              >
+                {#each [{ id: "light", title: "Light", icon: Sun }, { id: "dark", title: "Dark", icon: Moon }, { id: "system", title: "System", icon: Monitor }] as option (option.id)}<Button
+                    type="button"
+                    variant="outline"
+                    class={cn({ selected: theme === option.id })}
+                    role="radio"
+                    aria-checked={theme === option.id}
+                    disabled={busy}
+                    onclick={() => act(() => preferences({ theme: option.id }))}
+                    ><span class={"theme-preview " + option.id}
+                      ><span></span><span></span><span></span></span
+                    ><span class="row"
+                      ><option.icon size={17} />{t(
+                        option.title,
+                      )}{#if theme === option.id}<Check size={16} />{/if}</span
+                    ></Button
+                  >{/each}
+              </div>
+            {:else if settingsPage === "language"}<div class="page-intro">
+                <p>
+                  {t(
+                    "Your choice is saved to your account across devices. Guest language is independent.",
+                  )}
+                </p>
+              </div>
+              <Item.Group
+                class="workspace-list"
+                role="radiogroup"
+                aria-label={t("App language")}
+              >
+                {#each [{ id: "it", name: "Italiano", detail: "Italian" }, { id: "en", name: "English", detail: "English" }] as language (language.id)}<Button
+                    type="button"
+                    variant="ghost"
+                    class="settings-row"
+                    role="radio"
+                    aria-checked={hostLanguage.current === language.id}
+                    disabled={busy}
+                    onclick={() =>
+                      act(() => chooseLanguage(language.id as HostLocale))}
+                    ><span class="language-badge"
+                      >{language.id.toUpperCase()}</span
+                    ><span
+                      ><strong>{language.name}</strong><small
+                        >{t(language.detail)}</small
+                      ></span
+                    >{#if hostLanguage.current === language.id}<Check
+                        size={19}
+                      />{/if}</Button
+                  >{/each}
+              </Item.Group>
+            {:else if settingsPage === "notifications"}
+              <Card.Root class="workspace-card stack">
+                <h2>{t("Notifications & installation")}</h2>
+                <p class="muted">
+                  {t(
+                    "Install this app from your browser menu. On iPhone: Share → Add to Home Screen, then enable notifications here.",
+                  )}
+                </p>
+                <small
+                  >{t("Permission:")}
+                  {permission}{t(
+                    ". Leave filters empty to receive all activity.",
+                  )}</small
+                >
+                <div class="row">
+                  {#each properties as p, index (p.id ?? index)}<Label
+                      class="inline"
+                      ><input
+                        type="checkbox"
+                        value={p.id}
+                        bind:group={pushProperties}
+                      />{p.name}</Label
+                    >{/each}
+                </div>
+                <fieldset class="stack">
+                  <legend>{t("Notify me about")}</legend
+                  >{#each [["access.accepted", "Access accepted"], ["access.denied", "Access denied"], ["access.failed", "Device failures"], ["access.uncertain", "Uncertain requests"], ["access.invalid", "Invalid guest links"], ["breakfast.redeemed", "Breakfast usage"], ["breakfast.denied", "Rejected breakfasts"]] as option (option[0])}<Label
+                      class="inline"
+                      ><input
+                        type="checkbox"
+                        checked={pushEvents.split(",").includes(option[0])}
+                        onchange={(e) => {
+                          const values = pushEvents
+                            .split(",")
+                            .filter(Boolean)
+                            .filter((v) => v !== option[0]);
+                          if (e.currentTarget.checked) values.push(option[0]);
+                          pushEvents = values.join(",");
+                        }}
+                      />{t(option[1])}</Label
+                    >{/each}
+                </fieldset>
+                <div class="row">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onclick={() => act(enablePush)}
+                    >{t("Enable / update notifications")}</Button
+                  ><Button
                     type="button"
                     variant="outline"
                     onclick={() =>
                       act(async () => {
-                        if (
-                          confirm(
-                            "Remove this staff member and revoke their sessions?",
-                          )
-                        ) {
-                          await api("users/" + u.id, undefined, "DELETE");
-                          await reload();
+                        await api("push/subscriptions", undefined, "DELETE");
+                        if ("serviceWorker" in navigator) {
+                          const r =
+                            await navigator.serviceWorker.getRegistration(
+                              "/host/",
+                            );
+                          await (
+                            await r?.pushManager.getSubscription()
+                          )?.unsubscribe();
                         }
-                      })}>{t("Remove")}</Button
-                  >{/if}
-              </div>{/each}
-          </Card.Root>
-        {:else if settingsPage === "breakfast"}<div class="page-intro">
-            <p>
-              {t(
-                "Only aggregate totals are public. Guest details stay private.",
-              )}
-            </p>
-          </div>
-          <Item.Group class="workspace-list">
-            {#each properties as p (p.id)}<a
-                class="settings-row"
-                href={"/breakfast/" + p.id}
-                target="_blank"
-                rel="noreferrer"
-                ><Coffee size={21} /><span
-                  ><strong>{p.name}</strong><small
-                    >{t("Open public breakfast page ↗")}</small
-                  ></span
-                ><ExternalLink size={18} /></a
-              >{/each}
-          </Item.Group>
-        {:else if settingsPage === "data" && user.role === "owner"}<div
-            class="page-intro"
-          >
-            <p>
-              {t(
-                "Export a backup on the server before resetting the workspace.",
-              )}
-            </p>
-          </div>
-          <Card.Root class="workspace-card stack danger-zone">
-            <h2>{t("Danger zone")}</h2>
-            <p>
-              {t(
-                "Wipe the entire workspace database, including all users, properties, doors, photos, access codes, breakfast history, credentials, templates, activity and notification subscriptions. All guest links and sessions stop working. This cannot be undone without a backup.",
-              )}
-            </p>
-            <p class="muted">
-              {t("Server logs are retained after a database wipe.")}
-            </p>
-            <Button
-              type="button"
-              variant="destructive"
-              class="danger"
-              onclick={() => {
-                wipeOpen = true;
-                wipePassword = "";
-                wipeConfirmation = "";
-                wipeAcknowledged = false;
-              }}>{t("Wipe database…")}</Button
-            >
-            {#if wipeOpen}<form
-                class="stack"
-                onsubmit={(e) => {
-                  e.preventDefault();
-                  void act(wipeDatabase);
-                }}
-              >
-                <p class="error">
-                  {t(
-                    "This deletes data for the whole team, not just your account. Back up the database and encryption keys first. You will need the server setup token to create a new owner. Server configuration, encryption keys and existing backups are not deleted.",
-                  )}
-                </p>
-                <Label class="inline"
-                  ><Checkbox bind:checked={wipeAcknowledged} required />{t(
-                    "I have a backup or accept permanent data loss, and I have the setup token.",
-                  )}</Label
-                >
-                <Label class="field-label"
-                  >{t("Current password")}<Input
-                    type="password"
-                    autocomplete="current-password"
-                    bind:value={wipePassword}
-                    required
-                  /></Label
-                >
-                <Label class="field-label"
-                  >{t("Type WIPE ALL DATA to confirm")}<Input
-                    bind:value={wipeConfirmation}
-                    autocomplete="off"
-                    required
-                    pattern="WIPE ALL DATA"
-                  /></Label
-                >
-                <div class="row">
-                  <Button
-                    variant="outline"
-                    type="button"
-                    onclick={() => {
-                      wipeOpen = false;
-                      wipePassword = "";
-                    }}>{t("Cancel")}</Button
-                  ><Button
-                    type="submit"
-                    variant="destructive"
-                    class="danger"
-                    disabled={busy ||
-                      !wipeAcknowledged ||
-                      !wipePassword ||
-                      wipeConfirmation !== "WIPE ALL DATA"}
-                    >{t("Permanently wipe database")}</Button
+                        notice = "Notifications disabled.";
+                      })}>{t("Disable notifications")}</Button
                   >
                 </div>
-              </form>{/if}
-          </Card.Root>
-        {:else}<p class="muted">{t("Choose a section from Settings.")}</p>{/if}
-      {/if}
+              </Card.Root>
+            {:else if settingsPage === "properties"}
+              {#if propertyForm && user.role === "owner"}<form
+                  data-tour="property-form"
+                  class="card stack"
+                  onsubmit={(e) => {
+                    e.preventDefault();
+                    void act(async () => {
+                      const savedProperty = await api(
+                        "properties" + (pEditing ? "/" + pEditing : ""),
+                        {
+                          name: pName,
+                          timezone: pZone,
+                          checkIn: pIn,
+                          checkOut: pOut,
+                        },
+                        pEditing ? "PUT" : "POST",
+                      );
+                      propertySaved(savedProperty.id ?? pEditing);
+                      pEditing = "";
+                      pName = "";
+                      propertyForm = false;
+                      await reload();
+                    });
+                  }}
+                >
+                  <h2>{t(pEditing ? "Edit property" : "Add property")}</h2>
+                  <div class="form-grid">
+                    <Label class="field-label"
+                      >{t("Name")}<Input bind:value={pName} required /></Label
+                    ><Label class="field-label"
+                      >{t("Timezone")}<Input
+                        bind:value={pZone}
+                        required
+                        placeholder={t("Europe/Rome")}
+                      /></Label
+                    ><Label class="field-label"
+                      >{t("Default arrival time")}<Input
+                        type="time"
+                        bind:value={pIn}
+                        required
+                      /></Label
+                    ><Label class="field-label"
+                      >{t("Default departure time")}<Input
+                        type="time"
+                        bind:value={pOut}
+                        required
+                      /></Label
+                    >
+                  </div>
+                  <Button type="submit" variant="outline"
+                    >{t(pEditing ? "Save property" : "Add property")}</Button
+                  >
+                </form>
+              {:else}<div class="section-intro row spread">
+                  <p class="muted">
+                    {t("Names, timezones and arrival defaults")}
+                  </p>
+                  {#if user.role === "owner"}<Button
+                      type="button"
+                      variant="default"
+                      class="primary"
+                      data-tour="add-property"
+                      onclick={() => editProperty()}
+                      ><Plus size={17} />{t("Add property")}</Button
+                    >{/if}
+                </div>
+                <Item.Group class="workspace-list">
+                  {#each properties as p (p.id)}<Button
+                      type="button"
+                      variant="ghost"
+                      class="settings-row"
+                      disabled={user.role !== "owner"}
+                      onclick={() => editProperty(p)}
+                      ><Building2 size={21} /><span
+                        ><strong>{p.name}</strong><small
+                          >{p.timezone} · {p.checkIn} / {p.checkOut}</small
+                        ></span
+                      >{#if user.role === "owner"}<ChevronRight
+                          size={18}
+                        />{/if}</Button
+                    >{:else}<div class="empty-state">
+                      <Building2 size={32} />
+                      <h2>{t("Add your property first")}</h2>
+                      <p>{t("Then connect the doors guests will access.")}</p>
+                    </div>{/each}
+                </Item.Group>{/if}
+            {:else if settingsPage === "team" && user.role === "owner"}
+              <Card.Root class="workspace-card stack">
+                <h2>{t("Team")}</h2>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onclick={() =>
+                    act(async () => {
+                      invitationLink = (await api("invites", {})).link;
+                    })}>{t("Create invitation")}</Button
+                >{#if invitationLink}<div class="input-action">
+                    <Input
+                      readonly
+                      aria-label={t("Invitation link")}
+                      value={invitationLink}
+                    /><Button
+                      type="button"
+                      variant="outline"
+                      onclick={() => void copy(invitationLink)}
+                      ><Copy size={16} />{t("Copy invitation")}</Button
+                    >
+                  </div>{/if}<small
+                  >{t(
+                    "Invitations expire after 24 hours and can be used once.",
+                  )}</small
+                >{#each users as u, index (u.id ?? index)}<div
+                    class="row spread"
+                  >
+                    <span>{u.name} · {t(u.role)}</span
+                    >{#if u.role === "staff"}<Button
+                        type="button"
+                        variant="outline"
+                        onclick={() =>
+                          act(async () => {
+                            if (
+                              confirm(
+                                "Remove this staff member and revoke their sessions?",
+                              )
+                            ) {
+                              await api("users/" + u.id, undefined, "DELETE");
+                              await reload();
+                            }
+                          })}>{t("Remove")}</Button
+                      >{/if}
+                  </div>{/each}
+              </Card.Root>
+            {:else if settingsPage === "breakfast"}<div class="page-intro">
+                <p>
+                  {t(
+                    "Only aggregate totals are public. Guest details stay private.",
+                  )}
+                </p>
+              </div>
+              <Item.Group class="workspace-list">
+                {#each properties as p (p.id)}<a
+                    class="settings-row"
+                    href={"/breakfast/" + p.id}
+                    target="_blank"
+                    rel="noreferrer"
+                    ><Coffee size={21} /><span
+                      ><strong>{p.name}</strong><small
+                        >{t("Open public breakfast page ↗")}</small
+                      ></span
+                    ><ExternalLink size={18} /></a
+                  >{/each}
+              </Item.Group>
+            {:else if settingsPage === "data" && user.role === "owner"}<div
+                class="page-intro"
+              >
+                <p>
+                  {t(
+                    "Export a backup on the server before resetting the workspace.",
+                  )}
+                </p>
+              </div>
+              <Card.Root class="workspace-card stack danger-zone">
+                <h2>{t("Danger zone")}</h2>
+                <p>
+                  {t(
+                    "Wipe the entire workspace database, including all users, properties, doors, photos, access codes, breakfast history, credentials, templates, activity and notification subscriptions. All guest links and sessions stop working. This cannot be undone without a backup.",
+                  )}
+                </p>
+                <p class="muted">
+                  {t("Server logs are retained after a database wipe.")}
+                </p>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  class="danger"
+                  onclick={() => {
+                    wipeOpen = true;
+                    wipePassword = "";
+                    wipeConfirmation = "";
+                    wipeAcknowledged = false;
+                  }}>{t("Wipe database…")}</Button
+                >
+                {#if wipeOpen}<form
+                    class="stack"
+                    onsubmit={(e) => {
+                      e.preventDefault();
+                      void act(wipeDatabase);
+                    }}
+                  >
+                    <p class="error">
+                      {t(
+                        "This deletes data for the whole team, not just your account. Back up the database and encryption keys first. You will need the server setup token to create a new owner. Server configuration, encryption keys and existing backups are not deleted.",
+                      )}
+                    </p>
+                    <Label class="inline"
+                      ><Checkbox bind:checked={wipeAcknowledged} required />{t(
+                        "I have a backup or accept permanent data loss, and I have the setup token.",
+                      )}</Label
+                    >
+                    <Label class="field-label"
+                      >{t("Current password")}<Input
+                        type="password"
+                        autocomplete="current-password"
+                        bind:value={wipePassword}
+                        required
+                      /></Label
+                    >
+                    <Label class="field-label"
+                      >{t("Type WIPE ALL DATA to confirm")}<Input
+                        bind:value={wipeConfirmation}
+                        autocomplete="off"
+                        required
+                        pattern="WIPE ALL DATA"
+                      /></Label
+                    >
+                    <div class="row">
+                      <Button
+                        variant="outline"
+                        type="button"
+                        onclick={() => {
+                          wipeOpen = false;
+                          wipePassword = "";
+                        }}>{t("Cancel")}</Button
+                      ><Button
+                        type="submit"
+                        variant="destructive"
+                        class="danger"
+                        disabled={busy ||
+                          !wipeAcknowledged ||
+                          !wipePassword ||
+                          wipeConfirmation !== "WIPE ALL DATA"}
+                        >{t("Permanently wipe database")}</Button
+                      >
+                    </div>
+                  </form>{/if}
+              </Card.Root>
+            {:else}<p class="muted">
+                {t("Choose a section from Settings.")}
+              </p>{/if}
+          {/if}
+        </div>
+      {/key}
       <Modal
         open={!!shareCodeId}
         title={t("Prepare message")}

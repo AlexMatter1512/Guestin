@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -1383,4 +1384,56 @@ main {
 /* Button color transitions must not animate flex sizing when navigation reflows. */
 .app-nav [data-slot="button"] {
   transition-property: color, background-color, border-color, box-shadow;
+}
+
+/* Motion emphasizes navigation and feedback without animating layout dimensions. */
+body,
+.app-header,
+.app-nav,
+.workspace-card,
+.workspace-list,
+.property-switch {
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+[data-slot="button"] {
+  transition-property:
+    color, background-color, border-color, box-shadow, opacity, scale;
+  transition-duration: 140ms;
+}
+[data-slot="button"]:enabled:active {
+  scale: 0.98;
+}
+[data-slot="dialog-content"],
+[data-slot="dialog-overlay"] {
+  animation-duration: 180ms;
+}
+.toast {
+  animation: feedback-in 160ms ease-out;
+}
+@keyframes feedback-in {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+  [data-slot="button"]:enabled:active {
+    scale: 1;
+  }
 }

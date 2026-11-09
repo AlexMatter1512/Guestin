@@ -82,3 +82,13 @@ Verified in Chrome with fixture providers and disposable databases:
 - Mobile overflow, dark/light themes, desktop navigation layout and screenshots inspected manually.
 
 These browser checks do not perform a real OS installation, real push delivery, provider login, or physical unlock. Real iOS/Android installation and notification delivery remain deployment checks.
+
+## Mobile drawer, motion, browser chrome and tagged releases
+
+The shared modal uses the GuestIn-style shadcn/Vaul bottom drawer below 768px, and a centered shadcn dialog on larger screens. It no longer combines centered-dialog translations with bottom anchoring. `tw-animate-css` supplies the generated animation utilities; component state variants match the installed Bits UI `data-state` attributes. Page navigation, feedback, dialogs and drawers animate with a reduced-motion override.
+
+Host `theme-color` metadata follows Light/Dark/System preferences; host and guest manifests use neutral white defaults instead of the old green. Browser tests verify metadata updates, rather than claiming a physical Android system-bar test.
+
+`scripts/mobile-ui-smoke.ts` verifies drawer/dialog bounds at widths 375, 390, 640, 767, 768 and 1024; both Create actions; open dialog animation styling; reduced motion; checked-state appearance; and browser theme metadata changes. Phone screenshots from those disposable fixtures are included in the README. The host-feature, redesign, onboarding and spotlight suites cover modal focus/copying, navigation, drafts and spotlight behavior after motion changes. No real unlocks or provider requests are involved.
+
+The workflow publishes only on pushes of validated `vMAJOR.MINOR.PATCH` tags (optional prerelease suffix). Main pushes, pull requests and workflow dispatches run checks without registry login or publication. Stable version tags update `latest`; prereleases do not. Workflow syntax is checked with actionlint.
