@@ -345,6 +345,75 @@ test("public endpoint exposes aggregate totals only", async () => {
   expect(JSON.stringify(r.data)).not.toContain(f.guest);
   f.db.close();
 });
+test("breakfast totals count used quantities independently of assigned allowances", async () => {
+  const f = await fixture();
+  try {
+    const today = f.draft.breakfast.start;
+    const month = today.slice(0, 7) + "-01";
+    const last = new Date(month + "T12:00:00Z");
+    last.setUTCMonth(last.getUTCMonth() - 1);
+    const lastDate = last.toISOString().slice(0, 10);
+    await f.req("codes", {
+      ...f.draft,
+      label: "Unused allowance",
+      breakfast: { total: 95, start: lastDate, end: today },
+    });
+    const read = async (query = "") =>
+      (
+        await f.req("public/breakfast/" + f.property.id + query, undefined, {
+          auth: false,
+        })
+      ).data;
+    const unused = await read();
+    expect([
+      unused.today,
+      unused.thisMonth,
+      unused.lastMonth,
+      unused.total,
+    ]).toEqual([0, 0, 0, 0]);
+    const id = crypto.randomUUID();
+    expect(
+      (await f.req("guest/breakfast", { quantity: 1 }, { guest: f.guest, id }))
+        .r.status,
+    ).toBe(200);
+    await f.req("guest/breakfast", { quantity: 1 }, { guest: f.guest, id });
+    await f.req(
+      "codes/" + f.code.id,
+      { ...f.draft, breakfast: { total: 20, start: lastDate, end: today } },
+      { method: "PUT" },
+    );
+    f.db
+      .query("INSERT INTO redemptions VALUES(?,?,?,?,?)")
+      .run(crypto.randomUUID(), f.code.id, 3, lastDate, last.toISOString());
+    const otherProperty = (
+      await f.req("properties", { name: "Other", timezone: "UTC" })
+    ).data;
+    const otherCode = (
+      await f.req("codes", {
+        propertyId: otherProperty.id,
+        label: "Other guest",
+        grants: [],
+        breakfast: { total: 200, start: today, end: today },
+      })
+    ).data;
+    f.db
+      .query("INSERT INTO redemptions VALUES(?,?,?,?,?)")
+      .run(
+        crypto.randomUUID(),
+        otherCode.id,
+        7,
+        today,
+        new Date().toISOString(),
+      );
+    const used = await read();
+    expect([used.today, used.thisMonth, used.lastMonth]).toEqual([1, 1, 3]);
+    const custom = await read("?from=" + lastDate + "&to=" + today);
+    expect(custom.total).toBe(4);
+  } finally {
+    f.db.close();
+  }
+});
+
 test("door expiry and future access fail without calling provider", async () => {
   const f = await fixture();
   for (const offset of [-86400000, 86400000]) {

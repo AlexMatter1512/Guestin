@@ -140,8 +140,8 @@
       {:else}
         <p class="text-muted-foreground">
           {l(
-            "Share aggregate breakfast totals with your breakfast team. Guest names and access codes never appear here.",
-            "Condividi i totali delle colazioni con il personale. Nomi degli ospiti e codici di accesso non compaiono qui.",
+            "See how many breakfasts guests have used. Guest names and access codes never appear here.",
+            "Visualizza quante colazioni hanno utilizzato gli ospiti. Nomi e codici di accesso non compaiono qui.",
           )}
         </p>
         <Button

@@ -1,12 +1,12 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff"><title>Breakfast · oshost</title>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff"><title>Breakfasts used · oshost</title>
 <style>
 *{box-sizing:border-box}body{font:16px system-ui;background:#fafafa;color:#171717;max-width:850px;margin:6vh auto;padding:24px}h1{letter-spacing:-.04em}section{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}article,.card{background:#fff;padding:24px;border:1px solid #e5e5e5;border-radius:14px}strong{display:block;font-size:42px;margin-top:8px}input,button{font:inherit;padding:12px;border:1px solid #d4d4d4;border-radius:8px;max-width:100%}button{background:#171717;color:white;cursor:pointer}input{background:white;color:#171717}form{display:flex;gap:12px;flex-wrap:wrap;align-items:end}label{display:grid;gap:8px;font-size:14px}.error{color:#b91c1c}small,.muted{color:#737373}#unlock{max-width:440px}#unlock form{display:grid;margin-top:20px}[hidden]{display:none!important}@media(max-width:550px){body{margin:24px auto;padding:16px}section{grid-template-columns:1fr}article{padding:20px}strong{font-size:36px}}
 </style></head>
-<body><p class="muted">oshost / breakfast</p><h1 id="name">Breakfast usage</h1>
-<div id="unlock" class="card" hidden><h2>Password required</h2><p class="muted">Enter the password shared by your host to view breakfast totals.</p><form id="unlock-form"><label>Breakfast page password<input id="password" type="password" required maxlength="128" autocomplete="current-password"></label><button>Open breakfast totals</button></form><p id="unlock-error" class="error" role="alert"></p></div>
-<div id="totals" hidden><section><article>Today<strong id="today">—</strong></article><article>This month<strong id="month">—</strong></article><article>Last month<strong id="last">—</strong></article></section><h2>Custom date range</h2><form id="range-form"><label>From<input type="date" id="from" required></label><label>To<input type="date" id="to" required></label><button>Check usage</button></form><p id="total"></p><small id="updated"></small></div>
+<body><p class="muted">oshost / breakfast</p><h1 id="name">Breakfasts used</h1>
+<div id="unlock" class="card" hidden><h2>Password required</h2><p class="muted">Enter the password shared by your host to view breakfast usage.</p><form id="unlock-form"><label>Breakfast page password<input id="password" type="password" required maxlength="128" autocomplete="current-password"></label><button>Open breakfast totals</button></form><p id="unlock-error" class="error" role="alert"></p></div>
+<div id="totals" hidden><h2>Breakfasts used</h2><p class="muted">Confirmed breakfasts used by guests.</p><section><article>Used today<strong id="today">—</strong></article><article>Used this month<strong id="month">—</strong></article><article>Used last month<strong id="last">—</strong></article></section><h2>Breakfasts used in a date range</h2><form id="range-form"><label>From<input type="date" id="from" required></label><label>To<input type="date" id="to" required></label><button>Show used breakfasts</button></form><p id="total"></p><small id="updated"></small></div>
 <p id="error" class="error" role="alert"></p>
 <script>
 const property=location.pathname.split('/').filter(Boolean).pop();
@@ -15,10 +15,10 @@ async function load(custom=false){
  try{
   const query=custom?'?'+new URLSearchParams({from:document.querySelector('#from').value,to:document.querySelector('#to').value}):'';
   const response=await fetch(endpoint+query,{cache:'no-store'}),data=await response.json();
-  if(response.status===401&&data.requiresPassword){document.querySelector('#totals').hidden=true;document.querySelector('#unlock').hidden=false;document.querySelector('#name').textContent='Breakfast usage';return;}
+  if(response.status===401&&data.requiresPassword){document.querySelector('#totals').hidden=true;document.querySelector('#unlock').hidden=false;document.querySelector('#name').textContent='Breakfasts used';return;}
   if(!response.ok)throw Error(data.error);
   document.querySelector('#unlock').hidden=true;document.querySelector('#totals').hidden=false;
-  for(const[id,value]of Object.entries({name:data.property,today:data.today,month:data.thisMonth,last:data.lastMonth,total:custom?'Selected range: '+data.total:''}))document.getElementById(id).textContent=value;
+  for(const[id,value]of Object.entries({name:data.property,today:data.today,month:data.thisMonth,last:data.lastMonth,total:custom?'Used in selected range: '+data.total:''}))document.getElementById(id).textContent=value;
   document.querySelector('#updated').textContent='Updated '+new Date().toLocaleTimeString()+' · '+data.timezone;document.querySelector('#error').textContent='';
  }catch(error){document.querySelector('#error').textContent=error.message;}
 }

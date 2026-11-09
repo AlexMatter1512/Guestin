@@ -75,9 +75,16 @@ try {
     config: {},
     common: true,
   });
-  await api("codes", {
+  const breakfastDay = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Rome",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const code = await api("codes", {
     propertyId: one.id,
     label: "Example guest",
+    breakfast: { total: 12, start: breakfastDay, end: breakfastDay },
     grants: [
       {
         doorId: door.id,
@@ -280,6 +287,27 @@ try {
     .getByRole("button", { name: "Open breakfast totals", exact: true })
     .click();
   await expect(breakfast.locator("#totals")).toBeVisible();
+  await expect(
+    breakfast.getByRole("heading", { name: "Breakfasts used", exact: true }),
+  ).toBeVisible();
+  await expect(breakfast.locator("#today")).toHaveText("0");
+  const redeemed = await context.request.post(
+    origin + "/api/v1/guest/breakfast",
+    {
+      headers: {
+        Origin: origin,
+        Authorization:
+          "Bearer " +
+          new URLSearchParams(new URL(code.link).hash.slice(1)).get("code"),
+        "Idempotency-Key": crypto.randomUUID(),
+      },
+      data: { quantity: 2 },
+    },
+  );
+  expect(redeemed.ok()).toBe(true);
+  await breakfast.reload();
+  await expect(breakfast.locator("#today")).toHaveText("2");
+  await expect(breakfast.locator("#month")).toHaveText("2");
   const [hostBreakfast] = await Promise.all([
     context.waitForEvent("page"),
     page

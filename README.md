@@ -22,7 +22,7 @@ One Docker container serves the host app, guest app, and a public breakfast coun
 
 - **Create access codes in seconds.** Give each guest the doors they need, with separate dates and single-use rules for each door. Copy a link or prepare a welcome message in Italian or English.
 - **Manage your places together.** Switch structures from the header, organize doors, invite staff, and test device connections. The bell opens shared notification history; the statistics tab shows usage reports.
-- **Keep breakfast simple.** Give a code its own allowance. Guests redeem from their page; your breakfast team sees aggregate totals without guest details. Settings lets you open the page or protect it with a password.
+- **Keep breakfast simple.** Give a code its own allowance. Guests redeem from their page; your breakfast team sees how many breakfasts were actually used, without guest details. Settings lets you open the page or protect it with a password.
 - **Start manually, add helpers later.** KrossBooking, iCal calendars, and optional Gemini screenshot reading can fill in a draft. You review it before creating a code.
 - **Use it like an app.** Install separate host and guest web apps. Choose a light or dark theme and enable host notifications for access and breakfast activity.
 

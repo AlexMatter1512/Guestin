@@ -47,7 +47,7 @@ Push selection is local to each device, with delivery preferences attached to th
 
 ## Breakfast page
 
-Settings → Breakfast provides a direct link and optional password protection. Owners can set, change, or remove the password. Signed-in hosts can open the page directly. Other viewers enter the shared password and stay signed in for up to 12 hours. Changing the password invalidates existing breakfast sessions. The page and API expose aggregate totals only.
+Settings → Breakfast provides a direct link and optional password protection. Owners can set, change, or remove the password. Signed-in hosts can open the page directly. Other viewers enter the shared password and stay signed in for up to 12 hours. Changing the password invalidates existing breakfast sessions. The page and API count breakfasts actually used, using confirmed redemptions rather than assigned allowances. They expose aggregate totals only.
 
 ## Backups
 

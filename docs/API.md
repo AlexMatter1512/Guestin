@@ -42,7 +42,7 @@ Guest links carry their token in a URL fragment. Device acceptance is recorded s
 
 ## Breakfast totals
 
-`GET /public/breakfast/:property` returns `property`, `timezone`, `today`, `thisMonth`, `lastMonth`, `from`, `to`, and `total`. Optional `from`/`to` query parameters use `YYYY-MM-DD`. Responses contain aggregates only.
+`GET /public/breakfast/:property` returns `property`, `timezone`, `today`, `thisMonth`, `lastMonth`, `from`, `to`, and `total`. Optional `from`/`to` query parameters use `YYYY-MM-DD`. Counts sum confirmed redemption quantities by the redemption date in the structure’s timezone. Unused allowances do not contribute. Responses contain aggregates only.
 
 When protected, anonymous requests return `401` with `{requiresPassword:true,error}`. `POST /public/breakfast/:property/auth` with `{password}` sets a scoped HttpOnly cookie, valid for up to 12 hours. The endpoint is rate-limited. Authenticated hosts can read totals directly.
 
