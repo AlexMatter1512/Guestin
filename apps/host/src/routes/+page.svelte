@@ -73,6 +73,7 @@
   import NotificationHistory from "$lib/components/NotificationHistory.svelte";
   import ConnectorManager from "$lib/components/ConnectorManager.svelte";
   import Modal from "$lib/components/Modal.svelte";
+  import RecordTransfer from "$lib/components/RecordTransfer.svelte";
   import ActivityToast from "$lib/components/ActivityToast.svelte";
   import CollaboratorManager from "$lib/components/CollaboratorManager.svelte";
   import {
@@ -2418,6 +2419,15 @@
                 </details>
               </section>
             {:else}
+              {#if user.role === "owner" && propertyId}<div class="mb-4">
+                  <RecordTransfer
+                    kind="codes"
+                    {propertyId}
+                    propertyName={property?.name ?? ""}
+                    {api}
+                    {reload}
+                  />
+                </div>{/if}
               <div class="row spread mb-4">
                 <Label class="inline" for="staff-codes-view"
                   ><Switch

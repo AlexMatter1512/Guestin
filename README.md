@@ -105,6 +105,10 @@ Owners can deactivate, reactivate or permanently delete structures under **Setti
 
 **Delete permanently** removes a structure and all its related doors, access codes, usage history, notifications, connectors and settings from the current database. Owners can also permanently delete individual access codes under **Manage access**, including revoked codes. Both require typing the displayed confirmation; deletion cannot be undone. Existing backup files are separate and retain their contents.
 
+Owners can use **Doors JSON** on the doors page or **Access codes JSON** on the codes page to download or upload just that structure’s records. Append adds missing IDs and skips existing records. **Override current list** replaces the entire selected list, including disabled doors or guest/staff/revoked codes. It requires a warning acknowledgement and typed confirmation. Door replacement removes permissions for omitted doors; access-code replacement restores the file’s saved guest tokens, usage and revocation, so old files can reactivate access. Other structures remain unchanged. These files contain working credentials: keep them private. Import doors first when transferring codes to another installation.
+
+The webhook form uses key/value rows for headers and query parameters. The + button adds a row only after existing rows are filled. Provider presets put authentication/query values in those rows; the URL field holds the base endpoint.
+
 ## Notification history and push
 
 The host bell includes a personal unread badge. Clicking a notification marks it read across your devices and opens its related code or door when available; teammates keep their own read status. Opening or scrolling through history does not mark anything read. Read entries are grayed out.

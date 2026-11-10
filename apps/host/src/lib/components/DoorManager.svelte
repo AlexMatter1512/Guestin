@@ -1,5 +1,14 @@
 <script lang="ts">
   import { webhookMethods, webhookPreset } from "../../../../../shared/webhook";
+  import RecordTransfer from "$lib/components/RecordTransfer.svelte";
+  import KeyValueEditor from "$lib/components/KeyValueEditor.svelte";
+  import {
+    emptyPair,
+    splitWebhookURL,
+    joinWebhookURL,
+    headerPairsJSON,
+    type KeyValuePair,
+  } from "../../../../../shared/key-value";
   import FeedbackToast from "$lib/components/FeedbackToast.svelte";
   import { flip } from "svelte/animate";
   import { MediaQuery } from "svelte/reactivity";
@@ -94,7 +103,8 @@
   });
   let webhook = $state(""),
     webhookMethod = $state(""),
-    webhookHeaders = $state(""),
+    webhookHeaders = $state<KeyValuePair[]>([emptyPair()]),
+    webhookQuery = $state<KeyValuePair[]>([emptyPair()]),
     webhookBody = $state(""),
     webhookResponse = $state(""),
     preset = $state("custom");
@@ -166,7 +176,8 @@
       };
       webhook = "";
       webhookMethod = "";
-      webhookHeaders = "";
+      webhookHeaders = [emptyPair()];
+      webhookQuery = [emptyPair()];
       webhookBody = "";
       webhookResponse = "";
       preset = "custom";
@@ -210,9 +221,14 @@
   function applyPreset(value: string) {
     preset = value;
     const config = webhookPreset(value);
-    webhook = config.url;
+    const request = splitWebhookURL(config.url);
+    webhook = request.url;
+    webhookQuery = request.query.length ? request.query : [emptyPair()];
     webhookMethod = config.method;
-    webhookHeaders = config.headers || "";
+    webhookHeaders = Object.entries(JSON.parse(config.headers || "{}")).map(
+      ([key, value]) => ({ key, value: String(value) }),
+    );
+    if (!webhookHeaders.length) webhookHeaders = [emptyPair()];
     webhookBody = config.body || "";
     webhookResponse = config.response_mode;
   }
@@ -221,13 +237,14 @@
       draft.integration === "webhook" &&
       (webhook ||
         webhookMethod ||
-        webhookHeaders ||
+        webhookHeaders.some((row) => row.key || row.value) ||
+        webhookQuery.some((row) => row.key || row.value) ||
         webhookBody ||
         webhookResponse)
         ? {
-            url: webhook,
+            url: joinWebhookURL(webhook, webhookQuery),
             method: webhookMethod || "GET",
-            headers: webhookHeaders || "{}",
+            headers: headerPairsJSON(webhookHeaders),
             body: webhookBody,
             response_mode: webhookResponse || "http",
           }
@@ -411,6 +428,15 @@
 
 <section class="door-manager space-y-6" aria-label={t("Doors")}>
   {#if !editor && !detailId}
+    {#if owner && propertyId}<div class="mb-4">
+        <RecordTransfer
+          kind="doors"
+          {propertyId}
+          {propertyName}
+          {api}
+          {reload}
+        />
+      </div>{/if}
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div class="space-y-1">
         <p class="text-sm text-muted-foreground">
@@ -731,12 +757,27 @@
                 ><Input
                   id="door-webhook"
                   type="url"
-                  placeholder="https://example.com/unlock?token=…"
+                  placeholder="https://example.com/unlock"
                   bind:value={webhook}
+                  onblur={() => {
+                    if (webhook.includes("?")) {
+                      const request = splitWebhookURL(webhook);
+                      if (request.url !== webhook) {
+                        webhook = request.url;
+                        webhookQuery = request.query.length
+                          ? request.query
+                          : [emptyPair()];
+                      }
+                    }
+                  }}
                   autocomplete="off"
                   required={!editId}
                 />
               </div>
+              <KeyValueEditor
+                label={l("Query parameters", "Parametri query")}
+                bind:rows={webhookQuery}
+              />
               <div class="space-y-2">
                 <Label for="door-webhook-method"
                   >{l("HTTP method", "Metodo HTTP")}</Label
@@ -757,20 +798,10 @@
                     >{/each}
                 </NativeSelect.Root>
               </div>
-              <div class="space-y-2">
-                <Label for="door-webhook-headers"
-                  >{l(
-                    "Additional headers (JSON)",
-                    "Header aggiuntivi (JSON)",
-                  )}</Label
-                >
-                <Textarea
-                  id="door-webhook-headers"
-                  bind:value={webhookHeaders}
-                  placeholder={'{"Authorization":"Bearer …","Content-Type":"application/json"}'}
-                  autocomplete="off"
-                />
-              </div>
+              <KeyValueEditor
+                label={l("Headers", "Header")}
+                bind:rows={webhookHeaders}
+              />
               <div class="space-y-2">
                 <Label for="door-webhook-body"
                   >{l("Request body", "Corpo della richiesta")}</Label

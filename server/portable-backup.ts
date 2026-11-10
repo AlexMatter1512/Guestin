@@ -7,7 +7,12 @@ import {
 import { digest, vault } from "./security";
 import { log } from "./log";
 
-export function exportRecords(db: DB, key: string): PortableBackup {
+export function exportRecords(
+  db: DB,
+  key: string,
+  propertyId?: string,
+): PortableBackup {
+  const scope = propertyId ? [propertyId] : [];
   const crypto = vault(key);
   const all = (sql: string, ...args: any[]) =>
     db.query(sql).all(...args) as any[];
@@ -19,7 +24,9 @@ export function exportRecords(db: DB, key: string): PortableBackup {
       version: 1,
       exportedAt: new Date().toISOString(),
       properties: all(
-        "SELECT p.*,s.notification_months,s.notification_limit,s.breakfast_password,t.data templates FROM properties p LEFT JOIN property_settings s ON s.property_id=p.id LEFT JOIN templates t ON t.property_id=p.id",
+        "SELECT p.*,s.notification_months,s.notification_limit,s.breakfast_password,t.data templates FROM properties p LEFT JOIN property_settings s ON s.property_id=p.id LEFT JOIN templates t ON t.property_id=p.id" +
+          (propertyId ? " WHERE p.id=?" : ""),
+        ...scope,
       ).map((p) => ({
         id: p.id,
         data: JSON.parse(p.data),
@@ -28,12 +35,17 @@ export function exportRecords(db: DB, key: string): PortableBackup {
         breakfastPassword: p.breakfast_password,
         ...(p.templates ? { templates: JSON.parse(p.templates) } : {}),
       })),
-      doors: all("SELECT * FROM doors").map((d) => {
+      doors: all(
+        "SELECT * FROM doors" + (propertyId ? " WHERE property_id=?" : ""),
+        ...scope,
+      ).map((d) => {
         const { photos, primaryPhotoId, ...data } = JSON.parse(d.data);
         return { id: d.id, data, config: crypto.open(d.secret) };
       }),
       codes: all(
-        "SELECT c.*,u.name creator_name FROM codes c LEFT JOIN users u ON u.id=c.creator",
+        "SELECT c.*,u.name creator_name FROM codes c LEFT JOIN users u ON u.id=c.creator" +
+          (propertyId ? " WHERE c.property_id=?" : ""),
+        ...scope,
       ).map((c) => ({
         id: c.id,
         data: JSON.parse(c.data),
@@ -56,20 +68,33 @@ export function exportRecords(db: DB, key: string): PortableBackup {
           "SELECT id,quantity,date,created FROM redemptions WHERE code_id=?",
           c.id,
         ),
-        actions: all("SELECT * FROM actions WHERE code_id=?", c.id).map(
-          (a) => ({
+        actions: all("SELECT * FROM actions WHERE code_id=?", c.id).map((a) => {
+          const result = JSON.parse(a.result);
+          return {
             id: a.id,
             kind: a.kind,
             target: a.target,
-            result: JSON.parse(a.result),
-          }),
-        ),
+            result:
+              result.status === "pending"
+                ? {
+                    ...result,
+                    detail: result.detail ?? "Device request in progress",
+                  }
+                : result,
+          };
+        }),
         metrics: get(
           "SELECT attempts,accepted FROM code_metrics WHERE code_id=?",
           c.id,
         ) ?? { attempts: 0, accepted: 0 },
       })),
-      doorTests: all("SELECT * FROM door_tests")
+      doorTests: all(
+        "SELECT * FROM door_tests" +
+          (propertyId
+            ? " WHERE door_id IN (SELECT id FROM doors WHERE property_id=?)"
+            : ""),
+        ...scope,
+      )
         .filter((t) => !!get("SELECT 1 FROM doors WHERE id=?", t.door_id))
         .map((t) => ({
           id: t.id,
@@ -80,7 +105,9 @@ export function exportRecords(db: DB, key: string): PortableBackup {
           created: t.created,
         })),
       events: all(
-        "SELECT e.*,ec.data context FROM events e LEFT JOIN event_context ec ON ec.event_id=e.id",
+        "SELECT e.*,ec.data context FROM events e LEFT JOIN event_context ec ON ec.event_id=e.id" +
+          (propertyId ? " WHERE e.property_id=?" : ""),
+        ...scope,
       ).map((e) => ({
         id: e.id,
         propertyId: e.property_id,

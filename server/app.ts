@@ -1,3 +1,4 @@
+import { recordTransferRoutes } from "./record-transfer";
 import { notificationPresentation } from "./notification-presentation";
 import { migrateWebhookDoors } from "./webhook-migration";
 import { normalizeDoorInput, webhookRequest } from "../shared/webhook";
@@ -1215,6 +1216,14 @@ export function createApp(
     }
   }
   portableBackupRoutes(app, db, config.key, owner, validateDevice);
+  recordTransferRoutes(
+    app,
+    db,
+    config.key,
+    owner,
+    validateDevice,
+    validateDoorPhotos,
+  );
   const codeView = (row: any) => ({
     id: row.id,
     staff: false,

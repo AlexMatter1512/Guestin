@@ -108,9 +108,12 @@ try {
   await expect(doorForm.getByLabel("Request body")).toHaveValue(
     '{"id":"YOUR_DEVICE_ID","on":true}',
   );
-  await expect(doorForm.getByLabel("Additional headers (JSON)")).toHaveValue(
-    '{"Content-Type":"application/json"}',
-  );
+  await expect(
+    doorForm.getByLabel("Headers key 1", { exact: true }),
+  ).toHaveValue("Content-Type");
+  await expect(
+    doorForm.getByLabel("Headers value 1", { exact: true }),
+  ).toHaveValue("application/json");
   await expect(doorForm.getByLabel("Integration", { exact: true })).toHaveValue(
     "webhook",
   );
@@ -123,8 +126,14 @@ try {
   await expect(doorForm.getByLabel("HTTP method")).toHaveValue("GET");
   await expect(doorForm.getByLabel("Success response")).toHaveValue("ewelink");
   await expect(doorForm.getByLabel("Webhook URL")).toHaveValue(
-    /webhooks\/execute\?id=YOUR_WEBHOOK_CODE$/,
+    /webhooks\/execute$/,
   );
+  await expect(
+    doorForm.getByLabel("Query parameters key 1", { exact: true }),
+  ).toHaveValue("id");
+  await expect(
+    doorForm.getByLabel("Query parameters value 1", { exact: true }),
+  ).toHaveValue("YOUR_WEBHOOK_CODE");
   await preset.selectOption("custom");
 
   await doorForm
