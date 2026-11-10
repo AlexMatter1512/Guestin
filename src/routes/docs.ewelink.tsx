@@ -1,3 +1,4 @@
+import { sitePath } from "@/lib/site-path";
 import { createFileRoute } from "@tanstack/react-router";
 import { SiteShell } from "@/components/SiteShell";
 import { useI18n } from "@/i18n/LanguageContext";
@@ -56,7 +57,7 @@ function Guide() {
   return (
     <SiteShell>
       <main className="site-section integration-guide">
-        <a href="/docs">← {lang === "it" ? "Integrazioni" : "Integrations"}</a>
+        <a href={sitePath("/docs")}>← {lang === "it" ? "Integrazioni" : "Integrations"}</a>
         <h1>{guide.title}</h1>
         <p>
           {lang === "it"

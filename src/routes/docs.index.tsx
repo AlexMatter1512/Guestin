@@ -1,3 +1,4 @@
+import { sitePath } from "@/lib/site-path";
 import { createFileRoute } from "@tanstack/react-router";
 import { SiteShell } from "@/components/SiteShell";
 import { useI18n } from "@/i18n/LanguageContext";
@@ -37,7 +38,11 @@ function Docs() {
             <h2>{title as string}</h2>
             <div className="feature-grid">
               {(items as string[][]).map(([slug, name]) => (
-                <a key={slug} className="block rounded-xl border p-6" href={"/docs/" + slug}>
+                <a
+                  key={slug}
+                  className="block rounded-xl border p-6"
+                  href={sitePath("/docs/" + slug)}
+                >
                   {name} →
                 </a>
               ))}

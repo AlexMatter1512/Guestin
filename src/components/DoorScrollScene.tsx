@@ -1,10 +1,11 @@
+import { sitePath } from "@/lib/site-path";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF, Environment, Bounds } from "@react-three/drei";
 import * as THREE from "three";
 
 function DoorModel({ progress }: { progress: React.MutableRefObject<number> }) {
-  const { scene, animations } = useGLTF("/models/door.glb");
+  const { scene, animations } = useGLTF(sitePath("/models/door.glb"));
   const mixer = useMemo(() => new THREE.AnimationMixer(scene), [scene]);
   const action = useMemo(() => {
     const clip = animations[0];
@@ -29,7 +30,7 @@ function DoorModel({ progress }: { progress: React.MutableRefObject<number> }) {
   return <primitive object={scene} />;
 }
 
-useGLTF.preload("/models/door.glb");
+useGLTF.preload(sitePath("/models/door.glb"));
 
 export function DoorScrollScene({ manualOpen = null }: { manualOpen?: boolean | null }) {
   const wrapRef = useRef<HTMLDivElement>(null);

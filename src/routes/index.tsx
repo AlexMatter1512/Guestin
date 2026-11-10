@@ -1,3 +1,4 @@
+import { sitePath } from "@/lib/site-path";
 import { RotatingWord } from "@/components/RotatingWord";
 import { AskAI } from "@/components/AskAI";
 import { createFileRoute } from "@tanstack/react-router";
@@ -109,12 +110,13 @@ function Home() {
   }, []);
   const [view, setView] = useState("host");
   const [doorOpen, setDoorOpen] = useState<boolean | null>(null);
-  const demoSrc =
+  const demoSrc = sitePath(
     view === "guest"
       ? `/demo/guest/#code=${encodeURIComponent(guestCode)}`
       : view === "cafe"
         ? `/demo/host/breakfast/${encodeURIComponent(cafeProperty)}/`
-        : "/demo/host/";
+        : "/demo/host/",
+  );
   const [image, setImage] = useState<string | null>(null);
   return (
     <SiteShell>
@@ -133,7 +135,7 @@ function Home() {
             </h1>
             <p className="lead hero-subtitle">let your guest in</p>
             <div className="actions">
-              <a className="cta" href="/get-started">
+              <a className="cta" href={sitePath("/get-started")}>
                 {it ? "Inizia" : "Get started"} ↗
               </a>
               <a href="#demo">{it ? "Prova la demo" : "Try the demo"} ↓</a>
@@ -286,7 +288,11 @@ function Home() {
                   onClick={() => setImage(id)}
                   aria-label={(it ? "Ingrandisci " : "Enlarge ") + (it ? ita : en)}
                 >
-                  <img src={"/screenshots/" + id + ".png"} alt={it ? ita : en} loading="lazy" />
+                  <img
+                    src={sitePath("/screenshots/" + id + ".png")}
+                    alt={it ? ita : en}
+                    loading="lazy"
+                  />
                 </button>
                 <figcaption>{it ? ita : en}</figcaption>
               </figure>
@@ -315,7 +321,9 @@ function Home() {
               ? "Home Assistant tramite automazioni HTTP/webhook. Le importazioni preparano una bozza: controlli e salvi tu."
               : "Home Assistant through HTTP/webhook automation. Imports prepare a draft: you review and save it."}
           </p>
-          <a href="/docs">{it ? "Esplora le integrazioni" : "Explore integrations"} →</a>
+          <a href={sitePath("/docs")}>
+            {it ? "Esplora le integrazioni" : "Explore integrations"} →
+          </a>
         </section>
         <section className="site-section integrations">
           <h2>{it ? "Prenotazioni" : "Reservations"}</h2>
@@ -325,7 +333,9 @@ function Home() {
               ? "Importa dettagli e controlla la bozza prima di creare il codice."
               : "Import details and review the draft before creating an access code."}
           </p>
-          <a href="/docs">{it ? "Integrazioni prenotazioni" : "Reservation integrations"} →</a>
+          <a href={sitePath("/docs")}>
+            {it ? "Integrazioni prenotazioni" : "Reservation integrations"} →
+          </a>
         </section>
         <section id="get-started" className="site-section">
           <p className="eyebrow">SELF HOSTING</p>
@@ -336,7 +346,7 @@ function Home() {
               : "Run Guestin locally with Bun or Docker Compose. One container, no separate database server."}
           </p>
           <div className="actions">
-            <a className="cta" href="/get-started">
+            <a className="cta" href={sitePath("/get-started")}>
               {it ? "Guida passo passo" : "Step-by-step guide"} →
             </a>
             <a href={repo}>GitHub ↗</a>
@@ -403,7 +413,7 @@ function Home() {
             {it ? "Chiudi" : "Close"} ×
           </button>
           <img
-            src={"/screenshots/" + image + ".png"}
+            src={sitePath("/screenshots/" + image + ".png")}
             alt={shots.find((s) => s[0] === image)?.[it ? 2 : 1]}
           />
         </div>

@@ -1,3 +1,4 @@
+import { sitePath } from "@/lib/site-path";
 import { createFileRoute } from "@tanstack/react-router";
 import { useI18n } from "@/i18n/LanguageContext";
 import { SiteShell, repo } from "@/components/SiteShell";
@@ -54,7 +55,7 @@ function Guide() {
           {it
             ? "Installa Docker con Compose. Salva il file in una cartella dedicata."
             : "Install Docker with Compose. Save this file in a dedicated folder."}{" "}
-          <a href="/compose.local.yaml" download>
+          <a href={sitePath("/compose.local.yaml")} download>
             compose.local.yaml ↓
           </a>
         </p>

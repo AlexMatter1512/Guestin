@@ -1,3 +1,4 @@
+import { sitePath } from "@/lib/site-path";
 import { Github } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { useI18n } from "@/i18n/LanguageContext";
@@ -8,13 +9,13 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
   return (
     <>
       <header className="site-nav">
-        <a className="font-display text-2xl" href="/">
+        <a className="font-display text-2xl" href={sitePath("/")}>
           Guestin
         </a>
         <nav>
-          <a href="/#features">{it ? "Funzionalità" : "Features"}</a>
-          <a href="/docs">{it ? "Integrazioni" : "Integrations"}</a>
-          <a href="/get-started">{it ? "Inizia" : "Get started"}</a>
+          <a href={sitePath("/#features")}>{it ? "Funzionalità" : "Features"}</a>
+          <a href={sitePath("/docs")}>{it ? "Integrazioni" : "Integrations"}</a>
+          <a href={sitePath("/get-started")}>{it ? "Inizia" : "Get started"}</a>
           <a href={repo} className="github-link" aria-label="GitHub" title="GitHub">
             <Github size={21} aria-hidden="true" />
           </a>
@@ -30,7 +31,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
           <Github size={21} aria-hidden="true" />
         </a>{" "}
         · <a href={repo + "/blob/main/CONTRIBUTING.md"}>{it ? "Contribuisci" : "Contribute"}</a> ·{" "}
-        <a href="/get-started">{it ? "Inizia" : "Get started"}</a>
+        <a href={sitePath("/get-started")}>{it ? "Inizia" : "Get started"}</a>
       </footer>
     </>
   );
