@@ -1,0 +1,130 @@
+.code-list-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.code-list-tools {
+  display: flex;
+  flex-shrink: 0;
+}
+.code-list-tools > button {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+}
+.list-page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.list-page-heading h1 {
+  min-width: 0;
+}
+.list-overflow-trigger {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+.code-view-tabs {
+  display: flex;
+  width: fit-content;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 0;
+  background: var(--muted);
+  border-radius: 10px;
+}
+.code-view-tabs .code-view-tab {
+  min-height: 44px;
+  padding: 0 20px;
+}
+.code-view-tabs .selected {
+  background: var(--background);
+  box-shadow: 0 1px 3px #00000012;
+}
+.code-row .code-row-actions {
+  flex-direction: row;
+  align-items: center;
+  gap: 0;
+}
+.code-row-actions .code-action-target {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+}
+.code-actions-menu .code-menu-action,
+.code-menu-action[data-slot="button"] {
+  justify-content: flex-start;
+  min-height: 44px;
+  width: 100%;
+}
+.statistics-cards {
+  display: none;
+}
+@media (max-width: 639px) {
+  .list-page-heading {
+    margin-bottom: 12px;
+  }
+  .code-toolbar {
+    margin-bottom: 12px;
+  }
+  .code-row .code-row-actions {
+    flex-direction: column;
+  }
+  .code-list .code-row {
+    gap: 8px;
+    padding: 12px;
+  }
+  .code-toolbar {
+    flex-wrap: nowrap;
+  }
+  .code-toolbar > button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .code-toolbar .today-button {
+    min-width: 44px;
+  }
+  .code-toolbar .toolbar-spacer {
+    min-width: 0;
+  }
+  .statistics-table {
+    display: none;
+  }
+  .statistics-cards {
+    display: grid;
+    gap: 12px;
+  }
+  .statistics-card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .statistics-card h3 {
+    margin: 0;
+    font-size: 15px;
+  }
+  .statistics-card > p {
+    margin: 4px 0 16px;
+    font-size: 13px;
+  }
+  .statistics-card dl {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin: 0;
+  }
+  .statistics-card dt {
+    color: var(--muted-foreground);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+  .statistics-card dd {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 4px 0 0;
+  }
+}

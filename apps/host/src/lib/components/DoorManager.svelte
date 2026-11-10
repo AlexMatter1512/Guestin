@@ -1,7 +1,6 @@
 <script lang="ts">
   import { webhookMethods, webhookPreset } from "../../../../../shared/webhook";
   import DoorConfiguration from "$lib/components/DoorConfiguration.svelte";
-  import RecordTransfer from "$lib/components/RecordTransfer.svelte";
   import KeyValueEditor from "$lib/components/KeyValueEditor.svelte";
   import {
     emptyPair,
@@ -429,15 +428,6 @@
 
 <section class="door-manager space-y-6" aria-label={t("Doors")}>
   {#if !editor && !detailId}
-    {#if owner && propertyId}<div class="mb-4">
-        <RecordTransfer
-          kind="doors"
-          {propertyId}
-          {propertyName}
-          {api}
-          {reload}
-        />
-      </div>{/if}
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div class="space-y-1">
         <p class="text-sm text-muted-foreground">
@@ -585,17 +575,6 @@
           void run(save);
         }}
       >
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <h2 class="text-lg font-semibold">
-            {t(editId ? "Edit door" : "Add door")}
-          </h2>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={pending}
-            onclick={back}>{t("Back to doors")}</Button
-          >
-        </div>
         <Card.Root>
           <Card.Header>
             <Card.Title>{l("Door details", "Dettagli della porta")}</Card.Title>
@@ -983,7 +962,7 @@
           </Card.Content>
         </Card.Root>
         <div
-          class="flex flex-wrap items-center justify-end gap-3 border-t pt-5"
+          class="mobile-form-actions flex flex-wrap items-center justify-end gap-3 border-t pt-5"
         >
           <Button
             variant="outline"
@@ -1002,25 +981,6 @@
     {@const activePhoto =
       photos.find((p) => p.id === selectedPhoto) ?? primary(detail)}
     <Card.Root>
-      <Card.Header class="gap-3">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <Card.Title>{detail.name}</Card.Title><Button
-            variant="outline"
-            onclick={back}>{t("Back to doors")}</Button
-          >
-        </div>
-        <div class="flex flex-wrap gap-2">
-          <Badge variant={detail.enabled === false ? "outline" : "secondary"}
-            >{detail.enabled === false
-              ? l("Disabled", "Disabilitata")
-              : l("Enabled", "Abilitata")}</Badge
-          ><Badge variant="outline"
-            >{detail.integration === "none"
-              ? t("Not connected yet")
-              : l("Generic webhook", "Webhook generico")}</Badge
-          >
-        </div>
-      </Card.Header>
       <Card.Content class="space-y-5">
         {#if activePhoto}
           <img
@@ -1047,8 +1007,7 @@
         {#if detail.description}<p class="whitespace-pre-wrap text-sm">
             {detail.description}
           </p>{/if}
-        <Separator />
-        <dl class="grid gap-3 text-sm sm:grid-cols-[minmax(140px,1fr)_2fr]">
+        <dl class="door-summary text-sm">
           <dt class="text-muted-foreground">{l("Status", "Stato")}</dt>
           <dd>
             {detail.enabled === false
@@ -1214,7 +1173,7 @@
                 <Button
                   variant="outline"
                   size="icon"
-                  class="shrink-0"
+                  class="size-11 shrink-0"
                   aria-label={door.testAction?.status === "uncertain"
                     ? l("Check uncertain test", "Verifica test incerto")
                     : l("Test opening", "Prova apertura")}
@@ -1233,6 +1192,8 @@
                       size={20}
                     />{:else}<DoorOpen size={20} />{/if}</Button
                 >
+              {:else if owner}
+                <span class="size-11 shrink-0" aria-hidden="true"></span>
               {/if}
             </li>
           {/each}
@@ -1268,31 +1229,62 @@
 </section>
 
 {#snippet doorActions(door: Door)}
-  <div class="flex w-full flex-wrap gap-2">
-    {#if owner}{#if door.testAction?.status === "uncertain"}<Button
+  <div class="w-full space-y-4">
+    <div class="flex flex-wrap gap-2">
+      {#if owner}{#if door.testAction?.status === "uncertain"}<Button
+            variant="outline"
+            disabled={pending}
+            onclick={() => ask("resolve", door)}
+            >{l("Check uncertain test", "Verifica test incerto")}</Button
+          >
+        {:else}<Button
+            disabled={pending ||
+              door.integration === "none" ||
+              door.testAction?.status === "pending"}
+            onclick={() => ask("test", door)}
+            ><DoorOpen size={16} />{door.testAction?.status === "pending"
+              ? l("Test pending", "Test in corso")
+              : l("Test opening", "Prova apertura")}</Button
+          >{/if}{/if}
+      {#if owner}<Button
           variant="outline"
           disabled={pending}
-          onclick={() => ask("resolve", door)}
-          >{l("Check uncertain test", "Verifica test incerto")}</Button
+          onclick={() => editDoor(door)}>{t("Edit")}</Button
+        >{/if}
+    </div>
+    {#if owner}
+      <details class="door-management border-t pt-4">
+        <summary class="cursor-pointer text-sm font-medium"
+          >{l("Manage door", "Gestisci porta")}</summary
         >
-      {:else}<Button
-          disabled={pending ||
-            door.integration === "none" ||
-            door.testAction?.status === "pending"}
-          onclick={() => ask("test", door)}
-          ><DoorOpen size={16} />{door.testAction?.status === "pending"
-            ? l("Test pending", "Test in corso")
-            : l("Test opening", "Prova apertura")}</Button
-        >{/if}{/if}
-    {#if owner}<Button
-        variant="outline"
-        disabled={pending}
-        onclick={() => editDoor(door)}>{t("Edit")}</Button
-      ><Button
-        variant="destructive"
-        class="sm:ml-auto"
-        disabled={pending}
-        onclick={() => ask("delete", door)}>{l("Delete", "Elimina")}</Button
-      >{/if}
+        <div class="pt-3">
+          <Button
+            variant="destructive"
+            disabled={pending}
+            onclick={() => ask("delete", door)}
+            >{l("Delete door", "Elimina porta")}</Button
+          >
+        </div>
+      </details>
+    {/if}
   </div>
 {/snippet}
+
+<style>
+  .door-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+    gap: 1rem;
+    align-items: start;
+  }
+  .door-summary dt {
+    color: var(--muted-foreground);
+  }
+  .door-summary dd {
+    overflow-wrap: anywhere;
+  }
+  .door-management summary {
+    min-height: 44px;
+    align-content: center;
+  }
+</style>

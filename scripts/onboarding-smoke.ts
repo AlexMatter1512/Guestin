@@ -1,5 +1,12 @@
 import { chromium, expect, type Page } from "@playwright/test";
-async function replayTour(page: any) {
+async function showNavigation(page: Page) {
+  if (!(await page.locator('[data-tour="nav-settings"]').isVisible())) {
+    // Leaving an editor via Back preserves its draft; Cancel discards it.
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+  }
+}
+async function replayTour(page: Page) {
+  await showNavigation(page);
   await page.locator('[data-tour="nav-settings"]').click();
   await page.locator('[data-tour="app-tour"]').click();
 }
@@ -399,10 +406,11 @@ try {
     ),
   ).toBe(true);
   // Editing a saved code is not the guide's "create first code" action.
+  await showNavigation(page);
   await page.locator('[data-tour="nav-codes"]').click();
   await page
     .locator(`[data-code-id="${complete.codes[0].id}"]`)
-    .getByRole("button", { name: /First guest/ })
+    .locator(".code-summary")
     .click();
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await page.getByLabel("Guest name / label").fill("An unsaved edit");
@@ -453,6 +461,7 @@ try {
   });
   await page.reload();
   await page.getByLabel("Guest name / label").waitFor();
+  await showNavigation(page);
   await page.locator('[data-tour="nav-codes"]').click();
   await page.locator('[data-tour="new-code"]').click();
   await page

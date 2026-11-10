@@ -18,12 +18,16 @@
   } from "../../../../../shared/record-transfer";
   let {
     kind,
+    open = $bindable(false),
+    showTrigger = true,
     propertyId,
     propertyName,
     api,
     reload,
   }: {
     kind: RecordKind;
+    open?: boolean;
+    showTrigger?: boolean;
     propertyId: string;
     propertyName: string;
     api: (path: string, body?: any, method?: string) => Promise<any>;
@@ -31,8 +35,7 @@
   } = $props();
   const l = (en: string, it: string) =>
     hostLanguage.current === "it" ? it : en;
-  let open = $state(false),
-    busy = $state(false),
+  let busy = $state(false),
     reading = $state(false),
     data = $state<RecordTransfer | null>(null),
     name = $state(""),
@@ -193,18 +196,18 @@
   }
 </script>
 
-<Button
-  type="button"
-  variant="outline"
-  disabled={!propertyId}
-  onclick={() => {
-    toast.dismiss();
-    notice = "";
-    open = true;
-  }}
-  data-record-transfer={kind}
-  ><Download size={16} /><Upload size={16} />{title}</Button
->
+{#if showTrigger}<Button
+    type="button"
+    variant="outline"
+    disabled={!propertyId}
+    onclick={() => {
+      toast.dismiss();
+      notice = "";
+      open = true;
+    }}
+    data-record-transfer={kind}
+    ><Download size={16} /><Upload size={16} />{title}</Button
+  >{/if}
 <FeedbackToast message={notice} />
 <Modal
   {open}

@@ -4,6 +4,7 @@
     wantsNotification,
     notificationTypes,
   } from "../../../../shared/notifications";
+  import "$lib/access-form.css";
   import { Toaster } from "$lib/components/ui/sonner";
   import FeedbackToast from "$lib/components/FeedbackToast.svelte";
   import { toast } from "svelte-sonner";
@@ -73,7 +74,9 @@
   import NotificationHistory from "$lib/components/NotificationHistory.svelte";
   import ConnectorManager from "$lib/components/ConnectorManager.svelte";
   import Modal from "$lib/components/Modal.svelte";
-  import RecordTransfer from "$lib/components/RecordTransfer.svelte";
+  import CodeRowActions from "$lib/components/CodeRowActions.svelte";
+  import HeadingRecordActions from "$lib/components/HeadingRecordActions.svelte";
+  import "$lib/code-list-layout.css";
   import ActivityToast from "$lib/components/ActivityToast.svelte";
   import CollaboratorManager from "$lib/components/CollaboratorManager.svelte";
   import {
@@ -1985,7 +1988,16 @@
       suggested={suggestedLocale}
       onconfirm={confirmLanguage}
     />
-    <nav class="app-nav" aria-label={t("Main navigation")}>
+    <nav
+      class={[
+        "app-nav",
+        {
+          "form-editing": (editing || doorEditor) && !tourVisible,
+          "tour-editing": (editing || doorEditor) && tourVisible,
+        },
+      ]}
+      aria-label={t("Main navigation")}
+    >
       {#each navigation as item (item.name)}
         {#if item.name === "Create"}<Button
             type="button"
@@ -1993,7 +2005,8 @@
             class="quick-create"
             data-tour="new-code"
             aria-label={t("Create access code")}
-            disabled={!propertyId ||
+            disabled={((editing || doorEditor) && !tourVisible) ||
+              !propertyId ||
               busy ||
               !(
                 can("createAccessCodes") ||
@@ -2027,7 +2040,18 @@
       {/each}
     </nav>
     <main class:settings-index={tab === "Settings" && !settingsPage}>
-      <div class="page-heading"><h1>{t(pageTitle)}</h1></div>
+      <div class="page-heading list-page-heading">
+        <h1>{t(pageTitle)}</h1>
+        {#if user.role === "owner" && propertyId && ((tab === "Codes" && !editing && !detailCodeId) || (tab === "Doors" && !doorEditor && !detailDoorId))}
+          {#key tab + propertyId}<HeadingRecordActions
+              kind={tab === "Doors" ? "doors" : "codes"}
+              {propertyId}
+              propertyName={property?.name ?? ""}
+              {api}
+              {reload}
+            />{/key}
+        {/if}
+      </div>
       <Tour
         open={tourVisible}
         stage={tourStage}
@@ -2064,26 +2088,13 @@
           {#if tab === "Codes"}
             {#if editing}<form
                 data-tour="code-form"
-                class="stack"
+                class="stack access-code-form"
                 onsubmit={(e) => {
                   e.preventDefault();
                   void act(save);
                 }}
               >
                 <Card.Root class="workspace-card stack">
-                  <div class="row spread">
-                    <h2>
-                      {t(editId ? "Edit access code" : "Create access code")}
-                    </h2>
-                    <Button
-                      variant="outline"
-                      type="button"
-                      onclick={() => {
-                        editing = false;
-                        localStorage.removeItem("oshost.draft." + user.id);
-                      }}>{t("Discard")}</Button
-                    >
-                  </div>
                   <div class="form-grid">
                     <Label class="field-label"
                       >{t(
@@ -2095,41 +2106,43 @@
                         required
                         placeholder={t("e.g. Maria Rossi")}
                       /></Label
-                    ><Label class="field-label"
-                      >{t("Property")}<NativeSelect.Root
-                        aria-label={t("Property")}
-                        class="w-full"
-                        value={draft.propertyId}
-                        onchange={(event) => {
-                          const previous = properties.find(
-                              (p) => p.id === draft.propertyId,
-                            ),
-                            next = properties.find(
-                              (p) => p.id === event.currentTarget.value,
-                            );
-                          if (
-                            !draft.checkinLink ||
-                            draft.checkinLink === previous?.defaultCheckinLink
-                          )
-                            draft.checkinLink = next?.defaultCheckinLink ?? "";
-                          if (
-                            !draft.instructionsLink ||
-                            draft.instructionsLink ===
-                              previous?.defaultInstructionsLink
-                          )
-                            draft.instructionsLink =
-                              next?.defaultInstructionsLink ?? "";
-                          draft.propertyId = event.currentTarget.value;
-                          draft.grants = [];
-                          if (tourVisible) changeTourProperty(draft.propertyId);
-                        }}
-                        >{#each properties as p, index (p.id ?? index)}<NativeSelect.Option
-                            value={p.id}>{p.name}</NativeSelect.Option
-                          >{/each}</NativeSelect.Root
-                      ></Label
-                    >
+                    >{#if properties.length > 1}<Label class="field-label"
+                        >{t("Property")}<NativeSelect.Root
+                          aria-label={t("Property")}
+                          class="w-full"
+                          value={draft.propertyId}
+                          onchange={(event) => {
+                            const previous = properties.find(
+                                (p) => p.id === draft.propertyId,
+                              ),
+                              next = properties.find(
+                                (p) => p.id === event.currentTarget.value,
+                              );
+                            if (
+                              !draft.checkinLink ||
+                              draft.checkinLink === previous?.defaultCheckinLink
+                            )
+                              draft.checkinLink =
+                                next?.defaultCheckinLink ?? "";
+                            if (
+                              !draft.instructionsLink ||
+                              draft.instructionsLink ===
+                                previous?.defaultInstructionsLink
+                            )
+                              draft.instructionsLink =
+                                next?.defaultInstructionsLink ?? "";
+                            draft.propertyId = event.currentTarget.value;
+                            draft.grants = [];
+                            if (tourVisible)
+                              changeTourProperty(draft.propertyId);
+                          }}
+                          >{#each properties as p, index (p.id ?? index)}<NativeSelect.Option
+                              value={p.id}>{p.name}</NativeSelect.Option
+                            >{/each}</NativeSelect.Root
+                        ></Label
+                      >{/if}
                   </div>
-                  <div class="stack">
+                  <div class="access-code-kind">
                     <Label class="inline" for="staff-access-code"
                       ><Switch
                         id="staff-access-code"
@@ -2139,38 +2152,11 @@
                         onCheckedChange={setStaffCode}
                       />{t("Staff access code")}</Label
                     >
-                    <p class="muted">
-                      {t(
-                        "Time-unrestricted access for cleaners, laundry and other staff. Door permissions and revocation still apply.",
-                      )}
-                    </p>
-                  </div>
-                  <Label class="inline" for="internal-notes-enabled"
-                    ><Switch
-                      id="internal-notes-enabled"
-                      bind:checked={notesEnabled}
-                    />{t("Internal notes")}</Label
-                  >
-                  {#if notesEnabled}<Label
-                      class="field-label"
-                      for="internal-notes"
-                      >{t("Notes")}<Textarea
-                        id="internal-notes"
-                        bind:value={draft.notes}
-                      /></Label
-                    >{/if}
-                  <div class="form-grid">
-                    <Label class="field-label"
-                      >{t("Online check-in link")}<Input
-                        bind:value={draft.checkinLink}
-                        type="url"
-                      /></Label
-                    ><Label class="field-label"
-                      >{t("Instructions link")}<Input
-                        bind:value={draft.instructionsLink}
-                        type="url"
-                      /></Label
-                    >
+                    {#if draft.staff}<p class="muted">
+                        {t(
+                          "Time-unrestricted access for cleaners, laundry and other staff. Door permissions and revocation still apply.",
+                        )}
+                      </p>{/if}
                   </div>
                 </Card.Root>
                 <Card.Root class="workspace-card">
@@ -2268,22 +2254,80 @@
                       >
                     </div>{/if}
                 </Card.Root>
+                <details class="access-additional-details workspace-card">
+                  <summary
+                    >{hostLanguage.current === "it"
+                      ? "Dettagli aggiuntivi"
+                      : "Additional details"}</summary
+                  >
+                  <div class="stack access-additional-content">
+                    <Label class="inline" for="internal-notes-enabled"
+                      ><Switch
+                        id="internal-notes-enabled"
+                        bind:checked={notesEnabled}
+                      />{t("Internal notes")}</Label
+                    >
+                    {#if notesEnabled}<Label
+                        class="field-label"
+                        for="internal-notes"
+                        >{t("Notes")}<Textarea
+                          id="internal-notes"
+                          bind:value={draft.notes}
+                        /></Label
+                      >{/if}
+                    <div class="form-grid">
+                      <Label class="field-label"
+                        >{t("Online check-in link")}<Input
+                          bind:value={draft.checkinLink}
+                          type="url"
+                          oninvalid={(event) =>
+                            event.currentTarget
+                              .closest("details")
+                              ?.setAttribute("open", "")}
+                        /></Label
+                      ><Label class="field-label"
+                        >{t("Instructions link")}<Input
+                          bind:value={draft.instructionsLink}
+                          type="url"
+                          oninvalid={(event) =>
+                            event.currentTarget
+                              .closest("details")
+                              ?.setAttribute("open", "")}
+                        /></Label
+                      >
+                    </div>
+                  </div>
+                </details>
                 {#if duplicateCodes.length}<p class="notice" role="status">
                     {t(
                       "An identical access code already exists. Saving requires confirmation.",
                     )}
                   </p>{/if}
-                <Button
-                  type="submit"
-                  variant="default"
-                  class="primary"
-                  disabled={busy || !draft.propertyId || !canManageCode(draft)}
-                  >{t("Save access code")}</Button
-                ><small
+                <small
                   >{t(
                     "Active permissions are published after the server confirms this save.",
                   )}</small
                 >
+                <div class="mobile-form-actions access-code-actions">
+                  <Button
+                    variant="outline"
+                    type="button"
+                    disabled={busy}
+                    onclick={() => {
+                      editing = false;
+                      localStorage.removeItem("oshost.draft." + user.id);
+                      localStorage.removeItem("oshost.draft.editId." + user.id);
+                    }}>{t("Cancel")}</Button
+                  >
+                  <Button
+                    type="submit"
+                    variant="default"
+                    class="primary"
+                    disabled={busy ||
+                      !draft.propertyId ||
+                      !canManageCode(draft)}>{t("Save access code")}</Button
+                  >
+                </div>
               </form>
             {:else if detailCode}
               <section class="code-detail stack" data-code-id={detailCode.id}>
@@ -2480,26 +2524,76 @@
                 </details>
               </section>
             {:else}
-              {#if user.role === "owner" && propertyId}<div class="mb-4">
-                  <RecordTransfer
-                    kind="codes"
-                    {propertyId}
-                    propertyName={property?.name ?? ""}
-                    {api}
-                    {reload}
-                  />
-                </div>{/if}
-              <div class="row spread mb-4">
-                <Label class="inline" for="staff-codes-view"
-                  ><Switch
-                    id="staff-codes-view"
-                    checked={staffCodes}
-                    onCheckedChange={setStaffCodes}
-                  />{t("Staff codes")}</Label
+              <div class="code-list-controls">
+                <div
+                  class="code-view-tabs"
+                  role="group"
+                  aria-label={hostLanguage.current === "it"
+                    ? "Tipo di codice"
+                    : "Code type"}
                 >
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    aria-pressed={!staffCodes}
+                    class={cn("code-view-tab", !staffCodes && "selected")}
+                    onclick={() => setStaffCodes(false)}
+                    >{hostLanguage.current === "it"
+                      ? "Ospiti"
+                      : "Guests"}</Button
+                  >
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    aria-pressed={staffCodes}
+                    class={cn("code-view-tab", staffCodes && "selected")}
+                    onclick={() => setStaffCodes(true)}
+                    >{hostLanguage.current === "it" ? "Staff" : "Staff"}</Button
+                  >
+                </div>
+                <div class="code-list-tools">
+                  <Popover.Root>
+                    <Popover.Trigger
+                      class={buttonVariants({ variant: "ghost", size: "icon" })}
+                      aria-label={t("Search codes")}
+                      title={t("Search codes")}
+                      data-search-active={!!search}
+                      ><Search size={18} /></Popover.Trigger
+                    >
+                    <Popover.Content align="end" class="w-72">
+                      <Label for="code-search">{t("Search codes")}</Label>
+                      <div class="flex gap-2">
+                        <Input
+                          id="code-search"
+                          placeholder={t(
+                            staffCodes
+                              ? "Search staff access…"
+                              : "Search guest access…",
+                          )}
+                          bind:value={search}
+                        /><Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={t("Clear search")}
+                          onclick={() => (search = "")}><X size={16} /></Button
+                        >
+                      </div>
+                    </Popover.Content>
+                  </Popover.Root>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t("Filters")}
+                    title={t("Filters")}
+                    aria-expanded={filtersOpen}
+                    onclick={() => (filtersOpen = !filtersOpen)}
+                    ><ListFilter size={17} />{codeStatus !== "all"
+                      ? "1"
+                      : ""}</Button
+                  >
+                </div>
               </div>
-              <div class="calendar-bar code-toolbar">
-                {#if !staffCodes}
+              {#if !staffCodes}<div class="calendar-bar code-toolbar">
                   <Button
                     variant="ghost"
                     size="icon"
@@ -2526,48 +2620,7 @@
                       (codeDate = dayAt(new Date().toISOString(), propertyId))}
                     >{t("Today")}</Button
                   >
-                {/if}
-                <div class="toolbar-spacer"></div>
-                <Popover.Root>
-                  <Popover.Trigger
-                    class={buttonVariants({ variant: "ghost", size: "icon" })}
-                    aria-label={t("Search codes")}
-                    title={t("Search codes")}
-                    data-search-active={!!search}
-                    ><Search size={18} /></Popover.Trigger
-                  >
-                  <Popover.Content align="end" class="w-72">
-                    <Label for="code-search">{t("Search codes")}</Label>
-                    <div class="flex gap-2">
-                      <Input
-                        id="code-search"
-                        placeholder={t(
-                          staffCodes
-                            ? "Search staff access…"
-                            : "Search guest access…",
-                        )}
-                        bind:value={search}
-                      /><Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={t("Clear search")}
-                        onclick={() => (search = "")}><X size={16} /></Button
-                      >
-                    </div>
-                  </Popover.Content>
-                </Popover.Root>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t("Filters")}
-                  title={t("Filters")}
-                  aria-expanded={filtersOpen}
-                  onclick={() => (filtersOpen = !filtersOpen)}
-                  ><ListFilter size={17} />{codeStatus !== "all"
-                    ? "1"
-                    : ""}</Button
-                >
-              </div>
+                </div>{/if}
               {#if filtersOpen}<div class="filter-panel">
                   <Label class="field-label"
                     >{t("Status")}<NativeSelect.Root
@@ -2639,40 +2692,13 @@
                         ></span
                       ></Button
                     >
-                    <div class="row row-actions">
-                      <a
-                        class={buttonVariants({
-                          variant: "ghost",
-                          size: "icon",
-                        })}
-                        href={c.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        aria-label={t("Open link")}
-                        title={t("Open link")}><ExternalLink size={19} /></a
-                      >
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        class="icon-button"
-                        aria-label={t("Copy link")}
-                        title={t("Copy link")}
-                        disabled={!!c.revoked}
-                        onclick={() => void copy(c.link)}
-                        ><Link size={19} /></Button
-                      ><Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        class="icon-button"
-                        aria-label={t("Prepare message")}
-                        title={t("Prepare message")}
-                        disabled={!!c.revoked}
-                        onclick={() => act(() => prepareShare(c))}
-                        ><Share2 size={19} /></Button
-                      >
-                    </div>
+                    <CodeRowActions
+                      label={c.label}
+                      link={c.link}
+                      revoked={!!c.revoked}
+                      oncopy={() => void copy(c.link)}
+                      onshare={() => act(() => prepareShare(c))}
+                    />
                   </article>{:else}<div class="empty-state">
                     <KeyRound size={36} />
                     <h2>
@@ -2734,27 +2760,59 @@
                   "Grouped by creation month in the property timezone. Attempts and accepted requests are lifetime totals for those codes.",
                 )}
               </p>
-              <Table.Root>
-                <Table.Header
-                  ><Table.Row
-                    ><Table.Head>{t("Host / month")}</Table.Head><Table.Head
-                      >{t("Created")}</Table.Head
-                    ><Table.Head>{t("Used")}</Table.Head><Table.Head
-                      >{t("Attempts")}</Table.Head
-                    ><Table.Head>{t("Accepted")}</Table.Head></Table.Row
-                  ></Table.Header
-                ><Table.Body
-                  >{#each stats as s, index (s.name + s.month)}<Table.Row
-                      ><Table.Cell
-                        >{s.name}<br /><small>{s.month}</small></Table.Cell
-                      ><Table.Cell>{s.created}</Table.Cell><Table.Cell
-                        >{s.used}</Table.Cell
-                      ><Table.Cell>{s.attempts}</Table.Cell><Table.Cell
-                        >{s.accepted}</Table.Cell
-                      ></Table.Row
-                    >{/each}</Table.Body
-                >
-              </Table.Root>
+              <div class="statistics-table">
+                <Table.Root>
+                  <Table.Header
+                    ><Table.Row
+                      ><Table.Head>{t("Host / month")}</Table.Head><Table.Head
+                        >{t("Created")}</Table.Head
+                      ><Table.Head>{t("Used")}</Table.Head><Table.Head
+                        >{t("Attempts")}</Table.Head
+                      ><Table.Head>{t("Accepted")}</Table.Head></Table.Row
+                    ></Table.Header
+                  ><Table.Body
+                    >{#each stats as s, index (s.name + s.month)}<Table.Row
+                        ><Table.Cell
+                          >{s.name}<br /><small>{s.month}</small></Table.Cell
+                        ><Table.Cell>{s.created}</Table.Cell><Table.Cell
+                          >{s.used}</Table.Cell
+                        ><Table.Cell>{s.attempts}</Table.Cell><Table.Cell
+                          >{s.accepted}</Table.Cell
+                        ></Table.Row
+                      >{/each}</Table.Body
+                  >
+                </Table.Root>
+              </div>
+              <div class="statistics-cards">
+                {#each stats as s (s.name + s.month)}
+                  <article class="statistics-card">
+                    <h3>{s.name}</h3>
+                    <p class="muted">{s.month}</p>
+                    <dl>
+                      <div>
+                        <dt>{t("Created")}</dt>
+                        <dd>{s.created}</dd>
+                      </div>
+                      <div>
+                        <dt>{t("Used")}</dt>
+                        <dd>{s.used}</dd>
+                      </div>
+                      <div>
+                        <dt>{t("Attempts")}</dt>
+                        <dd>{s.attempts}</dd>
+                      </div>
+                      <div>
+                        <dt>{t("Accepted")}</dt>
+                        <dd>{s.accepted}</dd>
+                      </div>
+                    </dl>
+                  </article>
+                {:else}<p class="muted">
+                    {hostLanguage.current === "it"
+                      ? "Nessuna attività da mostrare."
+                      : "No activity to show yet."}
+                  </p>{/each}
+              </div>
             </Card.Root>
           {:else if tab === "Connectors" && can("useBookingConnectors")}<ConnectorManager
               {api}

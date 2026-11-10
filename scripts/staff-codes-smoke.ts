@@ -123,7 +123,7 @@ try {
   const page = await context.newPage(),
     errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  async function saveForm() {
+  async function dismissToasts() {
     await page.mouse.move(0, 0);
     for (let n = 0; n < 5; n++) {
       const close = page.locator(
@@ -138,6 +138,9 @@ try {
         .toBe(false);
       await button.dispose();
     }
+  }
+  async function saveForm() {
+    await dismissToasts();
     await expect(page.locator("body")).not.toHaveCSS("overflow", "hidden");
     const save = page.getByRole("button", {
       name: "Save access code",
@@ -159,7 +162,7 @@ try {
     .selectOption("Non revoked");
   await expect(page.locator(".code-row")).toHaveCount(1);
   await expect(page.locator(`[data-code-id="${active.id}"]`)).toBeVisible();
-  await page.getByRole("switch", { name: "Staff codes", exact: true }).click();
+  await page.getByRole("button", { name: "Staff", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Staff codes", exact: true }),
   ).toBeVisible();
@@ -175,8 +178,8 @@ try {
   ).toHaveCount(0);
   await page.reload();
   await expect(
-    page.getByRole("switch", { name: "Staff codes", exact: true }),
-  ).toBeChecked();
+    page.getByRole("button", { name: "Staff", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Filters", exact: true }).click();
   await page
     .getByRole("combobox", { name: "Status", exact: true })
@@ -233,6 +236,14 @@ try {
     .fill("New cleaner");
   await expect(page.locator('input[type="datetime-local"]')).toHaveCount(0);
   await expect(page.getByLabel("Notes", { exact: true })).toHaveCount(0);
+  await dismissToasts();
+  const additionalDetails = page.getByText("Additional details", {
+    exact: true,
+  });
+  await additionalDetails.evaluate((summary) =>
+    summary.scrollIntoView({ block: "center" }),
+  );
+  await additionalDetails.click();
   await page
     .getByRole("switch", { name: "Internal notes", exact: true })
     .click();
@@ -248,20 +259,24 @@ try {
   await expect(
     page.locator(".code-row").filter({ hasText: "New cleaner" }),
   ).toBeVisible();
-  await page.getByRole("switch", { name: "Staff codes", exact: true }).click();
+  await page.getByRole("button", { name: "Guests", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Previous day", exact: true }),
   ).toBeVisible();
   await expect(page.locator(".code-row")).toHaveCount(2);
   // Notes remain opt-in when editing, and a hidden form preserves stored notes.
-  await page.getByRole("switch", { name: "Staff codes", exact: true }).click();
+  await page.getByRole("button", { name: "Staff", exact: true }).click();
   const newCleaner = (await api("codes")).find(
     (c: any) => c.label === "New cleaner",
   );
   await page.locator(`[data-code-id="${newCleaner.id}"]`).click();
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await expect(
-    page.getByRole("switch", { name: "Internal notes", exact: true }),
+    page.getByRole("switch", {
+      name: "Internal notes",
+      exact: true,
+      includeHidden: true,
+    }),
   ).not.toBeChecked();
   await expect(page.getByLabel("Notes", { exact: true })).toHaveCount(0);
   await saveForm();
