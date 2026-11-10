@@ -143,6 +143,8 @@ try {
   await expect(page.locator(".notification-history")).toContainText(
     "First arrival",
   );
+  await expect(page.getByTestId("notification-badge")).toHaveText("1");
+  await page.locator("[data-notification-id]").click();
   await expect(page.getByTestId("notification-badge")).toHaveCount(0);
   await expect(secondDevice.getByTestId("notification-badge")).toHaveCount(0);
   await expect(staffPage.getByTestId("notification-badge")).toHaveText("1");

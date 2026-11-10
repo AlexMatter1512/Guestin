@@ -35,7 +35,8 @@ async function records(page: Page) {
       ["properties", "doors", "codes", "events"].map(async (path) => {
         const response = await fetch("/api/v1/" + path);
         if (!response.ok) throw Error("Could not read " + path);
-        return [path, await response.json()];
+        const data = await response.json();
+        return [path, path === "events" ? data.events : data];
       }),
     );
     return Object.fromEntries(entries) as Record<string, any[]>;

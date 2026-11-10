@@ -424,7 +424,7 @@ test("v2 migration backfills statistics before retention can delete old events",
             .query("SELECT MAX(version) version FROM migrations")
             .get() as any
         ).version,
-      ).toBe(7);
+      ).toBe(8);
       pruneNotifications(upgraded);
       expect(
         upgraded

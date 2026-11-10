@@ -108,6 +108,11 @@ export function openDatabase(path: string) {
         CREATE INDEX IF NOT EXISTS account_backoff_expiry ON account_backoff(expires);
         INSERT INTO migrations VALUES(7);`);
     })();
+  if (!db.query("SELECT 1 FROM migrations WHERE version=8").get())
+    db.transaction(() => {
+      db.exec(`ALTER TABLE property_settings ADD COLUMN notification_limit INTEGER NOT NULL DEFAULT 1000 CHECK(notification_limit BETWEEN 1 AND 100000);
+        INSERT INTO migrations VALUES(8);`);
+    })();
   return db;
 }
 export type DB = ReturnType<typeof openDatabase>;

@@ -120,11 +120,9 @@ function history(f: Awaited<ReturnType<typeof fixture>>) {
     "{}",
   );
   db.query("INSERT INTO templates VALUES(?,?)").run(property.id, "{}");
-  db.query("INSERT INTO property_settings VALUES(?,?,?)").run(
-    property.id,
-    3,
-    null,
-  );
+  db.query(
+    "INSERT INTO property_settings(property_id,notification_months,breakfast_password) VALUES(?,?,?)",
+  ).run(property.id, 3, null);
   db.query("INSERT INTO breakfast_sessions VALUES(?,?,?)").run(
     "breakfast",
     property.id,
@@ -188,7 +186,11 @@ test("deactivation hides all everyday data and denies guest and connector access
       "reports",
       "events",
     ])
-      expect((await f.req(path)).data).toEqual([]);
+      expect(
+        path === "events"
+          ? (await f.req(path)).data.events
+          : (await f.req(path)).data,
+      ).toEqual([]);
     expect((await f.req("events/unread")).data.total).toBe(0);
     expect(
       (

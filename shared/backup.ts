@@ -1,3 +1,4 @@
+import { normalizeDoorInput } from "./webhook";
 import { z } from "zod";
 import { propertySchema, doorSchema, codeSchema } from "./schema";
 export const MAX_BACKUP_BYTES = 32 * 1024 * 1024;
@@ -53,6 +54,7 @@ export const backupSchema = z
           id,
           data: propertySchema,
           retentionMonths: z.number().int().min(1).max(120).default(3),
+          maxNotifications: z.number().int().min(1).max(100000).default(1000),
           breakfastPassword: passwordHash.nullable().default(null),
           templates: z
             .record(z.string(), z.record(z.string(), z.string().max(10000)))
@@ -62,15 +64,40 @@ export const backupSchema = z
       .max(10000),
     doors: z
       .array(
-        z.object({
-          id,
-          data: doorSchema.omit({
-            config: true,
-            photos: true,
-            primaryPhotoId: true,
+        z
+          .object({
+            id,
+            data: doorSchema
+              .extend({
+                integration: z.enum(["none", "webhook", "ewelink", "shelly"]),
+              })
+              .omit({
+                config: true,
+                photos: true,
+                primaryPhotoId: true,
+              }),
+            config: z.record(z.string(), z.string()),
+          })
+          .transform(({ id, data, config }, ctx) => {
+            let converted;
+            try {
+              converted = normalizeDoorInput({ ...data, config });
+            } catch {
+              ctx.addIssue({
+                code: "custom",
+                message: "Invalid legacy webhook configuration",
+              });
+              return z.NEVER;
+            }
+            return {
+              id,
+              data: {
+                ...data,
+                integration: converted.integration as "none" | "webhook",
+              },
+              config: converted.config as Record<string, string>,
+            };
           }),
-          config: z.record(z.string(), z.string()),
-        }),
       )
       .max(100000),
     codes: z
@@ -131,6 +158,7 @@ export const backupSchema = z
               validTo: z.iso.datetime().optional(),
               timezone: propertySchema.shape.timezone.optional(),
               doorName: z.string().optional(),
+              doorId: z.uuid().optional(),
               actor: z.string().optional(),
               detail: z.string().optional(),
               action: z.enum(["page", "door", "breakfast"]).optional(),

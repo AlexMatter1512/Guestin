@@ -33,7 +33,7 @@ The host app supports **Italian and English**. The guest app supports **Italian,
 ## How it works
 
 1. **Add your property.** Set its timezone and arrival defaults. The interactive tour helps you create your first property, example door, and access code. You can skip it at any time.
-2. **Connect your doors.** Use eWeLink webhooks or Shelly Cloud. You can create an example door first and connect the device later.
+2. **Connect your doors.** Use generic HTTP webhooks, with editable eWeLink and Shelly Cloud presets. You can create an example door first and connect the device later.
 3. **Create and share an access code.** Pick its doors, set their validity, add breakfast if needed, and send the guest link through whichever messaging app you use.
 4. **Welcome your guests.** Their page shows available doors and breakfast. You can edit or revoke access and review activity from the host app.
 
@@ -107,11 +107,10 @@ Owners can deactivate, reactivate or permanently delete structures under **Setti
 
 ## Notification history and push
 
-The host bell includes a personal unread badge. Opening history marks its loaded
-notifications read across your devices; teammates keep their own read status.
-You can also mark the selected structure's history as read at once.
+The host bell includes a personal unread badge. Clicking a notification marks it read across your devices and opens its related code or door when available; teammates keep their own read status. Opening or scrolling through history does not mark anything read. Read entries are grayed out.
+You can also mark the selected structure's history as read at once. History loads 20 entries at a time and automatically appends older entries as you scroll. Door usage can show the door's primary photo; code changes use a key icon and errors use a warning icon.
 
-The bell shows the selected structure’s history for everyone on your team. Notifications are kept for **three months** by default. Change that period under **Settings → Notifications**; older entries are automatically deleted. Statistics are preserved independently.
+The bell shows the selected structure’s history for everyone on your team. Notifications are kept for **three months** by default. Change that period and the maximum number of notifications under **Settings → Notifications**. The default count limit is **1,000 per structure**; the oldest entries are deleted when either limit is reached. Statistics are preserved independently.
 
 While the host app is open, notifications, access-code lists, and usage counts update over an authenticated WebSocket. Lists animate additions and changes, respecting reduced-motion preferences. Access-code creation can notify the team with the creator, code name, and validity dates. Save in-app preferences without enabling browser push.
 

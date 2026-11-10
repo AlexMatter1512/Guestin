@@ -19,11 +19,12 @@ export function exportRecords(db: DB, key: string): PortableBackup {
       version: 1,
       exportedAt: new Date().toISOString(),
       properties: all(
-        "SELECT p.*,s.notification_months,s.breakfast_password,t.data templates FROM properties p LEFT JOIN property_settings s ON s.property_id=p.id LEFT JOIN templates t ON t.property_id=p.id",
+        "SELECT p.*,s.notification_months,s.notification_limit,s.breakfast_password,t.data templates FROM properties p LEFT JOIN property_settings s ON s.property_id=p.id LEFT JOIN templates t ON t.property_id=p.id",
       ).map((p) => ({
         id: p.id,
         data: JSON.parse(p.data),
         retentionMonths: p.notification_months ?? 3,
+        maxNotifications: p.notification_limit ?? 1000,
         breakfastPassword: p.breakfast_password,
         ...(p.templates ? { templates: JSON.parse(p.templates) } : {}),
       })),
@@ -124,10 +125,11 @@ export function restoreRecords(
       }
       run("INSERT INTO properties VALUES(?,?)", p.id, JSON.stringify(p.data));
       run(
-        "INSERT INTO property_settings VALUES(?,?,?)",
+        "INSERT INTO property_settings(property_id,notification_months,breakfast_password,notification_limit) VALUES(?,?,?,?)",
         p.id,
         p.retentionMonths,
         p.breakfastPassword,
+        p.maxNotifications,
       );
       if (p.templates)
         run(

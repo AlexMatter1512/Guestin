@@ -1,3 +1,5 @@
+import { notificationPresentation } from "./notification-presentation";
+import { notificationIconURL } from "../shared/notification-presentation";
 import { notificationText, wantsNotification } from "../shared/notifications";
 import { log } from "./log";
 import webpush from "web-push";
@@ -16,7 +18,7 @@ export async function deliverPush(db: DB, send = webpush.sendNotification) {
     );
     const jobs = db
       .query(
-        "SELECT j.*,s.data,s.preferences,e.property_id,e.type,e.message,ec.data context,c.data code_data,p.data property_data FROM jobs j JOIN subscriptions s ON s.id=j.subscription_id JOIN events e ON e.id=j.event_id LEFT JOIN properties p ON p.id=e.property_id LEFT JOIN event_context ec ON ec.event_id=e.id LEFT JOIN codes c ON c.id=e.code_id WHERE next<=? LIMIT 20",
+        "SELECT j.*,s.data,s.preferences,e.property_id,e.code_id,e.type,e.message,ec.data context,c.data code_data,p.data property_data FROM jobs j JOIN subscriptions s ON s.id=j.subscription_id JOIN events e ON e.id=j.event_id LEFT JOIN properties p ON p.id=e.property_id LEFT JOIN event_context ec ON ec.event_id=e.id LEFT JOIN codes c ON c.id=e.code_id WHERE next<=? LIMIT 20",
       )
       .all(Date.now()) as any[];
     for (const j of jobs) {
@@ -44,6 +46,10 @@ export async function deliverPush(db: DB, send = webpush.sendNotification) {
           preferences.language ?? "en",
           j.code_data ? JSON.parse(j.code_data).label : undefined,
         );
+        const presentation = notificationPresentation(db, {
+          ...j,
+          context: JSON.parse(j.context ?? "{}"),
+        });
         await send(
           JSON.parse(j.data),
           JSON.stringify({
@@ -53,7 +59,9 @@ export async function deliverPush(db: DB, send = webpush.sendNotification) {
               (j.property_data
                 ? JSON.parse(j.property_data).name + " · "
                 : "") + text.body,
-            url: "/host/#/activity/" + (j.property_id ?? ""),
+            url: presentation.href,
+            icon: notificationIconURL(presentation.icon),
+            thumbnail: presentation.thumbnail,
           }),
           { TTL: 3600, timeout: 10000 },
         );

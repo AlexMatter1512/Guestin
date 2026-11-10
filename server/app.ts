@@ -1,3 +1,6 @@
+import { notificationPresentation } from "./notification-presentation";
+import { migrateWebhookDoors } from "./webhook-migration";
+import { normalizeDoorInput, webhookRequest } from "../shared/webhook";
 import {
   collaboratorPermissionsSchema,
   collaboratorPermissionChangesSchema,
@@ -57,6 +60,7 @@ export function createApp(
 ) {
   const app = new Hono<Env>(),
     crypto = vault(config.key);
+  migrateWebhookDoors(db, config.key);
   const passwordWork = passwordWorkLimiter();
   const accountAttempts = accountBackoff(db);
   function checkAccountAttempts(c: any, email: string) {
@@ -150,6 +154,12 @@ export function createApp(
       ...(code ? { codeLabel: JSON.parse(code.data).label } : {}),
     };
     run("INSERT INTO event_context VALUES(?,?)", id, JSON.stringify(details));
+    const presentation = notificationPresentation(db, {
+      type,
+      property_id: propertyId,
+      code_id: codeId,
+      context: details,
+    });
     // Synchronous transactions have committed (or rolled back) before delivery.
     queueMicrotask(() => {
       if (get("SELECT id FROM events WHERE id=?", id))
@@ -161,6 +171,7 @@ export function createApp(
           message,
           created,
           context: details,
+          ...presentation,
         });
     });
     if (codeId && type.startsWith("access."))
@@ -179,6 +190,7 @@ export function createApp(
           Date.now(),
         );
     }
+    pruneNotifications(db);
   }
   const cryptoRandom = () => globalThis.crypto.randomUUID();
   function owner(c: any) {
@@ -337,7 +349,7 @@ export function createApp(
       status as any,
     );
   });
-  app.get("/api/v1/health", (c) => c.json({ status: "ok", schema: 7 }));
+  app.get("/api/v1/health", (c) => c.json({ status: "ok", schema: 8 }));
   app.get("/api/v1/auth/status", (c) =>
     c.json({ needsSetup: !get("SELECT 1 FROM users LIMIT 1") }),
   );
@@ -832,6 +844,11 @@ export function createApp(
               "SELECT notification_months FROM property_settings WHERE property_id=?",
               p.id,
             )?.notification_months ?? 3,
+          notificationRetentionLimit:
+            get(
+              "SELECT notification_limit FROM property_settings WHERE property_id=?",
+              p.id,
+            )?.notification_limit ?? 1000,
           breakfastProtected: !!get(
             "SELECT breakfast_password FROM property_settings WHERE property_id=?",
             p.id,
@@ -887,16 +904,43 @@ export function createApp(
     const id = c.req.param("id");
     if (!get("SELECT 1 FROM properties WHERE id=?", id))
       fail("Property missing", 404);
-    const { retentionMonths } = z
-      .object({ retentionMonths: z.number().int().min(1).max(120) })
+    const input = z
+      .object({
+        retentionMonths: z.number().int().min(1).max(120).optional(),
+        maxNotifications: z.number().int().min(1).max(100000).optional(),
+      })
+      .strict()
+      .refine(
+        (v) =>
+          v.retentionMonths !== undefined || v.maxNotifications !== undefined,
+      )
       .parse(await c.req.json());
     run(
-      "INSERT INTO property_settings(property_id,notification_months) VALUES(?,?) ON CONFLICT(property_id) DO UPDATE SET notification_months=excluded.notification_months",
+      "INSERT INTO property_settings(property_id) VALUES(?) ON CONFLICT(property_id) DO NOTHING",
       id,
-      retentionMonths,
     );
+    if (input.retentionMonths !== undefined)
+      run(
+        "UPDATE property_settings SET notification_months=? WHERE property_id=?",
+        input.retentionMonths,
+        id,
+      );
+    if (input.maxNotifications !== undefined)
+      run(
+        "UPDATE property_settings SET notification_limit=? WHERE property_id=?",
+        input.maxNotifications,
+        id,
+      );
     pruneNotifications(db);
-    return c.json({ retentionMonths });
+    const settings = get(
+      "SELECT notification_months,notification_limit FROM property_settings WHERE property_id=?",
+      id,
+    );
+    realtime(db).workspaceChanged();
+    return c.json({
+      retentionMonths: settings.notification_months,
+      maxNotifications: settings.notification_limit,
+    });
   });
   breakfastAccessRoutes(
     app as any,
@@ -934,6 +978,22 @@ export function createApp(
         .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)),
     ),
   );
+  app.get("/api/v1/doors/:id/thumbnail", (c) => {
+    const row = get("SELECT data FROM doors WHERE id=?", c.req.param("id"));
+    if (!row) fail("Door missing", 404);
+    const data = JSON.parse(row.data),
+      photo =
+        data.photos?.find((p: any) => p.id === data.primaryPhotoId) ??
+        data.photos?.[0];
+    const match = photo?.url?.match(
+      /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/,
+    );
+    if (!match) fail("Door photo missing", 404);
+    c.header("Content-Type", match[1]);
+    c.header("Cache-Control", "private, max-age=300");
+    c.header("X-Content-Type-Options", "nosniff");
+    return c.body(Buffer.from(match[2], "base64"));
+  });
   app.put("/api/v1/doors/order", async (c) => {
     owner(c);
     const b = z
@@ -960,7 +1020,9 @@ export function createApp(
   });
   app.post("/api/v1/doors", async (c) => {
     permission(c, "createDoors");
-    const { config: secret, ...data } = doorSchema.parse(await c.req.json());
+    const { config: secret, ...data } = doorSchema.parse(
+      convertDoorInput(await c.req.json()),
+    );
     validateDoorPhotos(data);
     validateDevice(data.integration, secret);
     const id = cryptoRandom();
@@ -979,10 +1041,12 @@ export function createApp(
     const d = get("SELECT * FROM doors WHERE id=?", c.req.param("id"));
     if (!d) fail("Door missing", 404);
     const current = JSON.parse(d.data);
-    const { config: secret, ...data } = doorSchema.parse({
-      ...current,
-      ...input,
-    });
+    const { config: secret, ...data } = doorSchema.parse(
+      convertDoorInput({
+        ...current,
+        ...input,
+      }),
+    );
     if (current.propertyId !== data.propertyId)
       fail("A door cannot move between properties");
     const use =
@@ -1099,6 +1163,7 @@ export function createApp(
         null,
         {
           actor: c.get("user").name,
+          doorId: d.id,
           doorName: data.name,
           detail: result.detail,
         },
@@ -1127,21 +1192,27 @@ export function createApp(
       `${c.get("user").name} checked the uncertain door test`,
       d?.property_id,
       null,
-      { actor: c.get("user").name },
+      { actor: c.get("user").name, doorId: d?.id },
     );
     return c.json({ ok: true });
   });
+  function convertDoorInput(input: unknown) {
+    try {
+      return normalizeDoorInput(input);
+    } catch {
+      fail("Invalid webhook configuration");
+    }
+  }
   function validateDevice(kind: string, s: any) {
     if (kind === "none" && Object.keys(s).length)
       fail("An unconnected door must not contain device credentials");
-    if (kind === "ewelink" && !s.webhook_code) fail("Webhook code required");
-    if (
-      kind === "shelly" &&
-      (!/^shelly-[a-z0-9-]+\.shelly\.cloud$/.test(s.host) ||
-        !s.device_id ||
-        !s.api_key)
-    )
-      fail("Shelly cloud host, device ID and API key required");
+    if (kind === "webhook") {
+      try {
+        webhookRequest(s);
+      } catch {
+        fail("Invalid webhook configuration");
+      }
+    }
   }
   portableBackupRoutes(app, db, config.key, owner, validateDevice);
   const codeView = (row: any) => ({
@@ -1431,10 +1502,12 @@ export function createApp(
   });
   app.get("/api/v1/events", (c) => {
     pruneNotifications(db);
-    const paged = c.req.query("pageSize") !== undefined;
-    const limit = paged
-      ? z.coerce.number().int().min(1).max(100).parse(c.req.query("pageSize"))
-      : 1000;
+    const limit = z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .parse(c.req.query("pageSize") ?? 20);
     const propertyId = c.req.query("propertyId");
     const clauses: string[] = [
         "(property_id IS NULL OR property_id IN (SELECT id FROM properties WHERE json_extract(data,'$.active') IS NOT 0))",
@@ -1473,8 +1546,13 @@ export function createApp(
           "SELECT user_id FROM event_reads WHERE event_id=?",
           row.id,
         ).map((r) => r.user_id);
+        const context = JSON.parse(
+          get("SELECT data FROM event_context WHERE event_id=?", row.id)
+            ?.data ?? "{}",
+        );
         return {
           ...row,
+          ...notificationPresentation(db, { ...row, context }),
           readBy,
           read: readBy.includes(c.get("user").id),
           context: JSON.parse(
@@ -1490,7 +1568,28 @@ export function createApp(
             JSON.stringify({ created: last.created, id: last.id }),
           ).toString("base64url")
         : null;
-    return c.json(paged ? { events, nextCursor } : events);
+    return c.json({ events, nextCursor });
+  });
+  app.get("/api/v1/events/:id", (c) => {
+    pruneNotifications(db);
+    const row = get("SELECT * FROM events WHERE id=?", c.req.param("id"));
+    if (!row) fail("Notification missing", 404);
+    if (row.property_id) requireActiveProperty(row.property_id);
+    const context = JSON.parse(
+      get("SELECT data FROM event_context WHERE event_id=?", row.id)?.data ??
+        "{}",
+    );
+    const readBy = all(
+      "SELECT user_id FROM event_reads WHERE event_id=?",
+      row.id,
+    ).map((r) => r.user_id);
+    return c.json({
+      ...row,
+      context,
+      readBy,
+      read: readBy.includes(c.get("user").id),
+      ...notificationPresentation(db, { ...row, context }),
+    });
   });
   app.get("/api/v1/reports", (c) =>
     c.json(
@@ -1666,7 +1765,10 @@ export function createApp(
         );
       })();
     } catch (e) {
-      event("access.denied", (e as Error).message, r.property_id, r.id);
+      event("access.denied", (e as Error).message, r.property_id, r.id, {
+        doorId: d?.id,
+        doorName: d ? JSON.parse(d.data).name : undefined,
+      });
       throw e;
     }
     let result;
@@ -1687,7 +1789,10 @@ export function createApp(
           r.id,
           doorId,
         );
-      event("access." + result.status, result.detail, r.property_id, r.id);
+      event("access." + result.status, result.detail, r.property_id, r.id, {
+        doorId,
+        doorName: JSON.parse(d.data).name,
+      });
     })();
     return c.json(result);
   });

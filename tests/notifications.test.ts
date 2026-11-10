@@ -146,6 +146,9 @@ test("push uses the device language, code title and shared event context; retent
     expect(payloads).toHaveLength(1); // Invalid unknown links must reach a device with a structure filter.
     expect(payloads[0].title).toBe("Aurora · Tentativo con codice non valido");
     expect(payloads[0].body).toContain("pagina ospite");
+    expect(payloads[0].url).toBeNull();
+    expect(payloads[0].icon).toStartWith("data:image/svg+xml,");
+    expect(payloads[0].thumbnail).toBeNull();
     expect(db.query("SELECT * FROM jobs").all()).toHaveLength(0);
     db.query("UPDATE events SET created='2000-01-01T00:00:00.000Z'").run();
     pruneNotifications(db);

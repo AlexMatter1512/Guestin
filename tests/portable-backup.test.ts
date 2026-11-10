@@ -255,8 +255,8 @@ test("portable JSON preserves credentials, tokens, grants, breakfast ledger, met
     target = await host("b".repeat(64), "Restore owner");
   try {
     expect(JSON.stringify(f.backup)).not.toContain("data:image");
-    expect(f.backup.doors[0].config.webhook_code).toBe(
-      "private-door-credential",
+    expect(f.backup.doors[0].config.url).toBe(
+      "https://eu-apia.coolkit.cc/v2/smartscene2/webhooks/execute?id=private-door-credential",
     );
     expect(f.backup).not.toHaveProperty("users");
     expect(f.backup).not.toHaveProperty("connections");
@@ -312,8 +312,8 @@ test("portable JSON preserves credentials, tokens, grants, breakfast ledger, met
         .query("SELECT secret FROM doors WHERE id=?")
         .get(f.doors[0].id) as any
     ).secret;
-    expect(vault(target.key).open(secret).webhook_code).toBe(
-      "private-door-credential",
+    expect(vault(target.key).open(secret).url).toBe(
+      "https://eu-apia.coolkit.cc/v2/smartscene2/webhooks/execute?id=private-door-credential",
     );
     expect(() => vault(f.key).open(secret)).toThrow();
     expect(
@@ -351,7 +351,7 @@ test("portable JSON preserves credentials, tokens, grants, breakfast ledger, met
         )
       ).r.status,
     ).toBe(200);
-    expect((await target.req("events")).data.length).toBeGreaterThan(0);
+    expect((await target.req("events")).data.events.length).toBeGreaterThan(0);
     expect(target.db.query("SELECT * FROM jobs").all()).toHaveLength(0);
     await target.req(`codes/${f.code.id}/resolve`, {
       doorId: f.doors[1].id,

@@ -643,7 +643,11 @@ test("disabled doors and paused permissions retain credentials and enforce acces
             .get(f.door.id) as any
         ).secret,
       ),
-    ).toEqual({ webhook_code: "secret-device" });
+    ).toEqual({
+      url: "https://eu-apia.coolkit.cc/v2/smartscene2/webhooks/execute?id=secret-device",
+      method: "GET",
+      response_mode: "ewelink",
+    });
     await f.req(
       `codes/${f.code.id}/grants/${f.door.id}`,
       { active: false },
@@ -772,7 +776,7 @@ test("host tests need confirmation, are idempotent, and uncertain tests require 
         .status,
     ).toBe("uncertain");
     expect(f.calls()).toBe(2);
-    const tests = (await f.req("events")).data.filter(
+    const tests = (await f.req("events")).data.events.filter(
       (e: any) => e.type === "device.test.uncertain",
     );
     expect(tests).toHaveLength(2);
@@ -832,7 +836,7 @@ test("wipe requires owner, exact phrase and password; destroys records and sessi
       ).toBe(0);
     expect(
       (f.db.query("SELECT MAX(version) n FROM migrations").get() as any).n,
-    ).toBe(7);
+    ).toBe(8);
     expect(
       (
         await f.req("auth/setup", {

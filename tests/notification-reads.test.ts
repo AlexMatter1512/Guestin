@@ -112,7 +112,7 @@ test("notification readers and unread badges are per-user; reads are authenticat
         .unread.total,
     ).toBe(2);
     expect(
-      (await req("", undefined, "collaborator")).data
+      (await req("", undefined, "collaborator")).data.events
         .find((e: any) => e.id === eventIds[0])
         .readBy.sort(),
     ).toEqual(["collaborator", "owner"]);

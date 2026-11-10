@@ -23,6 +23,8 @@
   } = $props();
   const l = (en: string, it: string) =>
     hostLanguage.current === "it" ? it : en;
+  let maxNotifications = $state(1000);
+  let loadedLimit = 1000;
   let months = $state(3),
     enabled = $state(false),
     password = $state(""),
@@ -36,22 +38,26 @@
   $effect(() => {
     const id = property?.id,
       retention = property?.notificationRetentionMonths ?? 3,
+      limit = property?.notificationRetentionLimit ?? 1000,
       protectedPage = property?.breakfastProtected ?? false;
     untrack(() => {
       if (loadedId !== id) {
         operation++;
         busy = false;
         months = retention;
+        maxNotifications = limit;
         enabled = protectedPage;
         password = "";
         error = "";
         notice = "";
       } else {
         if (loadedRetention !== retention) months = retention;
+        if (loadedLimit !== limit) maxNotifications = limit;
         if (loadedProtected !== protectedPage) enabled = protectedPage;
       }
       loadedId = id;
       loadedRetention = retention;
+      loadedLimit = limit;
       loadedProtected = protectedPage;
     });
   });
@@ -66,7 +72,7 @@
       if (mode === "notifications")
         await api(
           `properties/${id}/notifications`,
-          { retentionMonths: months },
+          { retentionMonths: months, maxNotifications },
           "PATCH",
         );
       else
@@ -128,10 +134,25 @@
               bind:value={months}
             />
           </div>
+          <div class="grid gap-2">
+            <Label for="notification-limit"
+              >{l(
+                "Maximum notifications in this period",
+                "Numero massimo di notifiche nel periodo",
+              )}</Label
+            ><Input
+              id="notification-limit"
+              type="number"
+              min="1"
+              max="100000"
+              required
+              bind:value={maxNotifications}
+            />
+          </div>
           <p class="text-sm text-muted-foreground">
             {l(
-              "Older notifications are automatically deleted. Shortening this period permanently removes older history; statistics are kept.",
-              "Le notifiche più vecchie vengono eliminate automaticamente. Ridurre il periodo rimuove definitivamente la cronologia precedente; le statistiche restano.",
+              "Older notifications are automatically deleted when either limit is reached. Reducing a limit permanently removes older history; statistics are kept.",
+              "Le notifiche più vecchie vengono eliminate al raggiungimento di uno dei limiti. Ridurre un limite rimuove definitivamente la cronologia precedente; le statistiche restano.",
             )}
           </p>
           <Button class="w-fit" type="submit" disabled={busy}

@@ -38,10 +38,10 @@ Properties also contain `defaultCheckinLink` and `defaultInstructionsLink`. Owne
 - Owner-only `PATCH /properties/:id/status` accepts `{active:boolean}`. Inactive structures and their codes, doors, connectors, reports and notifications are hidden; guest links and property-scoped operations return 403 until reactivated. Notification retention pauses for inactive structures. `GET /properties?includeInactive=1` is owner-only and includes archived structures. Legacy structures default to active.
 - Owner-only `DELETE /properties/:id` requires `{confirmation:"DELETE STRUCTURE"}` and transactionally deletes related codes, grants, actions, redemptions, counters, events/read receipts/push jobs, doors/tests, connectors, templates and breakfast settings/sessions. Shared users and subscriptions remain; the deleted structure is removed from subscription preferences. Existing backup files are unaffected.
 - Owner-only `DELETE /codes/:id` requires `{confirmation:"DELETE CODE"}` and deletes that code, its grants, usage, counters, events/read receipts and push jobs. Other codes and structure settings remain. Deletion and lifecycle changes return 409 while another operation is in flight.
-- `GET /properties`, `POST /properties`, `PUT /properties/:id`: structure name, IANA timezone, and check-in/check-out defaults. Creation and updates require an owner. Reads include `notificationRetentionMonths` and `breakfastProtected`, never password hashes.
-- `PATCH /properties/:id/notifications`: any host can set `{retentionMonths}` from 1 to 120 for the shared structure history. The default is three calendar months; older records are removed automatically. Shortening retention applies immediately.
+- `GET /properties`, `POST /properties`, `PUT /properties/:id`: structure name, IANA timezone, and check-in/check-out defaults. Creation and updates require an owner. Reads include `notificationRetentionMonths` and `breakfastProtected`, never password hashes. Reads also include `notificationRetentionLimit` (default 1000).
+- `PATCH /properties/:id/notifications`: any host can set `{retentionMonths?,maxNotifications?}` for shared structure history (at least one field required). Months range from 1 to 120; the count ranges from 1 to 100,000. Defaults are three calendar months and 1,000 entries per structure. Omitted values are preserved. The oldest entries and associated push jobs, context and read receipts are deleted when either limit is exceeded. Changes apply immediately; lifetime statistics remain. Inactive structures retain their history until reactivated.
 - `PUT /properties/:id/breakfast-settings`: owner-only `{enabled,password?}`. New passwords require 8–128 characters. Leaving the password unset keeps an existing password; disabling removes protection. Changes invalidate breakfast sessions.
-- `GET /doors`, `POST /doors`, `PUT /doors/:id`, `DELETE /doors/:id`: door management. Owners configure `none`, `ewelink`, or `shelly` adapters, credentials, translations, photos, defaults, and enabled state. Secret credentials are omitted from reads.
+- `GET /doors`, `POST /doors`, `PUT /doors/:id`, `DELETE /doors/:id`: door management. Owners configure `none` or `webhook` adapters, credentials, translations, photos, defaults, and enabled state. Secret credentials are omitted from reads.
 - `PUT /doors/order`: save order.
 - `POST /doors/:id/test`: explicitly confirmed device test, with an idempotency key.
 - `POST /doors/:id/resolve-test`: resolve an uncertain test after checking the device.
@@ -96,16 +96,19 @@ they do not transfer user accounts; full database backups preserve them.
 
 When receipts change, all live sessions for that reader receive
 `{type:"notifications.read"}` and refresh their counts/history. Other users'
-unread counts are independent. The host marks loaded history entries read only
-while the page is visible, and also offers **Mark all as read**.
+unread counts are independent. The host marks an entry read when the user clicks it (including toast and push clicks), and also offers **Mark all as read**. Loading, scrolling and background refreshes never mark entries read; read entries are grayed out.
 
 `GET /live` upgrades to a WebSocket using the host session cookie. The request must have an `Origin` matching the configured public origin. The server sends `{type:"sync"}` on connection, `{type:"activity",event}` after committed activity, and `{type:"heartbeat"}` every 25 seconds. Activity uses the same event shape as `/events`; it never includes guest link tokens. Clients reload code/report snapshots after activity and on reconnect, regardless of notification filters. Expired or deleted sessions are disconnected before further delivery. Reverse proxies must forward WebSocket upgrades for `/api/v1/live`.
 
 `code.created` context includes the creator’s `actor` name, `codeLabel`, `validFrom`/`validTo` (the earliest/latest door grant boundaries when present), and the property’s `timezone`. This snapshot is shared by history, in-app alerts, and push notifications in English and Italian.
 
-`GET /events?propertyId=<id>&pageSize=50` returns `{events,nextCursor}`. Pass `cursor` to load older records. Events are shared with the team, scoped to the selected structure; unattributed security events can also appear. `pageSize` accepts 1–100. Legacy calls without pagination return an array. Events may include `context.codeLabel` and unverified `context.previousVisit` metadata. Unknown invalid links appear as unattributed security events; known revoked links remain associated with their structure. Invalid page loads and actions use the `access.invalid` push option, grouped per client for one minute and bounded globally, with suppression summaries.
+`GET /events?propertyId=<id>` returns `{events,nextCursor}` with 20 entries by default. Pass `cursor` to load older records. Events are shared with the team, scoped to the selected structure; unattributed security events can also appear. `pageSize` accepts 1–100. All history calls return the paginated envelope. The host app requests 20 at a time and appends older pages automatically near the end of the list. Events may include `context.codeLabel` and unverified `context.previousVisit` metadata. Unknown invalid links appear as unattributed security events; known revoked links remain associated with their structure. Invalid page loads and actions use the `access.invalid` push option, grouped per client for one minute and bounded globally, with suppression summaries.
 
 `GET /reports` returns code creation and lifetime usage counters by code/creator/property. These counters survive notification retention cleanup.
+
+`GET /events/:id` returns one retained notification without marking it read. Event objects include `icon` (`key`, `door`, `danger`, `coffee` or `bell`), `href` (a host code/door page or null), and `thumbnail` (a protected door-photo URL or null). Invalid attempts never have a destination. New door-usage events carry `context.doorId`; older events without a door reference fall back to an icon. `GET /doors/:id/thumbnail` requires a host session and an active structure, and returns the primary photo or first photo. Photos are not embedded in event rows or push payloads. Browser push clicks refresh the destination, mark the event read with normal session/CSRF checks, and focus the app; events without a destination do not change an existing app page.
+
+The count cap applies independently to each structure. Unattributed events use a separate fixed cap of 1,000 entries and three months. Portable JSON backups preserve both structure retention settings; old backups default to 1,000 entries.
 
 ## Connections
 
@@ -127,3 +130,13 @@ Kross bearer tokens are encrypted in the server database, attached by the relay,
 - `DELETE /push/subscriptions`: `{endpoint}` removes only the current user’s matching device subscription.
 - `POST /admin/wipe`: owner-only `{password,confirmation:"WIPE ALL DATA"}` resets the workspace. Back up first.
 - `GET /health`: health and database schema version.
+
+### Generic webhook doors
+
+Use `integration: "webhook"` with a string-valued `config`: `url` (complete HTTP/HTTPS URL, including query parameters), `method` (GET by default; also POST, PUT, PATCH, DELETE, HEAD, OPTIONS), `headers` (a JSON object of string header values), optional raw `body`, and `response_mode` (`http` by default, or `ewelink` for eWeLink JSON acceptance checks). GET and HEAD cannot have a body. Embedded URL credentials and URL fragments are rejected; use an Authorization header. Requests run from the server, so local device URLs must be reachable from the server.
+
+HTTP mode treats any 2xx response as accepted, 4xx as failed, and 5xx or transport errors as uncertain. Acceptance does not confirm physical state. Requests time out after 10 seconds, do not follow redirects, and are never retried automatically. The complete config is encrypted and omitted from door reads. On updates, an empty config keeps the existing request; a nonempty config replaces the complete request.
+
+Existing `ewelink` and `shelly` records are converted transactionally to encrypted webhook configurations at app startup, preserving door IDs, metadata and request behavior. Old portable backups are converted when imported. Subsequent starts leave migrated records untouched. The host form offers editable eWeLink and Shelly Cloud presets; only `webhook` is persisted. eWeLink uses its full URL, GET and `ewelink` response mode.
+
+Shelly Cloud can also use a generic webhook: POST `https://<HOST>/v2/devices/api/set/switch?auth_key=<AUTH_KEY>`, headers `{"Content-Type":"application/json"}`, body `{"id":"<DEVICE_ID>","on":true}`, HTTP response mode. The dedicated Shelly adapter and integration option have been removed. Its preset fills the same generic webhook fields.

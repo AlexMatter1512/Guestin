@@ -73,6 +73,7 @@
   import NotificationHistory from "$lib/components/NotificationHistory.svelte";
   import ConnectorManager from "$lib/components/ConnectorManager.svelte";
   import Modal from "$lib/components/Modal.svelte";
+  import ActivityToast from "$lib/components/ActivityToast.svelte";
   import CollaboratorManager from "$lib/components/CollaboratorManager.svelte";
   import {
     hasPermission,
@@ -972,12 +973,21 @@
         )
       ) {
         const text = notificationText(event, hostLanguage.current);
-        toast(text.title, {
-          description: text.body,
+        toast.custom(ActivityToast, {
           id: event.id,
-          action: {
-            label: t("Notifications"),
-            onClick: () => navigate("Activity"),
+          componentProps: {
+            event,
+            title: text.title,
+            body: text.body,
+            activate: async (notification: any) => {
+              await api("events/read", { eventIds: [notification.id] });
+              await refreshUnread();
+              if (notification.href)
+                location.hash = new URL(
+                  notification.href,
+                  location.origin,
+                ).hash;
+            },
           },
         });
       }
@@ -2641,6 +2651,7 @@
               {propertyId}
               propertyName={property?.name ?? ""}
               retentionMonths={property?.notificationRetentionMonths ?? 3}
+              maxNotifications={property?.notificationRetentionLimit ?? 1000}
               timezone={property?.timezone ?? "UTC"}
               {codes}
               {api}

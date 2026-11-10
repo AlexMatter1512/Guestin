@@ -1,6 +1,7 @@
 export type NotificationContext = {
   codeLabel?: string;
   doorName?: string;
+  doorId?: string;
   actor?: string;
   validFrom?: string;
   validTo?: string;
@@ -55,6 +56,8 @@ const reasons: Record<string, string> = {
     "Una richiesta precedente è ancora da verificare.",
   "This door has no device connector yet":
     "La porta non ha ancora un connettore.",
+  "Invalid webhook configuration":
+    "La configurazione del webhook non è valida.",
   "Invalid Shelly Cloud host": "L’indirizzo Shelly Cloud non è valido.",
   "Provider rejected the request": "Il fornitore ha rifiutato la richiesta.",
   "Provider reported a failure": "Il fornitore ha segnalato un errore.",

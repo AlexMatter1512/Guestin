@@ -38,9 +38,10 @@ for (const previous of ["collaborators", "password-backoff"] as const)
         0,
         new Date().toISOString(),
       );
+      db.exec("ALTER TABLE property_settings DROP COLUMN notification_limit;");
       if (previous === "collaborators") {
         db.exec(
-          "DROP TABLE account_backoff; DELETE FROM migrations WHERE version=7;",
+          "DROP TABLE account_backoff; DELETE FROM migrations WHERE version>=7;",
         );
       } else {
         db.query("INSERT INTO account_backoff VALUES(?,?,?,?)").run(
@@ -55,13 +56,13 @@ for (const previous of ["collaborators", "password-backoff"] as const)
           DROP TABLE user_permissions;
           DROP TABLE users;
           ALTER TABLE previous_users RENAME TO users;
-          DELETE FROM migrations WHERE version=7;`);
+          DELETE FROM migrations WHERE version>=7;`);
       }
       db.close();
       db = openDatabase(path);
       expect(
         (db.query("SELECT MAX(version) n FROM migrations").get() as any).n,
-      ).toBe(7);
+      ).toBe(8);
       expect(
         (db.query("SELECT role FROM users WHERE id='u'").get() as any).role,
       ).toBe("collaborator");

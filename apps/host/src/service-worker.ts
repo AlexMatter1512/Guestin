@@ -65,11 +65,64 @@ worker.addEventListener("push", (event) => {
     worker.registration.showNotification(data.title, {
       body: data.body,
       tag: data.id,
-      data: { url: "/host/" },
+      icon: data.thumbnail ?? data.icon,
+      data: { url: data.url ?? null, id: data.id },
     }),
   );
 });
 worker.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  event.waitUntil(worker.clients.openWindow("/host/"));
+  event.waitUntil(
+    (async () => {
+      const raw = event.notification.data?.url
+        ? new URL(event.notification.data.url, worker.location.origin)
+        : null;
+      let url =
+        raw &&
+        raw.origin === worker.location.origin &&
+        raw.pathname === "/host/"
+          ? raw.href
+          : null;
+      const id = event.notification.data?.id;
+      if (typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id)) {
+        try {
+          const session = await fetch("/api/v1/me", { credentials: "include" });
+          if (session.ok) {
+            const { csrf } = await session.json();
+            const record = await fetch("/api/v1/events/" + id, {
+              credentials: "include",
+            });
+            if (record.ok) {
+              const notification = await record.json();
+              url = notification.href
+                ? new URL(notification.href, worker.location.origin).href
+                : null;
+            } else url = null;
+            await fetch("/api/v1/events/read", {
+              method: "POST",
+              credentials: "include",
+              headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-Token": csrf,
+              },
+              body: JSON.stringify({ eventIds: [id] }),
+            });
+          }
+        } catch {
+          /* The click still opens the app when the network is unavailable. */
+        }
+      }
+      const clients = await worker.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      for (const client of clients)
+        if (new URL(client.url).pathname.startsWith("/host/")) {
+          if (url) await client.navigate(url);
+          await client.focus();
+          return;
+        }
+      await worker.clients.openWindow(url ?? "/host/");
+    })(),
+  );
 });

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { webhookMethods, webhookPreset } from "../../../../../shared/webhook";
   import FeedbackToast from "$lib/components/FeedbackToast.svelte";
   import { flip } from "svelte/animate";
   import { MediaQuery } from "svelte/reactivity";
@@ -92,9 +93,11 @@
     order: 0,
   });
   let webhook = $state(""),
-    cloudHost = $state(""),
-    deviceId = $state(""),
-    apiKey = $state("");
+    webhookMethod = $state(""),
+    webhookHeaders = $state(""),
+    webhookBody = $state(""),
+    webhookResponse = $state(""),
+    preset = $state("custom");
   const reducedMotion = new MediaQuery("(prefers-reduced-motion: reduce)");
   let gestureOrder: string[] | null = null;
   let pointerId: number | null = null;
@@ -162,9 +165,11 @@
         order: source?.order ?? localDoors.length,
       };
       webhook = "";
-      cloudHost = "";
-      deviceId = "";
-      apiKey = "";
+      webhookMethod = "";
+      webhookHeaders = "";
+      webhookBody = "";
+      webhookResponse = "";
+      preset = "custom";
       error = "";
       message = "";
       loadedKey = key;
@@ -202,17 +207,31 @@
     result = null;
     error = "";
   }
+  function applyPreset(value: string) {
+    preset = value;
+    const config = webhookPreset(value);
+    webhook = config.url;
+    webhookMethod = config.method;
+    webhookHeaders = config.headers || "";
+    webhookBody = config.body || "";
+    webhookResponse = config.response_mode;
+  }
   async function save() {
     const config =
-      draft.integration === "none"
-        ? {}
-        : draft.integration === "ewelink"
-          ? webhook
-            ? { webhook_code: webhook }
-            : {}
-          : cloudHost || deviceId || apiKey
-            ? { host: cloudHost, device_id: deviceId, api_key: apiKey }
-            : {};
+      draft.integration === "webhook" &&
+      (webhook ||
+        webhookMethod ||
+        webhookHeaders ||
+        webhookBody ||
+        webhookResponse)
+        ? {
+            url: webhook,
+            method: webhookMethod || "GET",
+            headers: webhookHeaders || "{}",
+            body: webhookBody,
+            response_mode: webhookResponse || "http",
+          }
+        : {};
     const saved = await api(
       "doors" + (editId ? "/" + editId : ""),
       { ...draft, propertyId, config },
@@ -667,52 +686,136 @@
                 class="w-full"
                 ><NativeSelect.Option value="none"
                   >{t("Connect later (example door)")}</NativeSelect.Option
-                ><NativeSelect.Option value="ewelink"
-                  >eWeLink webhook</NativeSelect.Option
-                ><NativeSelect.Option value="shelly"
-                  >Shelly Cloud</NativeSelect.Option
+                ><NativeSelect.Option value="webhook"
+                  >{l(
+                    "Generic webhook",
+                    "Webhook generico",
+                  )}</NativeSelect.Option
                 ></NativeSelect.Root
               >
             </div>
-            {#if draft.integration === "ewelink"}
+            {#if draft.integration === "webhook"}
               <div class="space-y-2">
-                <Label for="door-webhook">{t("eWeLink webhook code")}</Label
+                <Label for="door-webhook-preset"
+                  >{l("Webhook preset", "Modello webhook")}</Label
+                >
+                <NativeSelect.Root
+                  id="door-webhook-preset"
+                  value={preset}
+                  onchange={(event) => applyPreset(event.currentTarget.value)}
+                  class="w-full"
+                >
+                  <NativeSelect.Option value="custom"
+                    >{l(
+                      "Custom request",
+                      "Richiesta personalizzata",
+                    )}</NativeSelect.Option
+                  >
+                  <NativeSelect.Option value="ewelink"
+                    >eWeLink</NativeSelect.Option
+                  >
+                  <NativeSelect.Option value="shelly"
+                    >Shelly Cloud</NativeSelect.Option
+                  >
+                </NativeSelect.Root>
+                <p class="text-sm text-muted-foreground">
+                  {l(
+                    "Presets replace the fields below with an editable example. Replace YOUR_WEBHOOK_CODE, or the Shelly host, YOUR_API_KEY and YOUR_DEVICE_ID, with your values before saving. Every preset uses the same generic webhook integration.",
+                    "I modelli sostituiscono i campi sottostanti con un esempio modificabile. Sostituisci YOUR_WEBHOOK_CODE oppure l’host Shelly, YOUR_API_KEY e YOUR_DEVICE_ID con i tuoi valori prima di salvare. Tutti i modelli usano la stessa integrazione webhook generica.",
+                  )}
+                </p>
+              </div>
+              <div class="space-y-2">
+                <Label for="door-webhook"
+                  >{l("Webhook URL", "URL webhook")}</Label
                 ><Input
                   id="door-webhook"
-                  type="password"
+                  type="url"
+                  placeholder="https://example.com/unlock?token=…"
                   bind:value={webhook}
                   autocomplete="off"
                   required={!editId}
                 />
               </div>
-            {:else if draft.integration === "shelly"}
-              <div class="grid gap-4 sm:grid-cols-2">
-                <div class="space-y-2 sm:col-span-2">
-                  <Label for="door-cloud-host">{t("Shelly Cloud host")}</Label
-                  ><Input
-                    id="door-cloud-host"
-                    bind:value={cloudHost}
-                    placeholder="shelly-196-eu.shelly.cloud"
-                    required={!editId}
-                  />
-                </div>
-                <div class="space-y-2">
-                  <Label for="door-device-id">{t("Device ID")}</Label><Input
-                    id="door-device-id"
-                    bind:value={deviceId}
-                    required={!editId}
-                  />
-                </div>
-                <div class="space-y-2">
-                  <Label for="door-api-key">{t("API key")}</Label><Input
-                    id="door-api-key"
-                    type="password"
-                    bind:value={apiKey}
-                    autocomplete="off"
-                    required={!editId}
-                  />
-                </div>
+              <div class="space-y-2">
+                <Label for="door-webhook-method"
+                  >{l("HTTP method", "Metodo HTTP")}</Label
+                >
+                <NativeSelect.Root
+                  id="door-webhook-method"
+                  bind:value={webhookMethod}
+                  class="w-full"
+                >
+                  <NativeSelect.Option value=""
+                    >{l(
+                      "GET (default)",
+                      "GET (predefinito)",
+                    )}</NativeSelect.Option
+                  >
+                  {#each webhookMethods as method (method)}<NativeSelect.Option
+                      value={method}>{method}</NativeSelect.Option
+                    >{/each}
+                </NativeSelect.Root>
               </div>
+              <div class="space-y-2">
+                <Label for="door-webhook-headers"
+                  >{l(
+                    "Additional headers (JSON)",
+                    "Header aggiuntivi (JSON)",
+                  )}</Label
+                >
+                <Textarea
+                  id="door-webhook-headers"
+                  bind:value={webhookHeaders}
+                  placeholder={'{"Authorization":"Bearer …","Content-Type":"application/json"}'}
+                  autocomplete="off"
+                />
+              </div>
+              <div class="space-y-2">
+                <Label for="door-webhook-body"
+                  >{l("Request body", "Corpo della richiesta")}</Label
+                >
+                <Textarea
+                  id="door-webhook-body"
+                  bind:value={webhookBody}
+                  autocomplete="off"
+                />
+                <p class="text-sm text-muted-foreground">
+                  {l(
+                    "Optional raw body for POST, PUT, PATCH, DELETE or OPTIONS. Set Content-Type in the headers.",
+                    "Corpo facoltativo per POST, PUT, PATCH, DELETE o OPTIONS. Imposta Content-Type negli header.",
+                  )}
+                </p>
+              </div>
+              <div class="space-y-2">
+                <Label for="door-webhook-response"
+                  >{l("Success response", "Risposta di successo")}</Label
+                >
+                <NativeSelect.Root
+                  id="door-webhook-response"
+                  bind:value={webhookResponse}
+                  class="w-full"
+                >
+                  <NativeSelect.Option value=""
+                    >{l(
+                      "HTTP 2xx (default)",
+                      "HTTP 2xx (predefinito)",
+                    )}</NativeSelect.Option
+                  >
+                  <NativeSelect.Option value="http"
+                    >HTTP 2xx</NativeSelect.Option
+                  >
+                  <NativeSelect.Option value="ewelink"
+                    >eWeLink JSON</NativeSelect.Option
+                  >
+                </NativeSelect.Root>
+              </div>
+              <p class="text-sm text-muted-foreground">
+                {l(
+                  "A successful response confirms request acceptance, not the physical door state. When editing, leave all webhook fields empty to keep the saved request; to replace it, enter the complete configuration including the URL.",
+                  "Una risposta positiva conferma l’accettazione della richiesta, non lo stato fisico della porta. In modifica, lascia tutti i campi webhook vuoti per mantenere la richiesta salvata; per sostituirla, inserisci la configurazione completa incluso l’URL.",
+                )}
+              </p>
             {/if}
             {#if draft.integration === "none"}<Alert.Root
                 ><Alert.Description
@@ -879,9 +982,7 @@
           ><Badge variant="outline"
             >{detail.integration === "none"
               ? t("Not connected yet")
-              : detail.integration === "shelly"
-                ? "Shelly Cloud"
-                : "eWeLink"}</Badge
+              : l("Generic webhook", "Webhook generico")}</Badge
           >
         </div>
       </Card.Header>
@@ -923,9 +1024,7 @@
           <dd>
             {detail.integration === "none"
               ? t("Not connected yet")
-              : detail.integration === "shelly"
-                ? "Shelly Cloud"
-                : "eWeLink"}
+              : l("Generic webhook", "Webhook generico")}
           </dd>
           <dt class="text-muted-foreground">
             {l("Default permissions", "Permessi predefiniti")}
@@ -1043,9 +1142,10 @@
                   ><span class="truncate text-xs text-muted-foreground"
                     >{door.integration === "none"
                       ? t("Not connected yet")
-                      : door.integration === "shelly"
-                        ? "Shelly Cloud"
-                        : "eWeLink"}{#if door.enabled === false}
+                      : l(
+                          "Generic webhook",
+                          "Webhook generico",
+                        )}{#if door.enabled === false}
                       · {l("Disabled", "Disabilitata")}{/if}</span
                   ></span
                 >

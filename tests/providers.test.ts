@@ -1,3 +1,4 @@
+import { legacyWebhook, shellyWebhook } from "../shared/webhook";
 import { test, expect, afterEach } from "bun:test";
 import { openDevice } from "../server/devices";
 import { openDatabase } from "../server/db";
@@ -16,32 +17,35 @@ test("device adapters require explicit acceptance and never retry transport erro
     [{ error: 100 }, "failed"],
   ] as const) {
     globalThis.fetch = (async () => Response.json(body)) as any;
-    expect((await openDevice("ewelink", { webhook_code: "fake" })).status).toBe(
-      status,
-    );
+    expect(
+      (await openDevice("webhook", legacyWebhook({ webhook_code: "fake" })))
+        .status,
+    ).toBe(status);
   }
   let n = 0;
   globalThis.fetch = (async () => {
     n++;
     throw Error("timeout");
   }) as any;
-  expect((await openDevice("ewelink", { webhook_code: "fake" })).status).toBe(
-    "uncertain",
-  );
+  expect(
+    (await openDevice("webhook", legacyWebhook({ webhook_code: "fake" })))
+      .status,
+  ).toBe("uncertain");
   expect(n).toBe(1);
   globalThis.fetch = (async () => Response.json({ isok: true })) as any;
   expect(
     (
-      await openDevice("shelly", {
-        host: "shelly-196-eu.shelly.cloud",
-        device_id: "fake",
-        api_key: "fake",
-      })
+      await openDevice(
+        "webhook",
+        shellyWebhook({
+          host: "shelly-196-eu.shelly.cloud",
+          device_id: "fake",
+          api_key: "fake",
+        }),
+      )
     ).status,
   ).toBe("accepted");
-  expect((await openDevice("shelly", { host: "127.0.0.1" })).status).toBe(
-    "failed",
-  );
+  expect(() => shellyWebhook({ host: "127.0.0.1" })).toThrow();
 });
 test("Kross relay persists tokens without exposing them and retains them on transient errors", async () => {
   const db = openDatabase(":memory:"),

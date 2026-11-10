@@ -84,7 +84,8 @@ try {
   await propertyForm
     .getByRole("button", { name: "Add property", exact: true })
     .click();
-  await expect(page.locator(".property-switch select")).toHaveValue(/.+/);
+  await expect(page.getByRole("banner")).toContainText("Athena");
+  await expect(page.getByRole("banner").locator("select")).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Add door", exact: true }),
   ).toHaveCount(0);
@@ -99,19 +100,50 @@ try {
   await doorForm.getByLabel("Name", { exact: true }).fill("Entrance");
   await doorForm
     .getByRole("combobox", { name: "Integration", exact: true })
-    .selectOption("ewelink");
-  await doorForm.getByLabel("Common door").check();
-  await doorForm.getByLabel("eWeLink webhook code").fill("fake-not-used");
+    .selectOption("webhook");
+  await doorForm.getByLabel("Common door").click();
+  const preset = doorForm.getByLabel("Webhook preset");
+  await preset.selectOption("shelly");
+  await expect(doorForm.getByLabel("HTTP method")).toHaveValue("POST");
+  await expect(doorForm.getByLabel("Request body")).toHaveValue(
+    '{"id":"YOUR_DEVICE_ID","on":true}',
+  );
+  await expect(doorForm.getByLabel("Additional headers (JSON)")).toHaveValue(
+    '{"Content-Type":"application/json"}',
+  );
+  await expect(doorForm.getByLabel("Integration", { exact: true })).toHaveValue(
+    "webhook",
+  );
+  await expect(
+    doorForm
+      .getByLabel("Integration", { exact: true })
+      .locator('option[value="shelly"]'),
+  ).toHaveCount(0);
+  await preset.selectOption("ewelink");
+  await expect(doorForm.getByLabel("HTTP method")).toHaveValue("GET");
+  await expect(doorForm.getByLabel("Success response")).toHaveValue("ewelink");
+  await expect(doorForm.getByLabel("Webhook URL")).toHaveValue(
+    /webhooks\/execute\?id=YOUR_WEBHOOK_CODE$/,
+  );
+  await preset.selectOption("custom");
+
+  await doorForm
+    .getByLabel("Webhook URL")
+    .fill("https://example.com/fake-not-used");
   await doorForm.getByRole("button", { name: "Save door" }).click();
-  await page.locator(".door-summary").filter({ hasText: "Entrance" }).waitFor();
+  await page.locator(".door-row").filter({ hasText: "Entrance" }).waitFor();
   await page.getByRole("button", { name: "Codes", exact: true }).click();
   await page.locator('[data-tour="new-code"]').click();
   await page
     .getByRole("button", { name: /Create access code Choose doors/ })
     .click();
   await page.getByLabel("Guest name / label").fill("Maria Rossi");
-  await page.getByLabel("Include breakfast").check();
+  await page.getByLabel("Include breakfast").click();
   await page.getByLabel("Total breakfasts").fill("3");
+  const today = new Date().toLocaleDateString("en-CA", {
+    timeZone: "Europe/Rome",
+  });
+  await page.getByLabel("First breakfast date").fill(today);
   await page.getByRole("button", { name: "Save access code" }).click();
   await page
     .locator(".code-summary")
@@ -190,7 +222,7 @@ try {
   await page.getByLabel("Guest name / label").waitFor();
   await expect(tour).not.toBeVisible();
   await page.getByRole("button", { name: "Doors", exact: true }).click();
-  await page.locator(".door-summary").filter({ hasText: "Entrance" }).waitFor();
+  await page.locator(".door-row").filter({ hasText: "Entrance" }).waitFor();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

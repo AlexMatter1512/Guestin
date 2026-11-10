@@ -73,7 +73,7 @@ export const doorSchema = z.object({
   order: z.number().int().nonnegative().default(0),
   common: z.boolean().default(false),
   singleUse: z.boolean().default(false),
-  integration: z.enum(["none", "ewelink", "shelly"]),
+  integration: z.enum(["none", "webhook"]),
   config: z.record(z.string(), z.string()),
   translations: z.record(z.string(), z.string()).default({}),
 });
