@@ -59,6 +59,13 @@ The supplied Compose file sets `TRUST_PROXY=1`. Configure the proxy to **overwri
 
 Owners and collaborators can rotate their password under **Your account → Change password** using their current password. A successful change signs out every device. Login and password-change attempts also have persistent per-account backoff, independent of IP address.
 
+**Password recovery and email verification:** the last onboarding step and **Settings → Email delivery (SMTP)** let owners configure any SMTP server (host, port, security, optional credentials, sender address and name). Credentials are encrypted with `APP_KEY` and never returned to the browser. Use SSL/TLS for implicit TLS (typically 465 or 2465), or STARTTLS for an enforced TLS upgrade (typically 25, 587 or 2587). Unencrypted delivery is available for trusted local relays. Save the settings, send a test email to yourself, then send a verification email. Every user can verify their own address under **Your account**. Verification links expire after 10 minutes; verification is required for recovery by email. SMTP configuration alone does not verify an account.
+
+On the sign-in screen, **Forgot password?** offers **Ask for a password reset link**. Owners receive a private notification linking to **Settings → Team**, where the account shows the pending request. An owner can generate a link for that specific account and share it privately. If SMTP is configured, verified users can instead choose **Send reset email**. Owner assistance remains available if email is unavailable or the address is unverified. Public requests do not reveal whether an account exists. Email requests are limited to one per account and purpose per minute.
+
+Reset links expire after **10 minutes**, work **once**, and replace any earlier reset link for that account. A successful reset revokes all existing sessions and outstanding recovery links. Password changes also invalidate pending recovery links. Recovery and verification links are separate. Migration 9 adds SMTP settings, email verification, short-lived account tokens, delivery throttling, and pending reset requests without changing existing users; existing email addresses start unverified. Workspace wipe removes these settings and records too. With SMTP disabled, a sole owner who loses access needs an existing session or another owner to generate a recovery link.
+
+
 ### With Docker Compose
 
 Save [compose.yaml](compose.yaml), edit the two configuration values above, then run:
@@ -72,7 +79,7 @@ Copy the setup token from the logs and create your owner account at `/host/`.
 
 ## Install it on your phone
 
-The onboarding tour walks you through installation and notification access. **Settings → Install app** keeps the iOS and Android instructions available later.
+The onboarding tour walks you through installation and notification access, then offers SMTP setup as its final step for owners. **Settings → Install app** keeps the iOS and Android instructions available later.
 
 - **Android and desktop:** use the install action when your browser offers it, or the browser's install menu.
 - **iPhone and iPad:** open the app in Safari, choose **Share → Add to Home Screen**, then open the installed app to enable notifications.

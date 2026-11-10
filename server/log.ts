@@ -198,6 +198,14 @@ const routes = [
   /^\/api\/v1\/guest\/breakfast$/,
 ];
 export function logRoute(path: string) {
+  if (
+    /^\/api\/v1\/(auth\/(password-reset-request|reset-password|verify-email)|admin\/smtp(?:\/test)?|me\/verify-email|mail\/status)$/.test(
+      path,
+    )
+  )
+    return path;
+  if (/^\/api\/v1\/users\/[^/]+\/password-reset-link$/.test(path))
+    return "/api/v1/users/:id/password-reset-link";
   if (routes.some((re) => re.test(path))) return path;
   for (const [re, pattern] of [
     [

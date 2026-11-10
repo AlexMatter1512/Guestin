@@ -288,6 +288,12 @@ try {
     .locator('[data-tour="enable-notifications"]')
     .getByRole("button", { name: "Continue", exact: true })
     .click();
+  await expect(tour.getByRole("heading")).toHaveText("Set up email delivery");
+  await expect(page.locator('[data-tour="smtp"]')).toBeVisible();
+  await page
+    .locator('[data-tour="smtp"]')
+    .getByRole("button", { name: "Continue", exact: true })
+    .click();
   await expect(tour.getByRole("heading")).toHaveText(
     "Your first access code is ready",
   );
@@ -488,6 +494,12 @@ try {
     .click();
   await page
     .locator('[data-tour="enable-notifications"]')
+    .getByRole("button", { name: "Continue", exact: true })
+    .click();
+  await expect(tour.getByRole("heading")).toHaveText("Set up email delivery");
+  await expect(page.locator('[data-tour="smtp"]')).toBeVisible();
+  await page
+    .locator('[data-tour="smtp"]')
     .getByRole("button", { name: "Continue", exact: true })
     .click();
   await expect(tour.getByRole("heading")).toHaveText(

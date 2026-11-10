@@ -1,3 +1,5 @@
+import { accountRecovery } from "./account-recovery";
+import type { MailSender } from "./mail";
 import { recordTransferRoutes } from "./record-transfer";
 import { notificationPresentation } from "./notification-presentation";
 import { migrateWebhookDoors } from "./webhook-migration";
@@ -57,6 +59,7 @@ export function createApp(
     setupToken: string;
     origin: string;
     device?: DeviceAdapter;
+    mail?: MailSender;
   },
 ) {
   const app = new Hono<Env>(),
@@ -183,7 +186,12 @@ export function createApp(
       );
     for (const s of all("SELECT * FROM subscriptions")) {
       const p = { properties: [], events: [], ...JSON.parse(s.preferences) };
-      if (wantsNotification(p, propertyId, type))
+      if (
+        (type !== "account.reset_requested" ||
+          get("SELECT role FROM users WHERE id=?", s.user_id)?.role ===
+            "owner") &&
+        wantsNotification(p, propertyId, type)
+      )
         run(
           "INSERT OR IGNORE INTO jobs(event_id,subscription_id,next) VALUES(?,?,?)",
           id,
@@ -212,6 +220,16 @@ export function createApp(
       name: user.name,
       email: user.email,
       role: user.role,
+      emailVerified: !!get(
+        "SELECT 1 FROM email_verifications WHERE user_id=? AND email=?",
+        user.id,
+        user.email,
+      ),
+      passwordResetRequestedAt:
+        get(
+          "SELECT requested_at FROM password_reset_requests WHERE user_id=?",
+          user.id,
+        )?.requested_at ?? null,
       permissions:
         user.role === "owner"
           ? {
@@ -350,9 +368,12 @@ export function createApp(
       status as any,
     );
   });
-  app.get("/api/v1/health", (c) => c.json({ status: "ok", schema: 8 }));
+  app.get("/api/v1/health", (c) => c.json({ status: "ok", schema: 9 }));
   app.get("/api/v1/auth/status", (c) =>
-    c.json({ needsSetup: !get("SELECT 1 FROM users LIMIT 1") }),
+    c.json({
+      needsSetup: !get("SELECT 1 FROM users LIMIT 1"),
+      smtpConfigured: !!get("SELECT 1 FROM smtp_settings"),
+    }),
   );
   const identity = z.object({
     name: z.string().min(1),
@@ -390,6 +411,16 @@ export function createApp(
     })();
     return session(c, user);
   });
+  const recovery = accountRecovery({
+    db,
+    ...config,
+    fail,
+    owner,
+    passwordWork,
+    clearAttempts: (email) => accountAttempts.clear(email),
+    event: (type, message) => event(type, message),
+  });
+  recovery.publicRoutes(app);
   app.post("/api/v1/auth/login", async (c) => {
     const body = z
       .object({
@@ -627,6 +658,7 @@ export function createApp(
       };
     }),
   );
+  recovery.privateRoutes(app);
   app.get("/api/v1/me", (c) =>
     c.json({ user: c.get("user"), csrf: c.get("csrf") }),
   );
@@ -634,7 +666,10 @@ export function createApp(
     const changes = z
       .object({
         tour: z.enum(["pending", "completed", "skipped"]).optional(),
-        tourStep: z.enum(["install", "notifications"]).nullable().optional(),
+        tourStep: z
+          .enum(["install", "notifications", "smtp"])
+          .nullable()
+          .optional(),
         tourCodeId: z.string().uuid().nullable().optional(),
         language: z.enum(["en", "it"]).nullable().optional(),
         theme: z.enum(["light", "dark", "system"]).optional(),
@@ -680,6 +715,8 @@ export function createApp(
         fail("Authentication required", 401);
       run("UPDATE users SET password=? WHERE id=?", password, user.id);
       run("DELETE FROM sessions WHERE user_id=?", user.id);
+      run("DELETE FROM account_tokens WHERE user_id=?", user.id);
+      run("DELETE FROM password_reset_requests WHERE user_id=?", user.id);
       accountAttempts.clear(user.email);
     })();
     realtime(db).heartbeat();
@@ -715,6 +752,11 @@ export function createApp(
     try {
       db.transaction(() => {
         for (const table of [
+          "smtp_settings",
+          "account_mail_attempts",
+          "account_tokens",
+          "email_verifications",
+          "password_reset_requests",
           "jobs",
           "event_reads",
           "subscriptions",
@@ -1536,6 +1578,8 @@ export function createApp(
         "(property_id IS NULL OR property_id IN (SELECT id FROM properties WHERE json_extract(data,'$.active') IS NOT 0))",
       ],
       args: any[] = [];
+    if (c.get("user").role !== "owner")
+      clauses.push("type != 'account.reset_requested'");
     if (propertyId) {
       z.string().uuid().parse(propertyId);
       clauses.push("(property_id=? OR property_id IS NULL)");
@@ -1596,7 +1640,11 @@ export function createApp(
   app.get("/api/v1/events/:id", (c) => {
     pruneNotifications(db);
     const row = get("SELECT * FROM events WHERE id=?", c.req.param("id"));
-    if (!row) fail("Notification missing", 404);
+    if (
+      !row ||
+      (row.type === "account.reset_requested" && c.get("user").role !== "owner")
+    )
+      fail("Notification missing", 404);
     if (row.property_id) requireActiveProperty(row.property_id);
     const context = JSON.parse(
       get("SELECT data FROM event_context WHERE event_id=?", row.id)?.data ??

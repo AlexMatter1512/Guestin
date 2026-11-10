@@ -1,6 +1,74 @@
 export type HostLocale = "en" | "it";
 export const hostLanguage = $state({ current: "en" as HostLocale });
 const italian: Record<string, string> = {
+  "Email delivery (SMTP)": "Invio email (SMTP)",
+  "Verification and password recovery emails":
+    "Email di verifica e recupero password",
+  "Connect any SMTP server to send verification and password recovery emails. You can skip this and let owners generate recovery links.":
+    "Collega un server SMTP per inviare email di verifica e recupero password. Puoi saltare questo passaggio e lasciare che i proprietari generino i link di recupero.",
+  "SMTP host": "Host SMTP",
+  Port: "Porta",
+  "Connection security": "Sicurezza della connessione",
+  "Unencrypted (trusted relay only)":
+    "Non crittografata (solo relay attendibili)",
+  "Use SSL/TLS for ports 465 or 2465; STARTTLS for 25, 587 or 2587.":
+    "Usa SSL/TLS per le porte 465 o 2465; STARTTLS per 25, 587 o 2587.",
+  "SMTP username": "Nome utente SMTP",
+  "SMTP password": "Password SMTP",
+  "Leave blank to keep saved password":
+    "Lascia vuoto per mantenere la password salvata",
+  "Sender email": "Email del mittente",
+  "Sender name": "Nome del mittente",
+  "Save SMTP settings": "Salva impostazioni SMTP",
+  "SMTP settings saved": "Impostazioni SMTP salvate",
+  "Send test email": "Invia email di prova",
+  "Test email sent to your address": "Email di prova inviata al tuo indirizzo",
+  "Disable SMTP": "Disattiva SMTP",
+  "SMTP disabled": "SMTP disattivato",
+  "Verify email": "Verifica email",
+  "Reset password": "Reimposta password",
+  "Password reset. Sign in with your new password.":
+    "Password reimpostata. Accedi con la nuova password.",
+  "Email verified. You can now recover your password by email.":
+    "Email verificata. Ora puoi recuperare la password tramite email.",
+  "If your email is verified and email delivery is configured, a reset link will arrive shortly. Otherwise ask an owner for a link.":
+    "Se la tua email è verificata e l’invio email è configurato, riceverai presto un link di recupero. Altrimenti chiedi un link a un proprietario.",
+  "If the account exists, the owners can now see your request and generate a reset link.":
+    "Se l’account esiste, i proprietari possono ora vedere la richiesta e generare un link di recupero.",
+  "Confirm your email address to enable password recovery by email.":
+    "Conferma il tuo indirizzo email per abilitare il recupero password tramite email.",
+  "Ask for a password reset link":
+    "Richiedi un link per reimpostare la password",
+  "Send reset email (verified addresses only)":
+    "Invia email di recupero (solo indirizzi verificati)",
+  "Back to sign in": "Torna all’accesso",
+  "Forgot password?": "Password dimenticata?",
+  "Email verified": "Email verificata",
+  "Email not verified": "Email non verificata",
+  "Send verification email": "Invia email di verifica",
+  "Verification email sent. The link expires in 10 minutes.":
+    "Email di verifica inviata. Il link scade tra 10 minuti.",
+  "Email delivery is not configured. Ask an owner for password recovery.":
+    "L’invio email non è configurato. Chiedi a un proprietario di recuperare la password.",
+  "Password reset requested": "Reimpostazione password richiesta",
+  "Generate password reset link": "Genera link di recupero password",
+  "Share this link privately. It is valid for 10 minutes and can be used once.":
+    "Condividi questo link in privato. È valido per 10 minuti e può essere usato una sola volta.",
+  "Password reset link": "Link di recupero password",
+  Expires: "Scade",
+  "Set up email delivery": "Configura l’invio email",
+  "Connect email delivery for verification and password recovery, or continue to use owner-generated reset links.":
+    "Configura l’invio email per la verifica e il recupero password oppure continua usando i link generati dai proprietari.",
+  "Link invalid or expired": "Link non valido o scaduto",
+  "Configure SMTP first": "Configura prima SMTP",
+  "Test email failed. Check SMTP settings and try again.":
+    "Invio dell’email di prova fallito. Controlla le impostazioni SMTP e riprova.",
+  "Email delivery is not configured": "L’invio email non è configurato",
+  "Verification email failed. Try again later.":
+    "Invio dell’email di verifica fallito. Riprova più tardi.",
+  "Wait a minute before requesting another email":
+    "Attendi un minuto prima di richiedere un’altra email",
+
   Collaborator: "Collaboratore",
   collaborator: "collaboratore",
   "Owner / Admin": "Proprietario / Admin",

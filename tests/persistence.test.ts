@@ -54,7 +54,7 @@ test("versioned migrations, restart recovery, and backup/restore preserve encryp
       "action",
     );
     expect((db.query("SELECT COUNT(*) n FROM migrations").get() as any).n).toBe(
-      8,
+      9,
     );
     db.close();
     const proc = Bun.spawn(["bun", "scripts/backup.ts", backup], {

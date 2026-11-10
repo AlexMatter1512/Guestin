@@ -28,6 +28,7 @@ export function pruneNotifications(db: DB, now = new Date()) {
       db.query(`DELETE FROM jobs WHERE event_id IN (${expired})`).run(...args);
       db.query(`DELETE FROM events WHERE id IN (${expired})`).run(...args);
     }
+    db.query("DELETE FROM account_tokens WHERE expires<=?").run(now.getTime());
     db.query("DELETE FROM breakfast_sessions WHERE expires<=?").run(
       now.getTime(),
     );

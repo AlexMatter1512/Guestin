@@ -113,6 +113,16 @@ export function openDatabase(path: string) {
       db.exec(`ALTER TABLE property_settings ADD COLUMN notification_limit INTEGER NOT NULL DEFAULT 1000 CHECK(notification_limit BETWEEN 1 AND 100000);
         INSERT INTO migrations VALUES(8);`);
     })();
+  if (!db.query("SELECT 1 FROM migrations WHERE version=9").get())
+    db.transaction(() => {
+      db.exec(`CREATE TABLE smtp_settings(id INTEGER PRIMARY KEY CHECK(id=1),secret TEXT NOT NULL);
+        CREATE TABLE email_verifications(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,email TEXT NOT NULL,verified_at INTEGER NOT NULL);
+        CREATE TABLE account_tokens(digest TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,kind TEXT NOT NULL CHECK(kind IN ('reset','verify')),email TEXT NOT NULL,password_hash TEXT NOT NULL,expires INTEGER NOT NULL);
+        CREATE INDEX account_tokens_user ON account_tokens(user_id,kind);
+        CREATE TABLE account_mail_attempts(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,kind TEXT NOT NULL,last_sent INTEGER NOT NULL,PRIMARY KEY(user_id,kind));
+        CREATE TABLE password_reset_requests(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,requested_at INTEGER NOT NULL);
+        INSERT INTO migrations VALUES(9);`);
+    })();
   return db;
 }
 export type DB = ReturnType<typeof openDatabase>;
