@@ -231,7 +231,8 @@ try {
   await gardenCard
     .getByRole("button", { name: "Garden door", exact: true })
     .click();
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page.getByText("Manage door", { exact: true }).click();
+  await page.getByRole("button", { name: "Delete door", exact: true }).click();
   await expect(confirm).toContainText("permanently deletes");
   await confirm.getByRole("switch").check();
   await confirm.getByRole("button", { name: "Confirm", exact: true }).click();

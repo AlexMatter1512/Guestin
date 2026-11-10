@@ -89,13 +89,7 @@ try {
     .getByRole("dialog")
     .getByRole("button", { name: /Add door/ })
     .click();
-  const form = page.locator("form").filter({
-    has: page.getByRole("heading", {
-      name: "Add door",
-      level: 2,
-      exact: true,
-    }),
-  });
+  const form = page.locator('form[data-tour="door-form"]');
   await form.getByLabel("Name", { exact: true }).fill("Entrance");
   await form.getByLabel("Integration", { exact: true }).selectOption("webhook");
   await expect(
@@ -166,7 +160,8 @@ try {
   expect(JSON.parse(exported.doors[0].config.headers)).toEqual({
     Authorization: "Bearer fixture-only",
   });
-  await page.locator('[data-record-transfer="doors"]').click();
+  await page.getByRole("button", { name: "List actions", exact: true }).click();
+  await page.getByRole("button", { name: "Doors JSON", exact: true }).click();
   const dialog = page.getByRole("dialog");
   const downloadPromise = page.waitForEvent("download");
   await dialog
@@ -204,7 +199,8 @@ try {
   expect((await api("doors")).find((d: any) => d.id === door.id).name).toBe(
     "Entrance",
   );
-  await page.locator('[data-record-transfer="doors"]').click();
+  await page.getByRole("button", { name: "List actions", exact: true }).click();
+  await page.getByRole("button", { name: "Doors JSON", exact: true }).click();
   await uploadFile("doors", { ...incoming, doors: [incoming.doors[0]] });
   await dialog
     .getByRole("switch", { name: "Override current list", exact: true })
@@ -251,7 +247,10 @@ try {
     grants: [],
   });
   await page.goto(origin + "/host/#/codes");
-  await page.locator('[data-record-transfer="codes"]').click();
+  await page.getByRole("button", { name: "List actions", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Access codes JSON", exact: true })
+    .click();
   await uploadFile("codes", codeFile);
   await dialog
     .getByRole("switch", { name: "Override current list", exact: true })
@@ -313,12 +312,16 @@ try {
   const restricted = await collaborator.newPage();
   await restricted.goto(origin + "/host/#/doors");
   await expect(restricted.locator(".door-row")).toHaveCount(1);
-  await expect(restricted.locator("[data-record-transfer]")).toHaveCount(0);
+  await expect(
+    restricted.getByRole("button", { name: "List actions", exact: true }),
+  ).toHaveCount(0);
   await restricted.goto(origin + "/host/#/codes");
   await expect(
     restricted.getByRole("heading", { name: "Access codes", exact: true }),
   ).toBeVisible();
-  await expect(restricted.locator("[data-record-transfer]")).toHaveCount(0);
+  await expect(
+    restricted.getByRole("button", { name: "List actions", exact: true }),
+  ).toHaveCount(0);
   expect(errors).toEqual([]);
   expect(calls).toBe(0);
   console.log(
