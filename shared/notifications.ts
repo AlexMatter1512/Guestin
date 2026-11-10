@@ -16,6 +16,7 @@ const titles: Record<string, [string, string]> = {
   "code.updated": ["Access code updated", "Codice di accesso aggiornato"],
   "code.revoked": ["Access code revoked", "Codice di accesso revocato"],
   "code.permission": ["Door permission changed", "Permesso porta modificato"],
+  "door.updated": ["Door updated", "Porta aggiornata"],
   "door.deleted": ["Door deleted", "Porta eliminata"],
   "device.test.accepted": ["Door test accepted", "Test porta accettato"],
   "device.test.failed": ["Door test failed", "Test porta fallito"],
@@ -140,6 +141,12 @@ export function notificationText(
       : it
         ? "Colazione utilizzata."
         : "Breakfast redeemed.";
+  } else if (event.type === "door.updated") {
+    body = context.actor
+      ? it
+        ? `${context.actor} ha aggiornato la porta ${context.doorName ?? ""}.`
+        : `${context.actor} updated door ${context.doorName ?? ""}.`
+      : event.message;
   } else if (event.type === "door.deleted") {
     body =
       (it ? "Porta eliminata: " : "Door deleted: ") +

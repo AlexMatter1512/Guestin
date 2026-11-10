@@ -1,5 +1,6 @@
 <script lang="ts">
   import { webhookMethods, webhookPreset } from "../../../../../shared/webhook";
+  import DoorConfiguration from "$lib/components/DoorConfiguration.svelte";
   import RecordTransfer from "$lib/components/RecordTransfer.svelte";
   import KeyValueEditor from "$lib/components/KeyValueEditor.svelte";
   import {
@@ -704,6 +705,9 @@
             ></Card.Header
           >
           <Card.Content class="space-y-5">
+            {#if owner && editId}
+              <DoorConfiguration doorId={editId} {api} />
+            {/if}
             <div class="space-y-2">
               <Label for="door-integration">{t("Integration")}</Label
               ><NativeSelect.Root
@@ -1066,6 +1070,9 @@
               : l("Multiple uses", "Utilizzi multipli")}
           </dd>
         </dl>
+        {#if owner && detail.integration !== "none"}
+          <DoorConfiguration doorId={detail.id} {api} />
+        {/if}
       </Card.Content>
       <Card.Footer>{@render doorActions(detail)}</Card.Footer>
     </Card.Root>
@@ -1214,10 +1221,7 @@
                   title={door.testAction?.status === "uncertain"
                     ? l("Check uncertain test", "Verifica test incerto")
                     : l("Test opening", "Prova apertura")}
-                  disabled={pending ||
-                    door.testAction?.status === "pending" ||
-                    (door.enabled === false &&
-                      door.testAction?.status !== "uncertain")}
+                  disabled={pending || door.testAction?.status === "pending"}
                   onclick={() =>
                     ask(
                       door.testAction?.status === "uncertain"
@@ -1274,7 +1278,6 @@
       {:else}<Button
           disabled={pending ||
             door.integration === "none" ||
-            door.enabled === false ||
             door.testAction?.status === "pending"}
           onclick={() => ask("test", door)}
           ><DoorOpen size={16} />{door.testAction?.status === "pending"

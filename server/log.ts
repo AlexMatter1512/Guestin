@@ -205,6 +205,7 @@ export function logRoute(path: string) {
       "/api/v1/admin/records/:kind/:operation",
     ],
     [/^\/api\/v1\/events\/[^/]+$/, "/api/v1/events/:id"],
+    [/^\/api\/v1\/doors\/[^/]+\/config$/, "/api/v1/doors/:id/config"],
     [/^\/api\/v1\/doors\/[^/]+\/thumbnail$/, "/api/v1/doors/:id/thumbnail"],
     [/^\/api\/v1\/properties\/[^/]+\/status$/, "/api/v1/properties/:id/status"],
     [/^\/api\/v1\/properties\/[^/]+\/links$/, "/api/v1/properties/:id/links"],

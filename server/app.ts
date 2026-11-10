@@ -979,6 +979,12 @@ export function createApp(
         .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)),
     ),
   );
+  app.get("/api/v1/doors/:id/config", (c) => {
+    owner(c);
+    const row = get("SELECT * FROM doors WHERE id=?", c.req.param("id"));
+    if (!row) fail("Door missing", 404);
+    return c.json({ config: crypto.open(row.secret) });
+  });
   app.get("/api/v1/doors/:id/thumbnail", (c) => {
     const row = get("SELECT data FROM doors WHERE id=?", c.req.param("id"));
     if (!row) fail("Door missing", 404);
@@ -1058,12 +1064,21 @@ export function createApp(
           : crypto.open(d.secret);
     validateDoorPhotos(data);
     validateDevice(data.integration, use);
-    run(
-      "UPDATE doors SET data=?,secret=? WHERE id=?",
-      JSON.stringify(data),
-      crypto.seal(use),
-      d.id,
-    );
+    db.transaction(() => {
+      run(
+        "UPDATE doors SET data=?,secret=? WHERE id=?",
+        JSON.stringify(data),
+        crypto.seal(use),
+        d.id,
+      );
+      event(
+        "door.updated",
+        `${c.get("user").name} updated door ${data.name}`,
+        d.property_id,
+        null,
+        { actor: c.get("user").name, doorId: d.id, doorName: data.name },
+      );
+    })();
     return c.json({ ok: true });
   });
   function validateDoorPhotos(data: any) {
@@ -1122,7 +1137,6 @@ export function createApp(
     const d = get("SELECT * FROM doors WHERE id=?", doorId);
     if (!d) fail("Door missing", 404);
     const data = JSON.parse(d.data);
-    if (data.enabled === false) fail("Door disabled", 403);
     if (data.integration === "none")
       fail("This door has no device connector yet", 400);
     if (get("SELECT 1 FROM door_tests WHERE door_id=? AND resolved=0", doorId))
@@ -1728,6 +1742,20 @@ export function createApp(
         fail("Idempotency key conflict", 409);
       return c.json(JSON.parse(previous.result));
     }
+    // The guest token remains the sole authority. A valid host session only
+    // attributes this action; stale cookies never prevent ordinary guest access.
+    const cookie = c.req
+      .header("cookie")
+      ?.match(/(?:^|; )oshost_session=([^;]+)/)?.[1];
+    const host = cookie
+      ? get(
+          "SELECT u.id,u.name,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.digest=? AND s.expires>? AND u.role IN ('owner','collaborator')",
+          digest(cookie),
+          Date.now(),
+        )
+      : null;
+    const attribution = host ? { actor: host.name } : {};
+    if (host) setLogActor(host);
     const d = get("SELECT * FROM doors WHERE id=?", doorId);
     try {
       db.transaction(() => {
@@ -1775,6 +1803,8 @@ export function createApp(
       })();
     } catch (e) {
       event("access.denied", (e as Error).message, r.property_id, r.id, {
+        ...attribution,
+        detail: (e as Error).message,
         doorId: d?.id,
         doorName: d ? JSON.parse(d.data).name : undefined,
       });
@@ -1799,6 +1829,8 @@ export function createApp(
           doorId,
         );
       event("access." + result.status, result.detail, r.property_id, r.id, {
+        ...attribution,
+        detail: result.detail,
         doorId,
         doorName: JSON.parse(d.data).name,
       });

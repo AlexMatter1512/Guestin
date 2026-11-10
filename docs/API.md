@@ -41,9 +41,9 @@ Properties also contain `defaultCheckinLink` and `defaultInstructionsLink`. Owne
 - `GET /properties`, `POST /properties`, `PUT /properties/:id`: structure name, IANA timezone, and check-in/check-out defaults. Creation and updates require an owner. Reads include `notificationRetentionMonths` and `breakfastProtected`, never password hashes. Reads also include `notificationRetentionLimit` (default 1000).
 - `PATCH /properties/:id/notifications`: any host can set `{retentionMonths?,maxNotifications?}` for shared structure history (at least one field required). Months range from 1 to 120; the count ranges from 1 to 100,000. Defaults are three calendar months and 1,000 entries per structure. Omitted values are preserved. The oldest entries and associated push jobs, context and read receipts are deleted when either limit is exceeded. Changes apply immediately; lifetime statistics remain. Inactive structures retain their history until reactivated.
 - `PUT /properties/:id/breakfast-settings`: owner-only `{enabled,password?}`. New passwords require 8–128 characters. Leaving the password unset keeps an existing password; disabling removes protection. Changes invalidate breakfast sessions.
-- `GET /doors`, `POST /doors`, `PUT /doors/:id`, `DELETE /doors/:id`: door management. Owners configure `none` or `webhook` adapters, credentials, translations, photos, defaults, and enabled state. Secret credentials are omitted from reads.
+- `GET /doors`, `POST /doors`, `PUT /doors/:id`, `DELETE /doors/:id`: door management. Owners configure `none` or `webhook` adapters, credentials, translations, photos, defaults, and enabled state. Secret credentials are omitted from list and guest reads. Owner-only `GET /doors/:id/config` returns the saved decrypted configuration as `{config}` with `Cache-Control: no-store`; collaborators cannot read it. Successful door updates emit `door.updated` with the acting username and door reference, without credentials.
 - `PUT /doors/order`: save order.
-- `POST /doors/:id/test`: explicitly confirmed device test, with an idempotency key.
+- `POST /doors/:id/test`: owner-only, explicitly confirmed device test, with an idempotency key. Disabled doors can be tested without enabling guest access or consuming a code grant.
 - `POST /doors/:id/resolve-test`: resolve an uncertain test after checking the device.
 
 ## Access codes and guest actions
@@ -54,6 +54,8 @@ Properties also contain `defaultCheckinLink` and `defaultInstructionsLink`. Owne
 - `POST /codes/:id/resolve`: resolve an uncertain action with `{doorId,consumed}`.
 - `GET /guest`: guest page data, authenticated by the guest token in `Authorization: Bearer …`.
 - `POST /guest/doors/:id/open`, `POST /guest/breakfast`: live guest actions, requiring an `Idempotency-Key`. Breakfast input is `{quantity}`.
+
+Guest door actions optionally attribute a valid owner/collaborator login session to `context.actor` in access notifications. Identity comes from the server session, never a guest-supplied username. Missing, expired or invalid host sessions leave ordinary guest access unchanged. The guest token, door enabled state and all grant restrictions still apply, even for logged-in owners.
 
 Guest links keep their token in a URL fragment (`#code=…&page=breakfast`) throughout navigation. The browser never persists the token. `GET /guest` includes a non-secret `codeId` for pending-action idempotency; it cannot authorize requests. Guest requests can include a URL-encoded JSON `X-Oshost-Previous-Visit` header with `{label,date}`. This optional, bounded hint is unverified, recorded only on invalid-link events, and never determines authorization or structure attribution. Device acceptance is recorded separately from physical door state. Ambiguous requests are not retried automatically.
 
