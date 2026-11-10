@@ -1,3 +1,4 @@
+import { databasePath } from "./branding";
 import { log, logError } from "./log";
 import { openDatabase } from "./db";
 import { createApp } from "./app";
@@ -11,15 +12,19 @@ import {
 } from "./runtime-secrets";
 process.umask(0o077);
 const { secrets } = initializeRuntimeSecrets();
-const db = openDatabase(process.env.DB_PATH ?? "data/oshost.sqlite");
-log("info", "database.ready", { schema: 9 });
+const db = openDatabase(databasePath());
+log("info", "database.ready", { schema: 10 });
 const app = createApp(db, {
   key: secrets.APP_KEY,
   setupToken: secrets.SETUP_TOKEN,
   origin: process.env.ORIGIN ?? "http://localhost:3000",
 });
 app.get("/breakfast/:property", async (c) =>
-  c.html(await Bun.file("server/breakfast.html").text()),
+  c.redirect(
+    "/host/breakfast/" +
+      encodeURIComponent(c.req.param("property")) +
+      (new URL(c.req.url).search || ""),
+  ),
 );
 app.get("/", (c) => c.redirect("/host/"));
 app.get("/host/manifest.webmanifest", async (c) => {
@@ -109,7 +114,7 @@ const server = Bun.serve({
   tls,
   maxRequestBodySize: 32 * 1024 * 1024,
 });
-log("info", "server.started", { port: server.port, tls: !!tls, schema: 9 });
+log("info", "server.started", { port: server.port, tls: !!tls, schema: 10 });
 printSetupInstructions(db, secrets.SETUP_TOKEN);
 const stop = () => {
   log("info", "server.stopping");

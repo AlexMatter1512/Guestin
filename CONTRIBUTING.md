@@ -32,10 +32,10 @@ Use fake adapters for device tests. Real unlocks and external notification deliv
 
 `bun scripts/guest-parity-smoke.ts` skips by default. To compare against your own
 legacy BnBFrontend checkout, install its dependencies and set
-`OSHOST_LEGACY_GUEST_ROOT=/absolute/path/to/BnBFrontend` before running the script.
+`GUESTIN_LEGACY_GUEST_ROOT=/absolute/path/to/BnBFrontend` before running the script.
 An explicitly configured but incomplete reference fails with a clear error.
 Normal checks and browser smoke tests do not require that checkout. Legacy
-property images are deliberately excluded from oshost.
+property images are deliberately excluded from guestin.
 
 ### Secret scanning
 

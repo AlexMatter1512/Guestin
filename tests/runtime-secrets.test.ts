@@ -16,7 +16,7 @@ import { openDatabase } from "../server/db";
 import { vault } from "../server/security";
 
 function temporary(run: (dir: string) => void) {
-  const dir = mkdtempSync(join(tmpdir(), "oshost-secrets-"));
+  const dir = mkdtempSync(join(tmpdir(), "guestin-secrets-"));
   try {
     run(dir);
   } finally {
@@ -26,7 +26,7 @@ function temporary(run: (dir: string) => void) {
 
 test("first startup generates private stable secrets and preserves encrypted credentials", () =>
   temporary((dir) => {
-    const env: Record<string, string> = { DB_PATH: join(dir, "oshost.sqlite") };
+    const env: Record<string, string> = { DB_PATH: join(dir, "guestin.sqlite") };
     const first = initializeRuntimeSecrets(env);
     expect(first.secrets.APP_KEY).toMatch(/^[a-f0-9]{64}$/);
     expect(first.secrets.SETUP_TOKEN.length).toBeGreaterThanOrEqual(43);
@@ -44,7 +44,7 @@ test("first startup generates private stable secrets and preserves encrypted cre
 
 test("existing environment keys are adopted without changing encryption identity", () =>
   temporary((dir) => {
-    const dbPath = join(dir, "oshost.sqlite");
+    const dbPath = join(dir, "guestin.sqlite");
     const db = openDatabase(dbPath);
     db.close();
     const result = initializeRuntimeSecrets({
@@ -58,7 +58,7 @@ test("existing environment keys are adopted without changing encryption identity
 
 test("missing, corrupt, and conflicting secrets fail without overwriting identity", () =>
   temporary((dir) => {
-    const dbPath = join(dir, "oshost.sqlite");
+    const dbPath = join(dir, "guestin.sqlite");
     const db = openDatabase(dbPath);
     db.close();
     expect(() => initializeRuntimeSecrets({ DB_PATH: dbPath })).toThrow(
@@ -82,7 +82,7 @@ test("missing, corrupt, and conflicting secrets fail without overwriting identit
 
 test("setup token is output only before an owner exists", () =>
   temporary((dir) => {
-    const db = openDatabase(join(dir, "oshost.sqlite"));
+    const db = openDatabase(join(dir, "guestin.sqlite"));
     const output = spyOn(console, "log").mockImplementation(() => {});
     try {
       printSetupInstructions(db, "bootstrap-only");

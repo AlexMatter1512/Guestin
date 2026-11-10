@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Disposable container/volume only. No provider calls or real workspace data.
 set -euo pipefail
-image="${1:-oshost:ci}"
-test_id="oshost-ci-$$"
+image="${1:-guestin:ci}"
+test_id="guestin-ci-$$"
 container="$test_id"
 volume="$test_id-data"
 cleanup() {
@@ -37,7 +37,7 @@ docker exec "$container" bun -e '
   for(const path of ["/host/","/guest/","/host/manifest.webmanifest","/guest/manifest.webmanifest"]){
     const r=await fetch("http://localhost:3000"+path);if(!r.ok)throw Error("Missing packaged asset: "+path);
   }
-  const {Database}=await import("bun:sqlite");const db=new Database("/app/data/oshost.sqlite");
+  const {Database}=await import("bun:sqlite");const db=new Database("/app/data/guestin.sqlite");
   const secrets=await Bun.file("/app/data/runtime-secrets.json").text();
   const {vault}=await import("/app/server/security.ts");
   db.exec("CREATE TABLE ci_canary(value TEXT);");
@@ -54,7 +54,7 @@ docker rm -f "$container" >/dev/null
 start
 ready
 docker exec "$container" bun -e '
-  const {Database}=await import("bun:sqlite");const db=new Database("/app/data/oshost.sqlite");
+  const {Database}=await import("bun:sqlite");const db=new Database("/app/data/guestin.sqlite");
   const secrets=await Bun.file("/app/data/runtime-secrets.json").json();
   const {vault}=await import("/app/server/security.ts");
   if(vault(secrets.APP_KEY).open(db.query("SELECT value FROM ci_canary").get()?.value)!=="persistent")throw Error("Encrypted data did not survive replacement");db.close();

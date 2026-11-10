@@ -339,6 +339,8 @@ test("public endpoint exposes aggregate totals only", async () => {
   expect(Object.keys(r.data).sort()).toEqual(
     [
       "property",
+      "dateFormat",
+      "date",
       "timezone",
       "today",
       "thisMonth",
@@ -836,7 +838,7 @@ test("wipe requires owner, exact phrase and password; destroys records and sessi
       ).toBe(0);
     expect(
       (f.db.query("SELECT MAX(version) n FROM migrations").get() as any).n,
-    ).toBe(9);
+    ).toBe(10);
     expect(
       (
         await f.req("auth/setup", {
@@ -1051,7 +1053,7 @@ test("invalid guest page loads notify with safe unverified prior-visit context, 
       f.app.request("/api/v1/guest", {
         headers: {
           Authorization: "Bearer " + bearer,
-          "X-Oshost-Previous-Visit": value,
+          "X-Guestin-Previous-Visit": value,
         },
       });
     expect((await load("wrong-link-one")).status).toBe(403);

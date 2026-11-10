@@ -18,7 +18,7 @@
     username: "",
     password: "",
     from: "",
-    fromName: "oshost",
+    fromName: "guestin",
   });
   let busy = $state(false),
     loaded = $state(false),

@@ -1,13 +1,12 @@
 services:
-  oshost:
-    image: alexmatter/oshost:latest
+  guestin:
+    image: alexmatter/guestin:${GUESTIN_IMAGE_TAG:-edge}
     restart: unless-stopped
     environment:
       # Set these to your public HTTPS address and notification contact.
       ORIGIN: https://access.example.com
       VAPID_SUBJECT: mailto:admin@example.com
       PORT: "3000"
-      DB_PATH: /app/data/oshost.sqlite
       # Requires an isolated backend and a proxy that overwrites X-Real-IP.
       TRUST_PROXY: "1"
       LOG_LEVEL: info
@@ -19,6 +18,8 @@ services:
     ports:
       - "127.0.0.1:38471:3000"
     volumes:
-      - oshost-data:/app/data
+      - guestin-data:/app/data
 volumes:
-  oshost-data:
+  guestin-data:
+    # Reuse the existing installation volume unless explicitly overridden.
+    name: ${GUESTIN_DATA_VOLUME:-oshost_oshost-data}

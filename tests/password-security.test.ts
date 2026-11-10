@@ -55,7 +55,7 @@ function post(
     { clientIP: ip },
   );
 }
-const auth = { Cookie: "oshost_session=first", "X-CSRF-Token": "csrf-first" };
+const auth = { Cookie: "guestin_session=first", "X-CSRF-Token": "csrf-first" };
 
 test("account backoff survives app recreation, email case and changing client IPs", async () => {
   const { db, app } = await fixture();
@@ -145,7 +145,7 @@ for (const role of ["owner", "collaborator"])
         expect(
           (
             await app.request("/api/v1/me", {
-              headers: { Cookie: `oshost_session=${session}` },
+              headers: { Cookie: `guestin_session=${session}` },
             })
           ).status,
         ).toBe(401);

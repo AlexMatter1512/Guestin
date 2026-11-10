@@ -1,3 +1,4 @@
+import { databasePath } from "../server/branding";
 import { Database } from "bun:sqlite";
 import {
   mkdirSync,
@@ -14,8 +15,8 @@ const destination = resolve(
     "backups/" + new Date().toISOString().replace(/[:.]/g, "-"),
 );
 mkdirSync(destination, { recursive: true, mode: 0o700 });
-const db = new Database(process.env.DB_PATH ?? "data/oshost.sqlite");
-db.query("VACUUM INTO ?").run(destination + "/oshost.sqlite");
+const db = new Database(databasePath());
+db.query("VACUUM INTO ?").run(destination + "/guestin.sqlite");
 db.close();
 if (existsSync("data/assets"))
   cpSync("data/assets", destination + "/assets", { recursive: true });

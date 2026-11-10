@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve, join, extname } from "node:path";
 import { createApp } from "../server/app";
 import { openDatabase } from "../server/db";
-const dir = mkdtempSync(join(tmpdir(), "oshost-connectors-")),
+const dir = mkdtempSync(join(tmpdir(), "guestin-connectors-")),
   origin = "http://localhost:3092";
 const db = openDatabase(join(dir, "test.sqlite"));
 const originalFetch = globalThis.fetch;
@@ -201,7 +201,7 @@ try {
   });
   await context.addCookies([
     {
-      name: "oshost_session",
+      name: "guestin_session",
       value: cookie.split("=")[1],
       domain: "localhost",
       path: "/api/",

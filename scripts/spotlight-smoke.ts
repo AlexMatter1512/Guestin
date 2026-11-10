@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // A fresh, disposable workspace; never invokes a device or provider.
-const directory = mkdtempSync(join(tmpdir(), "oshost-spotlight-"));
+const directory = mkdtempSync(join(tmpdir(), "guestin-spotlight-"));
 const origin = "http://localhost:3096";
 const server = Bun.spawn(["bun", "server/index.ts"], {
   env: {

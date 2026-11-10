@@ -1,7 +1,9 @@
+import { sessionCookie } from "./branding";
 import type { Hono } from "hono";
 import type { DB } from "./db";
 import { z } from "zod";
 import { digest, token } from "./security";
+import { realtime } from "./realtime";
 import { setLogActor } from "./log";
 
 export function mayReadBreakfast(db: DB, propertyId: string, cookie = "") {
@@ -17,7 +19,7 @@ export function mayReadBreakfast(db: DB, propertyId: string, cookie = "") {
       return [part.slice(0, index), part.slice(index + 1)];
     }),
   );
-  const host = cookies.oshost_session;
+  const host = sessionCookie(cookie);
   const hostUser =
     host &&
     (db
@@ -33,7 +35,9 @@ export function mayReadBreakfast(db: DB, propertyId: string, cookie = "") {
     setLogActor(hostUser);
     return true;
   }
-  const breakfast = cookies["oshost_breakfast_" + propertyId];
+  const breakfast =
+    cookies["guestin_breakfast_" + propertyId] ??
+    cookies["oshost_breakfast_" + propertyId];
   return (
     !!breakfast &&
     !!db
@@ -82,6 +86,7 @@ export function breakfastAccessRoutes(
       if (hash !== saved?.breakfast_password)
         db.query("DELETE FROM breakfast_sessions WHERE property_id=?").run(id);
     })();
+    realtime(db).workspaceChanged();
     return c.json({ protected: !!hash });
   });
   const attempts = new Map<string, { count: number; until: number }>();
@@ -140,7 +145,7 @@ export function breakfastAccessRoutes(
       );
       c.header(
         "Set-Cookie",
-        `oshost_breakfast_${id}=${raw}; Path=/api/v1/public/breakfast/; HttpOnly; SameSite=Strict; Max-Age=43200${origin.startsWith("https:") ? "; Secure" : ""}`,
+        `guestin_breakfast_${id}=${raw}; Path=/api/v1/public/breakfast/; HttpOnly; SameSite=Strict; Max-Age=43200${origin.startsWith("https:") ? "; Secure" : ""}`,
       );
     }
     return c.json({ ok: true });

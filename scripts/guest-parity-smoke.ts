@@ -13,10 +13,10 @@ import { createApp } from "../server/app";
 
 // Render the untouched legacy visual sources from a disposable copy. Only its
 // server loader is replaced with fake data; original repositories are read-only.
-const referencePath = process.env.OSHOST_LEGACY_GUEST_ROOT;
+const referencePath = process.env.GUESTIN_LEGACY_GUEST_ROOT;
 if (!referencePath) {
   console.log(
-    "SKIP: legacy guest parity is optional. Set OSHOST_LEGACY_GUEST_ROOT to a local BnBFrontend checkout with dependencies installed.",
+    "SKIP: legacy guest parity is optional. Set GUESTIN_LEGACY_GUEST_ROOT to a local BnBFrontend checkout with dependencies installed.",
   );
   process.exit(0);
 }
@@ -33,7 +33,7 @@ for (const name of [
   if (!existsSync(join(originalRoot, name)))
     throw Error(`Legacy guest reference is missing ${name}: ${originalRoot}`);
 }
-const directory = mkdtempSync(join(tmpdir(), "oshost-guest-parity-"));
+const directory = mkdtempSync(join(tmpdir(), "guestin-guest-parity-"));
 const referenceRoot = join(directory, "reference");
 mkdirSync(referenceRoot);
 for (const name of [
@@ -334,7 +334,7 @@ try {
       JSON.stringify(
         {
           reference: await bounds(oldPage, selectors),
-          oshost: await bounds(page, selectors),
+          guestin: await bounds(page, selectors),
         },
         null,
         2,
@@ -345,7 +345,7 @@ try {
       fullPage: true,
     });
     await page.screenshot({
-      path: join(directory, name + "-doors-oshost.png"),
+      path: join(directory, name + "-doors-guestin.png"),
       fullPage: true,
     });
     equalGeometry(
@@ -358,7 +358,7 @@ try {
       fullPage: true,
     });
     await page.screenshot({
-      path: join(directory, name + "-doors-oshost.png"),
+      path: join(directory, name + "-doors-guestin.png"),
       fullPage: true,
     });
     await oldPage.getByRole("link", { name: /Breakfast/ }).click();
@@ -383,7 +383,7 @@ try {
       fullPage: true,
     });
     await page.screenshot({
-      path: join(directory, name + "-breakfast-oshost.png"),
+      path: join(directory, name + "-breakfast-guestin.png"),
       fullPage: true,
     });
     await oldPage.getByRole("link", { name: /Doors/ }).click();

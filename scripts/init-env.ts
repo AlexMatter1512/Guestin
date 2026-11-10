@@ -6,7 +6,7 @@ if (existsSync(".env"))
 const keys = webpush.generateVAPIDKeys();
 await Bun.write(
   ".env",
-  `APP_KEY=${randomBytes(32).toString("hex")}\nSETUP_TOKEN=${randomBytes(32).toString("base64url")}\nORIGIN=http://localhost:3000\nDB_PATH=data/oshost.sqlite\nVAPID_PUBLIC_KEY=${keys.publicKey}\nVAPID_PRIVATE_KEY=${keys.privateKey}\nVAPID_SUBJECT=mailto:admin@example.com\n`,
+  `APP_KEY=${randomBytes(32).toString("hex")}\nSETUP_TOKEN=${randomBytes(32).toString("base64url")}\nORIGIN=http://localhost:3000\nDB_PATH=data/guestin.sqlite\nVAPID_PUBLIC_KEY=${keys.publicKey}\nVAPID_PRIVATE_KEY=${keys.privateKey}\nVAPID_SUBJECT=mailto:admin@example.com\n`,
 );
 const { chmodSync } = await import("node:fs");
 chmodSync(".env", 0o600);

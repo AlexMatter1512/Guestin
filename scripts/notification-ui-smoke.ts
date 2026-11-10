@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const directory = mkdtempSync(join(tmpdir(), "oshost-notification-ui-"));
+const directory = mkdtempSync(join(tmpdir(), "guestin-notification-ui-"));
 const origin = "http://localhost:3109";
 const server = Bun.spawn(["bun", "server/index.ts"], {
   env: {

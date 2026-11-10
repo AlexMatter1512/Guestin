@@ -123,6 +123,12 @@ export function openDatabase(path: string) {
         CREATE TABLE password_reset_requests(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,requested_at INTEGER NOT NULL);
         INSERT INTO migrations VALUES(9);`);
     })();
+  if (!db.query("SELECT 1 FROM migrations WHERE version=10").get())
+    db.transaction(() => {
+      db.exec(`CREATE TABLE display_settings(id INTEGER PRIMARY KEY CHECK(id=1),date_format TEXT NOT NULL CHECK(date_format IN ('dd/mm/yyyy','mm/dd/yyyy','yyyy-mm-dd')));
+        INSERT INTO display_settings VALUES(1,'dd/mm/yyyy');
+        INSERT INTO migrations VALUES(10);`);
+    })();
   return db;
 }
 export type DB = ReturnType<typeof openDatabase>;

@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { localDate } from "../shared/schema";
-const directory = mkdtempSync(join(tmpdir(), "oshost-bnb-breakfast-"));
+const directory = mkdtempSync(join(tmpdir(), "guestin-bnb-breakfast-"));
 const origin = "http://localhost:3089";
 const server = Bun.spawn(["bun", "server/index.ts"], {
   env: {

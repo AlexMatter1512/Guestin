@@ -1,5 +1,5 @@
 {
-  "name": "oshost",
+  "name": "guestin",
   "private": true,
   "type": "module",
   "workspaces": [

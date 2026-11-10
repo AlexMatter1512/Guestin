@@ -1,3 +1,6 @@
+import { sessionCookie } from "./branding";
+import { displaySettings } from "./display-settings";
+import { dateFormats } from "../shared/date-format";
 import { accountRecovery } from "./account-recovery";
 import type { MailSender } from "./mail";
 import { recordTransferRoutes } from "./record-transfer";
@@ -166,7 +169,9 @@ export function createApp(
     });
     // Synchronous transactions have committed (or rolled back) before delivery.
     queueMicrotask(() => {
-      if (get("SELECT id FROM events WHERE id=?", id))
+      if (get("SELECT id FROM events WHERE id=?", id)) {
+        if (type === "breakfast.redeemed" && propertyId)
+          realtime(db).breakfastChanged(propertyId);
         realtime(db).publish({
           id,
           property_id: propertyId,
@@ -177,6 +182,7 @@ export function createApp(
           context: details,
           ...presentation,
         });
+      }
     });
     if (codeId && type.startsWith("access."))
       run(
@@ -269,7 +275,7 @@ export function createApp(
     );
     c.header(
       "Set-Cookie",
-      `oshost_session=${raw}; HttpOnly; SameSite=Strict; Path=/api/; Max-Age=604800${config.origin.startsWith("https:") ? "; Secure" : ""}`,
+      `guestin_session=${raw}; HttpOnly; SameSite=Strict; Path=/api/; Max-Age=604800${config.origin.startsWith("https:") ? "; Secure" : ""}`,
     );
     return c.json({
       user: userView(user),
@@ -368,7 +374,8 @@ export function createApp(
       status as any,
     );
   });
-  app.get("/api/v1/health", (c) => c.json({ status: "ok", schema: 9 }));
+  app.get("/api/v1/public/settings", (c) => c.json(displaySettings(db)));
+  app.get("/api/v1/health", (c) => c.json({ status: "ok", schema: 10 }));
   app.get("/api/v1/auth/status", (c) =>
     c.json({
       needsSetup: !get("SELECT 1 FROM users LIMIT 1"),
@@ -496,9 +503,7 @@ export function createApp(
       path.endsWith("/health")
     )
       return next();
-    const cookie = c.req
-      .header("cookie")
-      ?.match(/(?:^|; )oshost_session=([^;]+)/)?.[1];
+    const cookie = sessionCookie(c.req.header("cookie"));
     const s =
       cookie &&
       get(
@@ -642,9 +647,7 @@ export function createApp(
       return next();
     },
     upgradeWebSocket((c) => {
-      const session = digest(
-        c.req.header("cookie")!.match(/(?:^|; )oshost_session=([^;]+)/)![1],
-      );
+      const session = digest(sessionCookie(c.req.header("cookie"))!);
       return {
         onOpen(_event, ws) {
           realtime(db).connect(ws, session);
@@ -659,6 +662,21 @@ export function createApp(
     }),
   );
   recovery.privateRoutes(app);
+  app.get("/api/v1/settings", (c) => c.json(displaySettings(db)));
+  app.put("/api/v1/settings", async (c) => {
+    owner(c);
+    const input = z
+      .object({ dateFormat: z.enum(dateFormats) })
+      .strict()
+      .parse(await c.req.json());
+    run(
+      "INSERT INTO display_settings VALUES(1,?) ON CONFLICT(id) DO UPDATE SET date_format=excluded.date_format",
+      input.dateFormat,
+    );
+    realtime(db).workspaceChanged();
+    return c.json(displaySettings(db));
+  });
+
   app.get("/api/v1/me", (c) =>
     c.json({ user: c.get("user"), csrf: c.get("csrf") }),
   );
@@ -723,7 +741,7 @@ export function createApp(
     log("info", "auth.password_changed");
     c.header(
       "Set-Cookie",
-      `oshost_session=; Path=/api/; HttpOnly; SameSite=Strict; Max-Age=0${config.origin.startsWith("https:") ? "; Secure" : ""}`,
+      `guestin_session=; Path=/api/; HttpOnly; SameSite=Strict; Max-Age=0${config.origin.startsWith("https:") ? "; Secure" : ""}`,
     );
     return c.json({ ok: true });
   });
@@ -752,6 +770,7 @@ export function createApp(
     try {
       db.transaction(() => {
         for (const table of [
+          "display_settings",
           "smtp_settings",
           "account_mail_attempts",
           "account_tokens",
@@ -787,7 +806,7 @@ export function createApp(
       invalidAlerts.reset();
       c.header(
         "Set-Cookie",
-        "oshost_session=; Path=/api/; HttpOnly; SameSite=Strict; Max-Age=0",
+        "guestin_session=; Path=/api/; HttpOnly; SameSite=Strict; Max-Age=0",
       );
       return c.json({ ok: true, needsSetup: true });
     } finally {
@@ -798,7 +817,7 @@ export function createApp(
     run("DELETE FROM sessions WHERE user_id=?", c.get("user").id);
     c.header(
       "Set-Cookie",
-      "oshost_session=; Path=/api/; HttpOnly; SameSite=Strict; Max-Age=0",
+      "guestin_session=; Path=/api/; HttpOnly; SameSite=Strict; Max-Age=0",
     );
     return c.json({ ok: true });
   });
@@ -1688,7 +1707,9 @@ export function createApp(
         );
       if (budget.allowed) {
         let previousVisit: NotificationContext["previousVisit"];
-        const hint = c.req.header("X-Oshost-Previous-Visit");
+        const hint =
+          c.req.header("X-Guestin-Previous-Visit") ??
+          c.req.header("X-Oshost-Previous-Visit");
         if (hint && hint.length <= 2048) {
           try {
             const value = z
@@ -1733,6 +1754,7 @@ export function createApp(
         get("SELECT data FROM properties WHERE id=?", r.property_id).data,
       );
     return c.json({
+      ...displaySettings(db),
       codeId: r.id,
       staff: d.staff === true,
       label: d.label,
@@ -1792,9 +1814,7 @@ export function createApp(
     }
     // The guest token remains the sole authority. A valid host session only
     // attributes this action; stale cookies never prevent ordinary guest access.
-    const cookie = c.req
-      .header("cookie")
-      ?.match(/(?:^|; )oshost_session=([^;]+)/)?.[1];
+    const cookie = sessionCookie(c.req.header("cookie"));
     const host = cookie
       ? get(
           "SELECT u.id,u.name,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.digest=? AND s.expires>? AND u.role IN ('owner','collaborator')",
@@ -1950,6 +1970,41 @@ export function createApp(
     if (error) fail(error, 403);
     return c.json(result);
   });
+  app.get(
+    "/api/v1/public/breakfast/:property/live",
+    (c, next) => {
+      if (c.req.header("origin") !== config.origin)
+        return c.json({ error: "Origin rejected" }, 403);
+      const id = c.req.param("property");
+      if (!get("SELECT 1 FROM properties WHERE id=?", id))
+        fail("Property missing", 404);
+      if (!mayReadBreakfast(db, id, c.req.header("cookie")))
+        return c.json({ requiresPassword: true }, 401);
+      return next();
+    },
+    upgradeWebSocket((c) => {
+      const id = c.req.param("property")!,
+        cookie = c.req.header("cookie") ?? "";
+      return {
+        onOpen(_event, ws) {
+          realtime(db).connectBreakfast(ws, id, () => {
+            const row = get("SELECT data FROM properties WHERE id=?", id);
+            return (
+              !!row &&
+              JSON.parse(row.data).active !== false &&
+              mayReadBreakfast(db, id, cookie)
+            );
+          });
+        },
+        onClose(_event, ws) {
+          realtime(db).disconnect(ws);
+        },
+        onError(_event, ws) {
+          realtime(db).disconnect(ws);
+        },
+      };
+    }),
+  );
   app.get("/api/v1/public/breakfast/:property", (c) => {
     const p = get(
       "SELECT * FROM properties WHERE id=?",
@@ -1978,8 +2033,10 @@ export function createApp(
       to = z.iso.date().parse(c.req.query("to") ?? today);
     if (from > to) fail("Invalid date range");
     return c.json({
+      ...displaySettings(db),
       property: data.name,
       timezone: data.timezone,
+      date: today,
       today: total(today, today),
       thisMonth: total(month, today),
       lastMonth: total(

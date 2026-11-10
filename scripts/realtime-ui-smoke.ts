@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const directory = mkdtempSync(join(tmpdir(), "oshost-realtime-"));
+const directory = mkdtempSync(join(tmpdir(), "guestin-realtime-"));
 const origin = "http://localhost:3098";
 const server = Bun.spawn(["bun", "server/index.ts"], {
   env: {

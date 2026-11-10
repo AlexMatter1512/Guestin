@@ -188,7 +188,7 @@ export function logError(
 // Log route patterns, never arbitrary client URLs, queries, fragments, or path tokens.
 const routes = [
   /^\/api\/v1\/events\/(unread|read|read-all)$/,
-  /^\/api\/v1\/(health|live|me|logout|users|invites|properties|doors|codes|events|reports|connections)$/,
+  /^\/api\/v1\/(health|settings|live|me|logout|users|invites|properties|doors|codes|events|reports|connections)$/,
   /^\/api\/v1\/auth\/(status|setup|login|accept-invite)$/,
   /^\/api\/v1\/me\/(preferences|password)$/,
   /^\/api\/v1\/admin\/(wipe|export|import)$/,
@@ -212,6 +212,8 @@ export function logRoute(path: string) {
       /^\/api\/v1\/admin\/records\/(doors|codes)\/(export|import)$/,
       "/api/v1/admin/records/:kind/:operation",
     ],
+    [/^\/api\/v1\/public\/settings$/, "/api/v1/public/settings"],
+    [/^\/api\/v1\/public\/breakfast\/[^/]+\/live$/, "/api/v1/public/breakfast/:property/live"],
     [/^\/api\/v1\/events\/[^/]+$/, "/api/v1/events/:id"],
     [/^\/api\/v1\/doors\/[^/]+\/config$/, "/api/v1/doors/:id/config"],
     [/^\/api\/v1\/doors\/[^/]+\/thumbnail$/, "/api/v1/doors/:id/thumbnail"],

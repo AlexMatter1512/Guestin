@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { migrateBrowserPreferences } from "../../../../shared/browser-brand";
+  import { dateSettings } from "$lib/date-settings.svelte";
   import {
     guestTokenFromURL,
     guestURL,
@@ -34,7 +36,7 @@
   function readPending() {
     try {
       const value = JSON.parse(
-        sessionStorage.getItem("oshost.breakfast.pending") ?? "null",
+        sessionStorage.getItem("guestin.breakfast.pending") ?? "null",
       );
       if (
         typeof value?.id === "string" &&
@@ -52,10 +54,10 @@
     try {
       if (value)
         sessionStorage.setItem(
-          "oshost.breakfast.pending",
+          "guestin.breakfast.pending",
           JSON.stringify(value),
         );
-      else sessionStorage.removeItem("oshost.breakfast.pending");
+      else sessionStorage.removeItem("guestin.breakfast.pending");
     } catch {
       /* Storage is optional. */
     }
@@ -131,7 +133,7 @@
   function selectLocale(value: LocaleKey) {
     locale_state.current = value;
     try {
-      sessionStorage.setItem("oshost.guest.language", value);
+      sessionStorage.setItem("guestin.guest.language", value);
     } catch {
       /* The URL keeps the language when storage is unavailable. */
     }
@@ -159,19 +161,21 @@
     }
   }
   onMount(() => {
+    migrateBrowserPreferences(localStorage);
+    migrateBrowserPreferences(sessionStorage);
     // Remove credentials left by older app versions, including legacy pending actions.
     try {
-      sessionStorage.removeItem("oshost.guest.code");
+      sessionStorage.removeItem("guestin.guest.code");
       const pending = JSON.parse(
-        sessionStorage.getItem("oshost.breakfast.pending") ?? "null",
+        sessionStorage.getItem("guestin.breakfast.pending") ?? "null",
       );
-      if (pending?.code) sessionStorage.removeItem("oshost.breakfast.pending");
+      if (pending?.code) sessionStorage.removeItem("guestin.breakfast.pending");
     } catch {
       /* Storage is optional; access always comes from the URL. */
     }
     let savedLanguage: string | null = null;
     try {
-      savedLanguage = sessionStorage.getItem("oshost.guest.language");
+      savedLanguage = sessionStorage.getItem("guestin.guest.language");
     } catch {
       /* Optional preference. */
     }
@@ -216,7 +220,7 @@
         Authorization: "Bearer " + credential,
         ...(hint
           ? {
-              "X-Oshost-Previous-Visit": encodeURIComponent(
+              "X-Guestin-Previous-Visit": encodeURIComponent(
                 JSON.stringify(hint),
               ),
             }
@@ -237,10 +241,11 @@
     try {
       const next = await request();
       if (ticket !== loadRequest) return;
+      dateSettings.format = next.dateFormat ?? "dd/mm/yyyy";
       data = next;
       try {
         localStorage.setItem(
-          "oshost.guest.visit",
+          "guestin.guest.visit",
           JSON.stringify({
             label: String(next.label).slice(0, 120),
             date: new Date().toISOString(),
@@ -311,7 +316,7 @@
   }
 </script>
 
-<svelte:head><title>oshost · {t("door_access")}</title></svelte:head>
+<svelte:head><title>guestin · {t("door_access")}</title></svelte:head>
 <svelte:window
   onclick={handleClickOutside}
   onkeydown={(e) => {

@@ -6,7 +6,7 @@ import { createApp } from "../server/app";
 import { openDatabase } from "../server/db";
 
 // Only this isolated fixture server is used. Its adapter never contacts a device.
-const dir = mkdtempSync(join(tmpdir(), "oshost-doors-"));
+const dir = mkdtempSync(join(tmpdir(), "guestin-doors-"));
 const origin = "http://localhost:3096";
 const db = openDatabase(join(dir, "test.sqlite"));
 let deviceCalls = 0;
@@ -92,7 +92,7 @@ try {
   await context.addCookies(
     [
       {
-        name: "oshost_session",
+        name: "guestin_session",
         value: cookie.split("=")[1],
         url: origin,
         path: "/api/",

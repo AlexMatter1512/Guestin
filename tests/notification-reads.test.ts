@@ -63,7 +63,7 @@ test("notification readers and unread badges are per-user; reads are authenticat
       method: body === undefined ? "GET" : "POST",
       headers: {
         Origin: origin,
-        Cookie: `oshost_session=${user}`,
+        Cookie: `guestin_session=${user}`,
         "X-CSRF-Token": csrf,
         "Content-Type": "application/json",
       },
@@ -122,7 +122,7 @@ test("notification readers and unread badges are per-user; reads are authenticat
 });
 
 test("read receipts survive restart and cascade with notification retention and account deletion", () => {
-  const directory = mkdtempSync(join(tmpdir(), "oshost-read-receipts-"));
+  const directory = mkdtempSync(join(tmpdir(), "guestin-read-receipts-"));
   const path = join(directory, "db.sqlite");
   let db = openDatabase(path);
   try {

@@ -45,7 +45,10 @@ const passwordHash = z
   }, "Invalid breakfast password hash");
 export const backupSchema = z
   .object({
-    format: z.literal("oshost-json"),
+    format: z.preprocess(
+      (value) => (value === "oshost-json" ? "guestin-json" : value),
+      z.literal("guestin-json"),
+    ),
     version: z.literal(1),
     exportedAt: z.iso.datetime(),
     properties: z

@@ -68,11 +68,11 @@ jobs:
           load: true
           push: false
           platforms: linux/amd64
-          tags: oshost:ci
+          tags: guestin:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Test container startup and restart persistence
-        run: bash scripts/container-smoke.sh oshost:ci
+        run: bash scripts/container-smoke.sh guestin:ci
       - name: Validate Docker Hub configuration
         if: env.PUBLISH == 'true'
         id: image
@@ -87,7 +87,7 @@ jobs:
             echo '::error::Set Actions variable DOCKERHUB_USERNAME and secret DOCKERHUB_TOKEN (Docker Hub access token with write permission).'
             exit 1
           fi
-          image="${DOCKERHUB_IMAGE:-$DOCKERHUB_USERNAME/oshost}"
+          image="${DOCKERHUB_IMAGE:-$DOCKERHUB_USERNAME/guestin}"
           if [[ ! "$image" =~ ^[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$ ]]; then
             echo '::error::DOCKERHUB_IMAGE must be a lowercase Docker Hub namespace/image without a tag.'
             exit 1
@@ -110,6 +110,7 @@ jobs:
           images: ${{ steps.image.outputs.name }}
           tags: |
             type=raw,value=latest,enable=${{ steps.release.outputs.stable == 'true' }}
+            type=raw,value=edge,enable=${{ steps.release.outputs.is_version == 'false' }}
             type=sha,prefix=sha-,format=long
             type=raw,value=${{ steps.release.outputs.image_tag }}
             type=raw,value=${{ steps.release.outputs.minor }},enable=${{ steps.release.outputs.stable == 'true' }}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatDisplayDate } from "$lib/date-settings.svelte";
   import { t } from "$lib/i18n/translations";
   let {
     breakfast,
@@ -9,14 +10,10 @@
     today: string;
     timezone: string;
   } = $props();
-  function date(value: string) {
-    const [year, month, day] = value.split("-");
-    return `${day}/${month}/${year}`;
-  }
   const period = $derived(
     breakfast.start === breakfast.end
-      ? date(breakfast.start)
-      : `${date(breakfast.start)} - ${date(breakfast.end)}`,
+      ? formatDisplayDate(breakfast.start)
+      : `${formatDisplayDate(breakfast.start)} - ${formatDisplayDate(breakfast.end)}`,
   );
 </script>
 

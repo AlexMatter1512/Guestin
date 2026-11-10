@@ -137,8 +137,8 @@ const italian: Record<string, string> = {
   "No start or end date. Door permissions and single-use rules still apply.":
     "Nessuna data di inizio o fine. Restano validi i permessi delle porte e le regole monouso.",
   "Install app": "Installa app",
-  "Add oshost to your iPhone or Android Home Screen":
-    "Aggiungi oshost alla Home di iPhone o Android",
+  "Add guestin to your iPhone or Android Home Screen":
+    "Aggiungi guestin alla Home di iPhone o Android",
   "Guest links": "Link ospiti",
   "Default check-in and instructions links":
     "Link check-in e istruzioni predefiniti",
@@ -257,8 +257,8 @@ const italian: Record<string, string> = {
     Reports: "Statistiche",
     "Guest access": "Accesso ospiti",
     "Host workspace": "Area host",
-    "oshost · Host workspace": "oshost · Area host",
-    "oshost / host workspace": "oshost / area host",
+    "guestin · Host workspace": "guestin · Area host",
+    "guestin / host workspace": "guestin / area host",
     "Main navigation": "Navigazione principale",
     "Take the app tour": "Avvia il tour dell’app",
     "Workspace /": "Area di lavoro /",
@@ -357,8 +357,8 @@ const italian: Record<string, string> = {
     "Choose door": "Scegli una porta",
     "Fetch calendar now": "Recupera calendario ora",
     Screenshot: "Schermata",
-    "The selected image is sent to Gemini for extraction. It is not saved by oshost.":
-      "L’immagine selezionata viene inviata a Gemini per l’estrazione. oshost non la salva.",
+    "The selected image is sent to Gemini for extraction. It is not saved by guestin.":
+      "L’immagine selezionata viene inviata a Gemini per l’estrazione. guestin non la salva.",
     "Import an .ics file": "Importa file .ics",
     "→ Review draft": "→ Controlla bozza",
     "Add a shared connection": "Aggiungi connessione condivisa",
@@ -602,7 +602,7 @@ export function t(source: string) {
     : source;
 }
 export function savedHostLocale(userId: string): HostLocale | null {
-  const locale = localStorage.getItem("oshost.host.locale." + userId);
+  const locale = localStorage.getItem("guestin.host.locale." + userId);
   return locale === "it" || locale === "en" ? locale : null;
 }
 export function restoreHostLocale(userId: string) {
@@ -610,5 +610,5 @@ export function restoreHostLocale(userId: string) {
 }
 export function setHostLocale(userId: string, locale: HostLocale) {
   hostLanguage.current = locale;
-  localStorage.setItem("oshost.host.locale." + userId, locale);
+  localStorage.setItem("guestin.host.locale." + userId, locale);
 }

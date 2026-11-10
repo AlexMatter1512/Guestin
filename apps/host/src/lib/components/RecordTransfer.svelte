@@ -53,9 +53,9 @@
       : l("Access codes JSON", "JSON codici di accesso"),
   );
   const items = $derived(
-    data?.format === "oshost-doors"
+    data?.format === "guestin-doors"
       ? data.doors.map((d) => ({ id: d.id, label: d.data.name }))
-      : data?.format === "oshost-codes"
+      : data?.format === "guestin-codes"
         ? data.codes.map((c) => ({ id: c.id, label: c.data.label }))
         : [],
   );
@@ -103,7 +103,7 @@
       );
       const a = window.document.createElement("a");
       a.href = url;
-      a.download = `oshost-${kind}-${propertyName.replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 60)}-${document.exportedAt.slice(0, 10)}.json`;
+      a.download = `guestin-${kind}-${propertyName.replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 60)}-${document.exportedAt.slice(0, 10)}.json`;
       window.document.body.append(a);
       a.click();
       a.remove();
@@ -140,7 +140,7 @@
         );
       const parsed = recordTransferSchema.parse(JSON.parse(await file.text()));
       if (
-        parsed.format !== (kind === "doors" ? "oshost-doors" : "oshost-codes")
+        parsed.format !== (kind === "doors" ? "guestin-doors" : "guestin-codes")
       )
         throw Error(
           l(

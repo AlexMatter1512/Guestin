@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { build, files, version } from "$service-worker";
 const worker = self as unknown as ServiceWorkerGlobalScope;
-const CACHE = "oshost-guest-" + version;
+const CACHE = "guestin-guest-" + version;
 const ASSETS = [...build, ...files, "/guest/200.html"];
 worker.addEventListener("install", (event) =>
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS))),
@@ -13,7 +13,7 @@ worker.addEventListener("activate", (event) =>
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => key.startsWith("oshost-guest-") && key !== CACHE)
+            .filter((key) => (key.startsWith("guestin-guest-") || key.startsWith("oshost-guest-")) && key !== CACHE)
             .map((key) => caches.delete(key)),
         ),
       ),

@@ -43,7 +43,7 @@
       );
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `oshost-${data.exportedAt.slice(0, 10)}.json`;
+      anchor.download = `guestin-${data.exportedAt.slice(0, 10)}.json`;
       document.body.append(anchor);
       anchor.click();
       anchor.remove();
@@ -82,8 +82,8 @@
     } catch {
       if (ticket === readingRequest)
         error = l(
-          "This is not a valid oshost JSON backup (version 1), or it is too large. No data was changed.",
-          "Questo non è un backup JSON oshost valido (versione 1), oppure è troppo grande. Nessun dato è stato modificato.",
+          "This is not a valid guestin JSON backup (version 1), or it is too large. No data was changed.",
+          "Questo non è un backup JSON guestin valido (versione 1), oppure è troppo grande. Nessun dato è stato modificato.",
         );
     } finally {
       if (ticket === readingRequest) reading = false;

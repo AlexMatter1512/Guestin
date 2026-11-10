@@ -130,7 +130,7 @@ export function accountRecovery(o: Options) {
             try {
               await (o.mail ?? sendMail)(smtp, {
                 to: user.email,
-                subject: "Reset your oshost password",
+                subject: "Reset your guestin password",
                 text: `Reset your password using this link (valid for 10 minutes, once only):\n\n${link.url}\n\nIf you did not request this, ignore this email.`,
               });
             } catch {
@@ -231,7 +231,7 @@ export function accountRecovery(o: Options) {
         try {
           await (o.mail ?? sendMail)(smtp, {
             to: c.get("user").email,
-            subject: "oshost SMTP test",
+            subject: "guestin SMTP test",
             text: "Your SMTP configuration can send emails.",
           });
         } catch {
@@ -254,7 +254,7 @@ export function accountRecovery(o: Options) {
         try {
           await (o.mail ?? sendMail)(smtp, {
             to: user.email,
-            subject: "Verify your oshost email",
+            subject: "Verify your guestin email",
             text: `Verify your email using this link (valid for 10 minutes, once only):\n\n${link.url}\n\nIf you did not request this, ignore this email.`,
           });
         } catch {

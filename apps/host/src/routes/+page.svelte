@@ -1,4 +1,12 @@
 <script lang="ts">
+  import DateInput from "$lib/components/DateInput.svelte";
+  import { migrateBrowserPreferences } from "../../../../shared/browser-brand";
+  import {
+    dateSettings,
+    formatDisplayDate,
+    formatDisplayDateTime,
+  } from "$lib/date-settings.svelte";
+  import { dateFormats, type DateFormat } from "../../../../shared/date-format";
   import {
     notificationText,
     wantsNotification,
@@ -164,8 +172,8 @@
     );
     deleteTarget = null;
     if (self) {
-      localStorage.removeItem("oshost.draft." + deletingUserId);
-      localStorage.removeItem("oshost.draft.lastUser");
+      localStorage.removeItem("guestin.draft." + deletingUserId);
+      localStorage.removeItem("guestin.draft.lastUser");
       resetAccountUI();
       user = null;
       csrf = "";
@@ -247,7 +255,7 @@
     {
       id: "install",
       title: "Install app",
-      description: "Add oshost to your iPhone or Android Home Screen",
+      description: "Add guestin to your iPhone or Android Home Screen",
       icon: Download,
       group: "Preferences",
     },
@@ -387,8 +395,8 @@
       .slice(0, 10);
   }
   function signedOut() {
-    localStorage.removeItem("oshost.draft." + user.id);
-    localStorage.removeItem("oshost.draft.lastUser");
+    localStorage.removeItem("guestin.draft." + user.id);
+    localStorage.removeItem("guestin.draft.lastUser");
     resetAccountUI();
     user = null;
     csrf = "";
@@ -506,11 +514,10 @@
     }).format(new Date(iso));
   }
   function formatInstant(iso: string, id: string) {
-    return new Intl.DateTimeFormat(hostLanguage.current, {
-      timeZone: properties.find((p) => p.id === id)?.timezone ?? "UTC",
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(iso));
+    return formatDisplayDateTime(
+      iso,
+      properties.find((p) => p.id === id)?.timezone ?? "UTC",
+    );
   }
   function applyPreferences() {
     if (user.preferences?.language)
@@ -519,7 +526,7 @@
     theme = user.preferences?.theme ?? "system";
     try {
       const saved = JSON.parse(
-        localStorage.getItem("oshost.push." + user.id) ?? "null",
+        localStorage.getItem("guestin.push." + user.id) ?? "null",
       );
       if (saved) {
         pushProperties = saved.properties ?? [];
@@ -568,9 +575,9 @@
       "Activity",
     ].find((n) => n.toLowerCase() === destination);
     if (!found) return;
-    const savedDraft = user && localStorage.getItem("oshost.draft." + user.id);
+    const savedDraft = user && localStorage.getItem("guestin.draft." + user.id);
     const savedEditId =
-      user && localStorage.getItem("oshost.draft.editId." + user.id);
+      user && localStorage.getItem("guestin.draft.editId." + user.id);
     const canRestore =
       savedDraft &&
       (id === "new" ? !savedEditId : action === "edit" && savedEditId === id);
@@ -642,7 +649,7 @@
           `/host/manifest.webmanifest?theme=${effectiveTheme}`,
         );
       try {
-        localStorage.setItem("oshost.theme", theme);
+        localStorage.setItem("guestin.theme", theme);
       } catch {
         /* Storage is optional. */
       }
@@ -732,7 +739,7 @@
       confirmation: wipeConfirmation,
     });
     for (const key of Object.keys(localStorage))
-      if (key.startsWith("oshost.")) localStorage.removeItem(key);
+      if (key.startsWith("guestin.")) localStorage.removeItem(key);
     sessionStorage.clear();
     location.replace("/host/");
   }
@@ -896,6 +903,7 @@
     }
   }
   async function reload() {
+    dateSettings.format = (await api("settings")).dateFormat;
     [properties, doors, codes, connections, reports] = await Promise.all(
       ["properties", "doors", "codes", "connections", "reports"].map((p) =>
         p === "connections" && !can("useBookingConnectors")
@@ -966,7 +974,7 @@
           })
           .catch((e) => {
             if (e.status === 401) {
-              localStorage.removeItem("oshost.draft.lastUser");
+              localStorage.removeItem("guestin.draft.lastUser");
               resetAccountUI();
               user = null;
               csrf = "";
@@ -997,7 +1005,12 @@
           event.type,
         )
       ) {
-        const text = notificationText(event, hostLanguage.current);
+        const text = notificationText(
+          event,
+          hostLanguage.current,
+          undefined,
+          dateSettings.format,
+        );
         toast.custom(ActivityToast, {
           id: event.id,
           componentProps: {
@@ -1027,7 +1040,7 @@
     const account = user?.id;
     try {
       if (
-        localStorage.getItem("oshost.push." + account) ||
+        localStorage.getItem("guestin.push." + account) ||
         !("serviceWorker" in navigator) ||
         !globalThis.crypto?.subtle
       )
@@ -1050,13 +1063,15 @@
         pushEvents = (saved.events ?? []).join(",");
         pushAllEvents = saved.allEvents ?? !saved.events?.length;
         pushAllProperties = saved.allProperties ?? !saved.properties?.length;
-        localStorage.setItem("oshost.push." + account, JSON.stringify(saved));
+        localStorage.setItem("guestin.push." + account, JSON.stringify(saved));
       }
     } catch {
       /* Unsupported browsers keep local selection; history is always available. */
     }
   }
   onMount(() => {
+    migrateBrowserPreferences(localStorage);
+    migrateBrowserPreferences(sessionStorage);
     const stopInstallTracking = appInstallation.listen();
     const clockTimer = setInterval(() => (currentTime = Date.now()), 15000);
     const media = matchMedia("(prefers-color-scheme: dark)");
@@ -1073,17 +1088,18 @@
         applyPreferences();
         csrf = me.csrf;
         await reload();
-        const saved = localStorage.getItem("oshost.draft." + user.id);
+        const saved = localStorage.getItem("guestin.draft." + user.id);
         if (saved) {
           draft = JSON.parse(saved);
-          editId = localStorage.getItem("oshost.draft.editId." + user.id) ?? "";
+          editId =
+            localStorage.getItem("guestin.draft.editId." + user.id) ?? "";
           editing = true;
           notice = "Your unfinished draft has been restored.";
         }
       } catch {
-        const lastUser = localStorage.getItem("oshost.draft.lastUser");
+        const lastUser = localStorage.getItem("guestin.draft.lastUser");
         const saved =
-          lastUser && localStorage.getItem("oshost.draft." + lastUser);
+          lastUser && localStorage.getItem("guestin.draft." + lastUser);
         if (!navigator.onLine && saved) {
           draft = JSON.parse(saved);
           user = { id: lastUser, name: "Offline draft", role: "collaborator" };
@@ -1093,7 +1109,7 @@
             {
               id: draft.propertyId,
               name: "Draft property",
-              timezone: localStorage.getItem("oshost.draft.timezone") ?? "UTC",
+              timezone: localStorage.getItem("guestin.draft.timezone") ?? "UTC",
             },
           ];
           propertyId = draft.propertyId;
@@ -1129,11 +1145,11 @@
   });
   $effect(() => {
     if (user && editing) {
-      localStorage.setItem("oshost.draft." + user.id, JSON.stringify(draft));
-      localStorage.setItem("oshost.draft.editId." + user.id, editId);
-      localStorage.setItem("oshost.draft.lastUser", user.id);
+      localStorage.setItem("guestin.draft." + user.id, JSON.stringify(draft));
+      localStorage.setItem("guestin.draft.editId." + user.id, editId);
+      localStorage.setItem("guestin.draft.lastUser", user.id);
       localStorage.setItem(
-        "oshost.draft.timezone",
+        "guestin.draft.timezone",
         properties.find((p) => p.id === draft.propertyId)?.timezone ?? "UTC",
       );
     }
@@ -1348,7 +1364,7 @@
       data,
       editId ? "PUT" : "POST",
     );
-    localStorage.removeItem("oshost.draft." + user.id);
+    localStorage.removeItem("guestin.draft." + user.id);
     editing = false;
     search = "";
     codeDate = data.staff
@@ -1456,7 +1472,7 @@
         .filter(Boolean),
     });
     localStorage.setItem(
-      "oshost.push." + user.id,
+      "guestin.push." + user.id,
       JSON.stringify({
         properties: pushProperties,
         events: pushEvents.split(",").filter(Boolean),
@@ -1693,11 +1709,11 @@
     if (!user || !navigator.onLine) return;
     if (!editing) {
       try {
-        const saved = localStorage.getItem("oshost.draft." + user.id);
+        const saved = localStorage.getItem("guestin.draft." + user.id);
         if (saved) {
           draft = JSON.parse(saved);
           const storedId =
-            localStorage.getItem("oshost.draft.editId." + user.id) ?? "";
+            localStorage.getItem("guestin.draft.editId." + user.id) ?? "";
           editId = codes.some((code) => code.id === storedId) ? storedId : "";
           editing = true;
           tab = "Codes";
@@ -1823,7 +1839,7 @@
 </script>
 
 <svelte:head
-  ><title>{t("oshost · Host workspace")}</title><meta
+  ><title>{t("guestin · Host workspace")}</title><meta
     name="description"
     content="Your properties, doors and guest access in one place."
   /></svelte:head
@@ -1857,7 +1873,7 @@
     }}
   />
 {:else if !user}<main class="auth">
-    <p class="muted">{t("oshost / host workspace")}</p>
+    <p class="muted">{t("guestin / host workspace")}</p>
     <h1>
       {t(
         needsSetup
@@ -1952,7 +1968,7 @@
                     >{/each}
                 </NativeSelect.Root>{/if}
             </div>
-          {:else}<span class="font-semibold">oshost</span>{/if}
+          {:else}<span class="font-semibold">guestin</span>{/if}
         </div>
         <div class="row header-actions">
           <Button
@@ -2183,27 +2199,19 @@
                           style="margin-top:14px"
                         >
                           {#if !draft.staff}<Label class="field-label"
-                              >{t("Valid from")}<Input
-                                type="datetime-local"
+                              >{t("Valid from")}<DateInput
+                                withTime
                                 value={dateInput(grant.start)}
-                                onchange={(e) =>
-                                  changeDate(
-                                    grant,
-                                    "start",
-                                    e.currentTarget.value,
-                                  )}
+                                onValueChange={(value) =>
+                                  changeDate(grant, "start", value)}
                                 required
                               /></Label
                             ><Label class="field-label"
-                              >{t("Valid until")}<Input
-                                type="datetime-local"
+                              >{t("Valid until")}<DateInput
+                                withTime
                                 value={dateInput(grant.end)}
-                                onchange={(e) =>
-                                  changeDate(
-                                    grant,
-                                    "end",
-                                    e.currentTarget.value,
-                                  )}
+                                onValueChange={(value) =>
+                                  changeDate(grant, "end", value)}
                                 required
                               /></Label
                             >{/if}<Label class="inline"
@@ -2240,14 +2248,12 @@
                           required
                         /></Label
                       ><Label class="field-label"
-                        >{t("First breakfast date")}<Input
-                          type="date"
+                        >{t("First breakfast date")}<DateInput
                           bind:value={draft.breakfast.start}
                           required
                         /></Label
                       ><Label class="field-label"
-                        >{t("Last breakfast date")}<Input
-                          type="date"
+                        >{t("Last breakfast date")}<DateInput
                           bind:value={draft.breakfast.end}
                           required
                         /></Label
@@ -2315,8 +2321,10 @@
                     disabled={busy}
                     onclick={() => {
                       editing = false;
-                      localStorage.removeItem("oshost.draft." + user.id);
-                      localStorage.removeItem("oshost.draft.editId." + user.id);
+                      localStorage.removeItem("guestin.draft." + user.id);
+                      localStorage.removeItem(
+                        "guestin.draft.editId." + user.id,
+                      );
                     }}>{t("Cancel")}</Button
                   >
                   <Button
@@ -2484,7 +2492,9 @@
                     <h3>{t("Breakfast")}</h3>
                     <p>
                       {detailCode.breakfastUsed} / {detailCode.breakfast.total} ·
-                      {detailCode.breakfast.start} → {detailCode.breakfast.end}
+                      {formatDisplayDate(detailCode.breakfast.start)} → {formatDisplayDate(
+                        detailCode.breakfast.end,
+                      )}
                     </p>
                   </section>{/if}
                 <details class="manage-access">
@@ -2679,7 +2689,7 @@
                             class="badge">+{c.grants.length - 3}</Badge
                           >{/if}{#if c.breakfast}<span class="muted"
                             ><Coffee size={13} />
-                            {c.breakfast.total - c.breakfastUsed}</span
+                            {c.breakfastUsed}/{c.breakfast.total}</span
                           >{/if}<span
                           class="muted"
                           title={t("Successful requests")}
@@ -3068,6 +3078,34 @@
                     ></Button
                   >{/each}
               </div>
+              <div class="space-y-3 rounded-lg border p-4">
+                <Label for="date-format"
+                  >{hostLanguage.current === "it"
+                    ? "Formato data · tutte le app"
+                    : "Date format · all apps"}</Label
+                >
+                <p class="text-sm text-muted-foreground">
+                  {hostLanguage.current === "it"
+                    ? "Impostazione condivisa per host, ospiti e pagina colazioni. Solo i proprietari possono modificarla."
+                    : "Shared by the host, guest and breakfast pages. Only owners can change it."}
+                </p>
+                <NativeSelect.Root
+                  id="date-format"
+                  value={dateSettings.format}
+                  disabled={busy || user.role !== "owner"}
+                  onchange={(event) => {
+                    const value = event.currentTarget.value as DateFormat;
+                    void act(async () => {
+                      await api("settings", { dateFormat: value }, "PUT");
+                      dateSettings.format = value;
+                    });
+                  }}
+                >
+                  {#each dateFormats as format (format)}<NativeSelect.Option
+                      value={format}>{format}</NativeSelect.Option
+                    >{/each}
+                </NativeSelect.Root>
+              </div>
             {:else if settingsPage === "language"}<div class="page-intro">
                 <p>
                   {t(
@@ -3204,7 +3242,7 @@
                     variant="outline"
                     onclick={() => {
                       localStorage.setItem(
-                        "oshost.push." + user.id,
+                        "guestin.push." + user.id,
                         JSON.stringify({
                           properties: pushProperties,
                           events: pushEvents.split(",").filter(Boolean),

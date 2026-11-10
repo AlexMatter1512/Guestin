@@ -1,4 +1,4 @@
-# Self-hosting oshost
+# Self-hosting guestin
 
 For the quickest start, use the [README](../README.md). The same [Compose file](../compose.yaml) works with Docker Compose and Portainer.
 
@@ -10,7 +10,7 @@ Edit the values in the Compose `environment` section before deploying:
 | --- | --- |
 | `ORIGIN` | Exact public HTTPS address, such as `https://stay.example.com`. |
 | `VAPID_SUBJECT` | Contact address for push notifications, such as `mailto:you@example.com`. |
-| `DB_PATH` | SQLite location; keep `/app/data/oshost.sqlite` when using the supplied volume. |
+| `DB_PATH` | SQLite location; keep `/app/data/guestin.sqlite` when using the supplied volume. |
 | `TRUST_PROXY` | Enable only when your reverse proxy overwrites `X-Real-IP`. |
 | `LOG_LEVEL` | `info` by default; use `debug` temporarily for troubleshooting. |
 | `LOG_FILE` | Log file in the data volume; `-` writes only to container stdout. |
@@ -31,7 +31,7 @@ stay.example.com {
 }
 ```
 
-Allow ports 80 and 443. A proxy on the same Docker network can use `oshost:3000`. Forward paths unchanged and allow WebSocket upgrades on `/api/v1/live` (Caddy does this automatically). HTTPS is required for public deployments, as well as phone installation and push notifications. The supplied Compose file enables `TRUST_PROXY=1`: the proxy must overwrite `X-Real-IP` with the actual connecting client address, as above. Never forward a client-supplied value. For nginx use `proxy_set_header X-Real-IP $remote_addr;`. Restrict backend access to the proxy. Set `TRUST_PROXY=0` when serving clients directly; forwarded headers are then ignored.
+Allow ports 80 and 443. A proxy on the same Docker network can use `guestin:3000`. Forward paths unchanged and allow WebSocket upgrades on `/api/v1/live` (Caddy does this automatically). HTTPS is required for public deployments, as well as phone installation and push notifications. The supplied Compose file enables `TRUST_PROXY=1`: the proxy must overwrite `X-Real-IP` with the actual connecting client address, as above. Never forward a client-supplied value. For nginx use `proxy_set_header X-Real-IP $remote_addr;`. Restrict backend access to the proxy. Set `TRUST_PROXY=0` when serving clients directly; forwarded headers are then ignored.
 
 For direct TLS, mount your certificates read-only and set both `TLS_CERT` and `TLS_KEY` to their paths inside the container. Set `ORIGIN` to the resulting HTTPS address.
 
@@ -95,7 +95,7 @@ Open **Your account → Change password** to rotate a password. Enter the curren
 
 ## Breakfast page
 
-Settings → Breakfast provides a direct link and optional password protection. Owners can set, change, or remove the password. Signed-in hosts can open the page directly. Other viewers enter the shared password and stay signed in for up to 12 hours. Changing the password invalidates existing breakfast sessions. The page and API count breakfasts actually used, using confirmed redemptions rather than assigned allowances. They expose aggregate totals only.
+Settings → Breakfast provides a direct link and optional password protection. Owners can set, change, or remove the password. Signed-in hosts can open the page directly. Other viewers enter the shared password and stay signed in for up to 12 hours. Changing the password invalidates existing breakfast sessions. The page supports English/Italian, live WebSocket updates, optional notifications while open, and a shadcn date-range picker. Owners select the shared date format under Settings → Appearance; the default is `dd/mm/yyyy`. Existing `/breakfast/<structure>` URLs keep working. The page and API count breakfasts actually used, using confirmed redemptions rather than assigned allowances. They expose aggregate totals only.
 
 ## Backups
 
@@ -106,13 +106,13 @@ JSON files contain guest tokens and device credentials in readable form. Keep th
 From the stack directory:
 
 ```sh
-docker compose exec oshost bun scripts/backup.ts /app/data/backup-2026-11-09
-docker compose cp oshost:/app/data/backup-2026-11-09 ./backup-2026-11-09
+docker compose exec guestin bun scripts/backup.ts /app/data/backup-2026-11-09
+docker compose cp guestin:/app/data/backup-2026-11-09 ./backup-2026-11-09
 ```
 
 Choose a fresh backup directory each time. In Portainer, run the same Bun command from the container console, then copy the resulting directory to secure storage.
 
-A backup contains the database, runtime keys, and uploaded assets. Protect it as sensitive data. To restore, stop oshost, replace the database and assets, and put `runtime-secrets.json` beside the restored database. Remove stale SQLite `-wal`/`-shm` files only while stopped, then restart the app. Older backups can provide their original keys through the environment for the first start.
+A backup contains the database, runtime keys, and uploaded assets. Protect it as sensitive data. To restore, stop guestin, replace the database and assets, and put `runtime-secrets.json` beside the restored database. Remove stale SQLite `-wal`/`-shm` files only while stopped, then restart the app. Older backups can provide their original keys through the environment for the first start.
 
 ## Updates and releases
 
@@ -120,12 +120,12 @@ Back up first, then update the Portainer stack with Re-pull image, or run:
 
 ```sh
 docker compose pull
-docker compose up -d
+docker compose up -d --remove-orphans
 ```
 
 Keep the same stack name and data volume. `docker compose down -v` deletes that volume.
 
-Every pushed Git tag runs CI and publishes an image after successful checks. Arbitrary tags publish `:tag-<sanitized-tag>-<hash>` and `:sha-<commit>`. SemVer tags (with optional `v` prefix) also create a GitHub release. A stable tag such as `v1.2.3` publishes `:1.2.3`, `:1.2`, `:latest` and the SHA alias. Prereleases and versions with build metadata do not move `latest` or minor aliases. Main pushes, pull requests, and manual workflows run checks only.
+Every pushed Git tag runs CI and publishes an image after successful checks. Arbitrary tags publish `:tag-<sanitized-tag>-<hash>`, `:sha-<commit>` and the Guestin `:edge` alias, without creating a GitHub release. SemVer tags (with optional `v` prefix) also create a GitHub release. A stable tag such as `v1.2.3` publishes `:1.2.3`, `:1.2`, `:latest` and the SHA alias. Prereleases and versions with build metadata do not move `latest` or minor aliases. Main pushes, pull requests, and manual workflows run checks only.
 
 Before releasing, review the complete diff and commits since the preceding release, including pending changes, and commit notes to `docs/releases/<exact-tag>.md`. CI uses those notes for the GitHub release, falling back to GitHub-generated notes when the file is absent. See [AGENTS.md](../AGENTS.md). To tag a reviewed commit that includes its notes:
 
@@ -138,7 +138,7 @@ Use a new version number for each release. You can pin a published version in Co
 
 ## Troubleshooting
 
-- Check container logs in Portainer or with `docker compose logs --tail=100 oshost`.
+- Check container logs in Portainer or with `docker compose logs --tail=100 guestin`.
 - Check health at `http://127.0.0.1:38471/api/v1/health` on the server.
 - If installation or notifications are unavailable, confirm the public address uses HTTPS and matches `ORIGIN`.
 - If a cloud device accepts a request but the door stays closed, check the device/scene configuration. Provider acceptance does not prove physical movement.

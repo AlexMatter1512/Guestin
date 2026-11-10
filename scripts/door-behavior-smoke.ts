@@ -10,7 +10,7 @@ process.env.LOG_FILE = "-";
 const { createApp } = await import("../server/app");
 
 const origin = "http://localhost:3116";
-const directory = mkdtempSync(join(tmpdir(), "oshost-door-ui-"));
+const directory = mkdtempSync(join(tmpdir(), "guestin-door-ui-"));
 const db = openDatabase(":memory:");
 let calls = 0;
 const app = createApp(db, {

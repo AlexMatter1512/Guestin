@@ -20,7 +20,7 @@ export function exportRecords(
     db.query(sql).get(...args) as any;
   return db.transaction(() =>
     backupSchema.parse({
-      format: "oshost-json",
+      format: "guestin-json",
       version: 1,
       exportedAt: new Date().toISOString(),
       properties: all(
@@ -334,7 +334,7 @@ export function portableBackupRoutes(
     });
     c.header(
       "Content-Disposition",
-      `attachment; filename="oshost-${backup.exportedAt.slice(0, 10)}.json"`,
+      `attachment; filename="guestin-${backup.exportedAt.slice(0, 10)}.json"`,
     );
     return c.json(backup);
   });

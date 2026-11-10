@@ -319,6 +319,8 @@ test("breakfast password gates aggregates, uses scoped sessions and rotates secu
     const totals = await req(path, undefined, "GET", null, { Cookie: cookie });
     expect(totals.r.status).toBe(200);
     expect(Object.keys(totals.data).sort()).toEqual([
+      "date",
+      "dateFormat",
       "from",
       "lastMonth",
       "property",
@@ -394,7 +396,7 @@ test("push filters belong to individual devices and disabling one leaves other d
 
 test("v2 migration backfills statistics before retention can delete old events", async () => {
   const { db, req, p1 } = await fixture();
-  const directory = mkdtempSync(join(tmpdir(), "oshost-migration-")),
+  const directory = mkdtempSync(join(tmpdir(), "guestin-migration-")),
     path = join(directory, "upgrade.sqlite");
   try {
     const code = (
@@ -413,7 +415,7 @@ test("v2 migration backfills statistics before retention can delete old events",
       "2000-01-01T00:00:00.000Z",
     );
     db.exec(
-      "DROP TABLE smtp_settings; DROP TABLE email_verifications; DROP TABLE account_tokens; DROP TABLE account_mail_attempts; DROP TABLE password_reset_requests; DROP TABLE user_permissions; DROP TABLE account_backoff; DROP TABLE event_reads; DROP TABLE event_context; DROP TABLE breakfast_sessions; DROP TABLE property_settings; DROP TABLE code_metrics; DROP INDEX events_property_created; DELETE FROM migrations WHERE version>=3;",
+      "DROP TABLE display_settings; DROP TABLE smtp_settings; DROP TABLE email_verifications; DROP TABLE account_tokens; DROP TABLE account_mail_attempts; DROP TABLE password_reset_requests; DROP TABLE user_permissions; DROP TABLE account_backoff; DROP TABLE event_reads; DROP TABLE event_context; DROP TABLE breakfast_sessions; DROP TABLE property_settings; DROP TABLE code_metrics; DROP INDEX events_property_created; DELETE FROM migrations WHERE version>=3;",
     );
     db.query("VACUUM INTO ?").run(path);
     const upgraded = openDatabase(path);
@@ -424,7 +426,7 @@ test("v2 migration backfills statistics before retention can delete old events",
             .query("SELECT MAX(version) version FROM migrations")
             .get() as any
         ).version,
-      ).toBe(9);
+      ).toBe(10);
       pruneNotifications(upgraded);
       expect(
         upgraded

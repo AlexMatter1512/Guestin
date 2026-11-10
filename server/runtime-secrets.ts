@@ -1,3 +1,4 @@
+import { databasePath } from "./branding";
 import {
   chmodSync,
   closeSync,
@@ -47,7 +48,7 @@ function validate(value: unknown): Secrets {
 
 // Keep these beside SQLite so container replacement preserves the encryption identity.
 export function initializeRuntimeSecrets(env: Environment = process.env) {
-  const dbPath = env.DB_PATH || "data/oshost.sqlite";
+  const dbPath = databasePath(env);
   const path = join(dirname(dbPath), "runtime-secrets.json");
   let secrets: Secrets;
   if (existsSync(path)) {

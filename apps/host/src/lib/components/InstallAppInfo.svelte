@@ -9,8 +9,8 @@
 <div class="mx-auto max-w-2xl space-y-5">
   <p class="text-sm text-muted-foreground">
     {l(
-      "Add oshost to your Home Screen to open it like an app. Use your server’s HTTPS address in a regular browser, rather than an embedded browser inside another app.",
-      "Aggiungi oshost alla schermata Home per aprirlo come un’app. Usa l’indirizzo HTTPS del tuo server in un browser normale, anziché nel browser interno di un’altra app.",
+      "Add guestin to your Home Screen to open it like an app. Use your server’s HTTPS address in a regular browser, rather than an embedded browser inside another app.",
+      "Aggiungi guestin alla schermata Home per aprirlo come un’app. Usa l’indirizzo HTTPS del tuo server in un browser normale, anziché nel browser interno di un’altra app.",
     )}
   </p>
   <Card.Root
@@ -40,8 +40,8 @@
         </li>
         <li>
           {l(
-            "Launch oshost from the new Home Screen icon.",
-            "Avvia oshost dalla nuova icona nella schermata Home.",
+            "Launch guestin from the new Home Screen icon.",
+            "Avvia guestin dalla nuova icona nella schermata Home.",
           )}
         </li>
       </ol></Card.Content
@@ -68,8 +68,8 @@
         </li>
         <li>
           {l(
-            "Confirm installation and open oshost from its new icon.",
-            "Conferma l’installazione e apri oshost dalla nuova icona.",
+            "Confirm installation and open guestin from its new icon.",
+            "Conferma l’installazione e apri guestin dalla nuova icona.",
           )}
         </li>
       </ol></Card.Content

@@ -15,6 +15,6 @@ export const smtpSchema = z.object({
     .string()
     .max(120)
     .regex(/^[^\r\n]*$/)
-    .default("oshost"),
+    .default("guestin"),
 });
 export type SMTPSettings = z.infer<typeof smtpSchema>;

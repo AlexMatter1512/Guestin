@@ -122,7 +122,7 @@ describe("structured backend logging", () => {
     expect(logRoute("/api/v1/auth/" + secret)).toBe("/api/[unmatched]");
   });
   test("rotates bounded persistent files and honors levels", () => {
-    const dir = mkdtempSync(join(tmpdir(), "oshost-logs-")),
+    const dir = mkdtempSync(join(tmpdir(), "guestin-logs-")),
       file = join(dir, "server.jsonl"),
       lines: string[] = [];
     const write = createLogger({

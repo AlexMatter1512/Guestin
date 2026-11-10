@@ -45,7 +45,7 @@ try {
     channel: "chrome",
     headless: true,
     args: [
-      "--host-resolver-rules=MAP oshost-lan.test 127.0.0.1",
+      "--host-resolver-rules=MAP guestin-lan.test 127.0.0.1",
       "--no-proxy-server",
     ],
   });
@@ -53,7 +53,7 @@ try {
   const page = await context.newPage();
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("http://oshost-lan.test:3093/");
+  await page.goto("http://guestin-lan.test:3093/");
   await page.waitForFunction(() => (window as any).helpersReady);
   expect(await page.evaluate(() => window.isSecureContext)).toBe(false);
   expect(await page.evaluate(() => typeof crypto.randomUUID)).toBe("undefined");

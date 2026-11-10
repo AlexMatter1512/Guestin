@@ -7,7 +7,7 @@ import { openDatabase } from "../server/db";
 import { localDate } from "../shared/schema";
 
 // Isolated SQLite, fake device acceptance and no push delivery.
-const directory = mkdtempSync(join(tmpdir(), "oshost-mobile-polish-"));
+const directory = mkdtempSync(join(tmpdir(), "guestin-mobile-polish-"));
 const origin = "http://localhost:3110",
   db = openDatabase(join(directory, "test.sqlite"));
 let deviceCalls = 0;
@@ -304,9 +304,9 @@ try {
     session: { ...sessionStorage },
   }));
   expect(JSON.stringify(storage)).not.toContain(token);
-  expect(Object.keys(storage.local)).toEqual(["oshost.guest.visit"]);
+  expect(Object.keys(storage.local)).toEqual(["guestin.guest.visit"]);
   expect(
-    Object.keys(JSON.parse(storage.local["oshost.guest.visit"])).sort(),
+    Object.keys(JSON.parse(storage.local["guestin.guest.visit"])).sort(),
   ).toEqual(["date", "label"]);
   await gp.goto(origin + "/guest/#code=wrong-browser-test&lang=it");
   await expect(
@@ -346,9 +346,9 @@ try {
   ).toBeVisible();
   // Legacy session credentials must be erased, and cannot rescue a URL without a token.
   await gp.evaluate((token) => {
-    sessionStorage.setItem("oshost.guest.code", token);
+    sessionStorage.setItem("guestin.guest.code", token);
     sessionStorage.setItem(
-      "oshost.breakfast.pending",
+      "guestin.breakfast.pending",
       JSON.stringify({ code: token, quantity: 1, id: "legacy" }),
     );
   }, token);

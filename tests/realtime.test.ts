@@ -34,7 +34,7 @@ test("authenticated sockets receive committed code changes and stop receiving af
   });
   const headers = {
     Origin: origin,
-    Cookie: "oshost_session=session",
+    Cookie: "guestin_session=session",
     "X-CSRF-Token": "csrf",
     "Content-Type": "application/json",
   };

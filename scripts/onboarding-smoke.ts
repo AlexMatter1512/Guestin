@@ -16,7 +16,7 @@ import { join } from "node:path";
 
 // Every record lives in a disposable database. This test never opens a door
 // or sends provider requests; it creates a deliberately unconnected example.
-const dir = mkdtempSync(join(tmpdir(), "oshost-onboarding-"));
+const dir = mkdtempSync(join(tmpdir(), "guestin-onboarding-"));
 const origin = "http://localhost:3098";
 const server = Bun.spawn(["bun", "server/index.ts"], {
   env: {
@@ -369,7 +369,7 @@ try {
     .click();
   await expect(
     iphonePage.getByText(
-      /On iPhone and iPad, open oshost from its Home Screen icon/,
+      /On iPhone and iPad, open guestin from its Home Screen icon/,
     ),
   ).toBeVisible();
   await expect(

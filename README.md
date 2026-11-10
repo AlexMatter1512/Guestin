@@ -1,14 +1,14 @@
-# oshost
+# guestin
 
 **Welcome your guests. Share a link. Keep control of your doors.**
 
-oshost is a self-hosted guest access app for B&Bs, guesthouses, and small hospitality teams. Create an access code, choose the doors and times it allows, and share a guest link. Your guests open it in their browser, with no account to create.
+guestin is a self-hosted guest access app for B&Bs, guesthouses, and small hospitality teams. Create an access code, choose the doors and times it allows, and share a guest link. Your guests open it in their browser, with no account to create.
 
 One Docker container serves the host app, guest app, and a public breakfast counter. Your access records, shared notification history, and saved connections stay on your server.
 
 [Get started](#get-started) · [How it works](#how-it-works) · [Documentation](#documentation)
 
-![oshost host workspace in dark mode, with grouped preferences and property settings](docs/images/host-workspace.png)
+![guestin host workspace in dark mode, with grouped preferences and property settings](docs/images/host-workspace.png)
 
 ## On your phone
 
@@ -41,7 +41,7 @@ Booking and calendar imports prepare a draft for you to check before saving.
 
 ## Get started
 
-You need a server with Docker, a persistent data volume, and an HTTPS address. Images are available for **AMD64 and ARM64** on [Docker Hub](https://hub.docker.com/r/alexmatter/oshost).
+You need a server with Docker, a persistent data volume, and an HTTPS address. Images are available for **AMD64 and ARM64** on [Docker Hub](https://hub.docker.com/r/alexmatter/guestin).
 
 ### With Portainer
 
@@ -53,7 +53,7 @@ You need a server with Docker, a persistent data volume, and an HTTPS address. I
 
 The app generates its setup token and encryption keys on first startup. There is no `.env` file to prepare for the stack, and no separate database server to install.
 
-The Compose file publishes **`127.0.0.1:38471`** for a reverse proxy running on the server. A proxy on the same Docker network can instead use **`oshost:3000`**. **Public deployments require HTTPS.** Set `ORIGIN` to the exact public `https://` address and terminate TLS at the reverse proxy, or configure `TLS_CERT` and `TLS_KEY` for direct TLS. The server otherwise listens on all interfaces over plaintext HTTP; setting `ORIGIN` alone does not enable TLS. HTTP exposes passwords and session cookies to interception, and an HTTP `ORIGIN` omits the cookie’s `Secure` flag. Keep the backend inaccessible from untrusted networks: retain the loopback port binding, or use a private Docker network accessible only to your proxy. Restrict any published direct-TLS port appropriately.
+The Compose file publishes **`127.0.0.1:38471`** for a reverse proxy running on the server. A proxy on the same Docker network can instead use **`guestin:3000`**. **Public deployments require HTTPS.** Set `ORIGIN` to the exact public `https://` address and terminate TLS at the reverse proxy, or configure `TLS_CERT` and `TLS_KEY` for direct TLS. The server otherwise listens on all interfaces over plaintext HTTP; setting `ORIGIN` alone does not enable TLS. HTTP exposes passwords and session cookies to interception, and an HTTP `ORIGIN` omits the cookie’s `Secure` flag. Keep the backend inaccessible from untrusted networks: retain the loopback port binding, or use a private Docker network accessible only to your proxy. Restrict any published direct-TLS port appropriately.
 
 The supplied Compose file sets `TRUST_PROXY=1`. Configure the proxy to **overwrite `X-Real-IP` with the connecting client’s address**, and allow only that proxy to reach the backend. This gives each visitor their own IP rate limit. Use `TRUST_PROXY=0` for direct connections. See the [reverse proxy examples](docs/REFERENCE.md#https) before deploying.
 
@@ -71,11 +71,21 @@ Reset links expire after **10 minutes**, work **once**, and replace any earlier 
 Save [compose.yaml](compose.yaml), edit the two configuration values above, then run:
 
 ```sh
-docker compose up -d
-docker compose logs oshost
+docker compose up -d --remove-orphans
+docker compose logs guestin
 ```
 
 Copy the setup token from the logs and create your owner account at `/host/`.
+
+## Guestin branding and shared date format
+
+The app is now **Guestin**. New installations use `guestin.sqlite`, Guestin cookies and `guestin-*` JSON formats. Existing database files, host/breakfast sessions and old JSON backups remain supported. Browser preferences migrate on first visit. Historical release notes and the existing GitHub repository URL keep their original identifiers.
+
+Compose uses `alexmatter/guestin:edge` for build-only updates; set `GUESTIN_IMAGE_TAG` to pin a build or version tag. The default volume name preserves the original `oshost_oshost-data` installation volume. If your existing stack used a different name, set `GUESTIN_DATA_VOLUME` to that exact volume before upgrading. The Compose service name is now `guestin`; use `docker compose up -d --remove-orphans` when upgrading to remove the old service container without deleting the named volume. Existing `DB_PATH` values remain supported; with no override the server detects an existing legacy database before creating a new Guestin file.
+
+Under **Settings → Appearance**, owners can choose a workspace-wide date format: `dd/mm/yyyy` (default), `mm/dd/yyyy` or `yyyy-mm-dd`. It applies to the host, guest and breakfast pages, editable date fields, history and push notification dates. Stored dates and API values remain ISO dates/timestamps. Other host devices and open breakfast pages refresh automatically; guest pages pick up changes when loaded or focused.
+
+The breakfast totals page supports English and Italian, a shadcn date-range picker and live WebSocket updates. The original `/breakfast/<structure>` links redirect to the new page. Optional notifications are disabled by default and work while the page is open; browser notification permission is requested only when the user enables them. No guest names, codes or activity details are sent to breakfast viewers. Password protection also applies to live connections, which close if their access expires or is revoked.
 
 ## Install it on your phone
 
@@ -131,15 +141,15 @@ Guest links keep their access code in the address, including when guests change 
 
 ## Updates and backups
 
-Owners can download a portable **JSON backup** under **Settings → Data management**, then upload it on another oshost installation. It includes structures, doors, guest tokens, permissions, usage, breakfast redemptions and history. Photos, user accounts and booking connector logins are excluded. Restore adds missing records and preserves the current state of existing ones. **The file contains guest tokens and device credentials: keep it private.**
+Owners can download a portable **JSON backup** under **Settings → Data management**, then upload it on another guestin installation. It includes structures, doors, guest tokens, permissions, usage, breakfast redemptions and history. Photos, user accounts and booking connector logins are excluded. Restore adds missing records and preserves the current state of existing ones. **The file contains guest tokens and device credentials: keep it private.**
 
-Every pushed Git tag runs CI and publishes a Docker image after successful checks. Arbitrary tags use `tag-<sanitized-tag>-<hash>` image names; SemVer tags (with optional `v` prefix) also create a GitHub release with release notes. Stable version tags update `latest` and the `MAJOR.MINOR` alias; prereleases and build-metadata versions do not. Changes pushed to `main` run checks without publishing an image. Release notes in `docs/releases/<exact-tag>.md` take priority over GitHub-generated notes. See [AGENTS.md](AGENTS.md) for the release preparation process.
+Every pushed Git tag runs CI and publishes a Docker image after successful checks. Arbitrary tags update the Guestin `edge` image and use `tag-<sanitized-tag>-<hash>` image names; SemVer tags (with optional `v` prefix) also create a GitHub release with release notes. Stable version tags update `latest` and the `MAJOR.MINOR` alias; prereleases and build-metadata versions do not. Changes pushed to `main` run checks without publishing an image. Release notes in `docs/releases/<exact-tag>.md` take priority over GitHub-generated notes. See [AGENTS.md](AGENTS.md) for the release preparation process.
 
 In Portainer, update the stack with **Re-pull image** enabled. With Compose:
 
 ```sh
 docker compose pull
-docker compose up -d
+docker compose up -d --remove-orphans
 ```
 
 Keep the same stack name and data volume. The volume holds your database, uploaded images, and encryption keys. **Back it up before upgrading; deleting it deletes your installation.** The [backup and restore guide](docs/REFERENCE.md#backups-and-restore) explains how to make a recoverable backup.

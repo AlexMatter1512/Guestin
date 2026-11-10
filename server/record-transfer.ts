@@ -44,7 +44,7 @@ export function exportRecordList(
     const crypto = vault(key);
     return doorTransferSchema.parse({
       ...header,
-      format: "oshost-doors",
+      format: "guestin-doors",
       doors: (
         db
           .query("SELECT * FROM doors WHERE property_id=? ORDER BY id")
@@ -75,7 +75,7 @@ export function exportRecordList(
     ids = new Set(codes.map((c) => c.id));
   return codeTransferSchema.parse({
     ...header,
-    format: "oshost-codes",
+    format: "guestin-codes",
     codes,
     events: all.events.filter((e) => e.codeId && ids.has(e.codeId)),
   });
@@ -93,7 +93,7 @@ export function importRecordList(
   property(db, propertyId);
   const doc = recordTransferSchema.parse(input),
     crypto = vault(key);
-  if (doc.format !== (kind === "doors" ? "oshost-doors" : "oshost-codes"))
+  if (doc.format !== (kind === "doors" ? "guestin-doors" : "guestin-codes"))
     fail("Choose a JSON file for this list", 400);
   return db.transaction(() => {
     const result = { added: 0, skipped: 0, replaced: 0, removed: 0 };
@@ -116,7 +116,7 @@ export function importRecordList(
       )
         fail("Resolve uncertain door tests before replacing this list");
     }
-    if (doc.format === "oshost-doors") {
+    if (doc.format === "guestin-doors") {
       for (const d of doc.doors) {
         validateDevice(d.data.integration, d.config);
         validatePhotos(d.data);
@@ -213,7 +213,7 @@ export function importRecordList(
         .filter((e) => mode === "replace" || !priorIds.has(e.codeId!))
         .map((e) => ({ ...e, propertyId }));
       const backup = backupSchema.parse({
-        format: "oshost-json",
+        format: "guestin-json",
         version: 1,
         exportedAt: doc.exportedAt,
         properties: all.properties.filter((p) => p.id === propertyId),
@@ -272,7 +272,7 @@ export function recordTransferRoutes(
         fail("The exported JSON exceeds the 32 MB import limit", 413);
       c.header(
         "Content-Disposition",
-        `attachment; filename="oshost-${kind}-${data.exportedAt.slice(0, 10)}.json"`,
+        `attachment; filename="guestin-${kind}-${data.exportedAt.slice(0, 10)}.json"`,
       );
       c.header("Cache-Control", "no-store");
       return c.json(data);

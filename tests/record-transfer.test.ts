@@ -56,7 +56,7 @@ async function fixture(key = "c".repeat(64), device?: () => Promise<any>) {
       method,
       headers: {
         Origin: origin,
-        Cookie: `oshost_session=${role}`,
+        Cookie: `guestin_session=${role}`,
         "X-CSRF-Token": "csrf",
         "Content-Type": "application/json",
       },

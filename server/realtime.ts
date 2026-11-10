@@ -13,6 +13,27 @@ export function realtime(db: DB) {
 }
 function createHub(db: DB) {
   const clients = new Map<WSContext, string>();
+  const breakfastClients = new Map<
+    WSContext,
+    { propertyId: string; authorized: () => boolean }
+  >();
+  function sendBreakfast(
+    ws: WSContext,
+    client: { authorized: () => boolean },
+    type: string,
+  ) {
+    if (!client.authorized()) {
+      breakfastClients.delete(ws);
+      ws.close(1008, "Access expired");
+      return;
+    }
+    try {
+      ws.send(JSON.stringify({ type }));
+    } catch {
+      breakfastClients.delete(ws);
+      ws.close();
+    }
+  }
   function authorized(session: string) {
     return !!db
       .query("SELECT digest FROM sessions WHERE digest=? AND expires>?")
@@ -32,16 +53,38 @@ function createHub(db: DB) {
     }
   }
   return {
+    connectBreakfast(
+      ws: WSContext,
+      propertyId: string,
+      authorized: () => boolean,
+    ) {
+      if (breakfastClients.size >= 500) {
+        ws.close(1013, "Try again later");
+        return;
+      }
+      const client = { propertyId, authorized };
+      breakfastClients.set(ws, client);
+      sendBreakfast(ws, client, "sync");
+    },
+    breakfastChanged(propertyId: string) {
+      for (const [ws, client] of breakfastClients)
+        if (client.propertyId === propertyId)
+          sendBreakfast(ws, client, "breakfast.changed");
+    },
     connect(ws: WSContext, session: string) {
       clients.set(ws, session);
       send(ws, session, { type: "sync" });
     },
     disconnect(ws: WSContext) {
+      for (const client of breakfastClients.keys())
+        if (client.raw === ws.raw) breakfastClients.delete(client);
       // Hono supplies a new wrapper for each socket lifecycle event.
       for (const client of clients.keys())
         if (client.raw === ws.raw) clients.delete(client);
     },
     heartbeat() {
+      for (const [ws, client] of breakfastClients)
+        sendBreakfast(ws, client, "heartbeat");
       for (const [ws, session] of clients)
         send(ws, session, { type: "heartbeat" });
     },
@@ -69,6 +112,8 @@ function createHub(db: DB) {
       }
     },
     workspaceChanged() {
+      for (const [ws, client] of breakfastClients)
+        sendBreakfast(ws, client, "workspace.changed");
       for (const [ws, session] of clients)
         send(ws, session, { type: "workspace.changed" });
     },

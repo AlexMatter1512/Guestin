@@ -3,13 +3,13 @@ import { Database } from "bun:sqlite";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-const directory = mkdtempSync(join(tmpdir(), "oshost-structures-")),
-  origin = "http://localhost:3097",
+const directory = mkdtempSync(join(tmpdir(), "guestin-structures-")),
+  origin = "http://localhost:3191",
   path = join(directory, "test.sqlite");
 const server = Bun.spawn(["bun", "server/index.ts"], {
   env: {
     ...process.env,
-    PORT: "3097",
+    PORT: "3191",
     ORIGIN: origin,
     DB_PATH: path,
     APP_KEY: "f".repeat(64),
@@ -180,17 +180,23 @@ try {
   await bell.click();
   await expect(page.locator(".page-heading h1")).toHaveText("Notifications");
   await expect(
-    page.locator(".notification-history [data-slot=card]"),
-  ).toHaveCount(50);
+    page.locator(".notification-history .notification-card"),
+  ).toHaveCount(20);
   await page
     .getByRole("button", { name: "Load older notifications", exact: true })
     .click();
   await expect(
-    page.locator(".notification-history [data-slot=card]"),
+    page.locator(".notification-history .notification-card"),
+  ).toHaveCount(40);
+  await page
+    .getByRole("button", { name: "Load older notifications", exact: true })
+    .click();
+  await expect(
+    page.locator(".notification-history .notification-card"),
   ).toHaveCount(56);
   await structure.selectOption(two.id);
   await expect(
-    page.locator(".notification-history [data-slot=card]"),
+    page.locator(".notification-history .notification-card"),
   ).toHaveCount(1);
   await expect(
     page.getByText("Garden-only history", { exact: true }),
@@ -198,7 +204,7 @@ try {
   await structure.selectOption(one.id);
   await page.locator('[data-tour="nav-reports"]').click();
   await expect(page.locator(".page-heading h1")).toHaveText("Statistics");
-  await expect(page.getByRole("table")).toBeVisible();
+  await expect(page.locator(".statistics-card").first()).toBeVisible();
   await expect(page.locator('[data-tour="nav-settings"]')).not.toHaveAttribute(
     "aria-current",
     "page",
@@ -220,9 +226,7 @@ try {
   await page
     .getByRole("switch", { name: "All structures", exact: true })
     .uncheck();
-  await page
-    .getByRole("switch", { name: "Garden House", exact: true })
-    .check();
+  await page.getByRole("switch", { name: "Garden House", exact: true }).check();
   await page
     .getByRole("switch", { name: "All activity types", exact: true })
     .uncheck();
@@ -284,7 +288,9 @@ try {
     .getByRole("button", { name: "Open breakfast totals", exact: true })
     .click();
   await expect(
-    breakfast.getByText("Incorrect password", { exact: true }),
+    breakfast.getByText("Unable to unlock. Check the password and try again.", {
+      exact: true,
+    }),
   ).toBeVisible();
   await breakfast
     .getByLabel("Breakfast page password", { exact: true })

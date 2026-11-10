@@ -1,4 +1,9 @@
 <script lang="ts">
+  import DateInput from "$lib/components/DateInput.svelte";
+  import {
+    formatDisplayDate,
+    formatDisplayDateTime,
+  } from "$lib/date-settings.svelte";
   import FeedbackToast from "$lib/components/FeedbackToast.svelte";
   import Modal from "$lib/components/Modal.svelte";
   import {
@@ -190,7 +195,7 @@
       providerProperty = "";
       hotelId = String(source?.data.hotelId ?? "");
       deviceId = source?.data.deviceId ?? "";
-      localStorage.removeItem("oshost.kross.device");
+      localStorage.removeItem("guestin.kross.device");
       connected = Boolean(source?.data.authenticated);
       if (source?.data.model) geminiModel = String(source.data.model);
       if (view === "ical") {
@@ -545,8 +550,14 @@
       calendarDetails
         ? [
             [l("Calendar event", "Evento calendario"), calendarDetails.uid],
-            [l("Calendar start", "Inizio calendario"), calendarDetails.start],
-            [l("Calendar end", "Fine calendario"), calendarDetails.end],
+            [
+              l("Calendar start", "Inizio calendario"),
+              calendarSourceDate(calendarDetails.start),
+            ],
+            [
+              l("Calendar end", "Fine calendario"),
+              calendarSourceDate(calendarDetails.end),
+            ],
             [l("Description", "Descrizione"), calendarDetails.description],
             [l("Location", "Luogo"), calendarDetails.location],
             [
@@ -565,24 +576,23 @@
         : [],
     );
   }
+  function calendarSourceDate(value: string) {
+    return (
+      formatDisplayDate(value.slice(0, 10)) +
+      (value.length > 10 ? " " + value.slice(11, 16) : "") +
+      (value.endsWith("Z") ? " UTC" : "")
+    );
+  }
   function calendarDates(value: Partial<AccessCodeDraft>) {
     const grant = value.grants?.[0];
     if (!grant) return "";
-    const format = new Intl.DateTimeFormat(
-      hostLanguage.current === "it" ? "it-IT" : "en-GB",
-      {
-        timeZone: property.timezone,
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      },
-    );
     return (
-      format.format(new Date(grant.start)) +
+      formatDisplayDate(grant.start, property.timezone) +
       " → " +
-      format.format(new Date(grant.end))
+      formatDisplayDate(grant.end, property.timezone)
     );
   }
+
   async function saveCalendar(current: () => boolean) {
     const r = await api("connections", {
       propertyId,
@@ -907,9 +917,8 @@
               <div class="grid gap-2">
                 <Label for="kross-arrivals"
                   >{l("Arrivals date", "Data arrivi")}</Label
-                ><Input
+                ><DateInput
                   id="kross-arrivals"
-                  type="date"
                   bind:value={arrivalDate}
                   required
                   disabled={pending}
@@ -1323,8 +1332,8 @@
           </div>
           <Card.Description
             >{l(
-              "Calendar events do not know which oshost door to unlock. For example, map a Room 1 calendar to the Room 1 door.",
-              "Gli eventi del calendario non sanno quale porta di oshost aprire. Ad esempio, associa il calendario Camera 1 alla porta Camera 1.",
+              "Calendar events do not know which guestin door to unlock. For example, map a Room 1 calendar to the Room 1 door.",
+              "Gli eventi del calendario non sanno quale porta di guestin aprire. Ad esempio, associa il calendario Camera 1 alla porta Camera 1.",
             )}</Card.Description
           ></Card.Header
         ><Card.Content class="grid gap-3"
@@ -1493,8 +1502,8 @@
               >{l("Read a screenshot", "Leggi uno screenshot")}</Card.Title
             ><Card.Description
               >{l(
-                "The image is sent to Gemini and is not saved by oshost. Review every extracted field before saving a code.",
-                "L’immagine viene inviata a Gemini e non viene salvata da oshost. Controlla ogni campo estratto prima di salvare un codice.",
+                "The image is sent to Gemini and is not saved by guestin. Review every extracted field before saving a code.",
+                "L’immagine viene inviata a Gemini e non viene salvata da guestin. Controlla ogni campo estratto prima di salvare un codice.",
               )}</Card.Description
             ></Card.Header
           ><Card.Content class="grid gap-4"
@@ -1631,11 +1640,10 @@
               >{localDoors.find((d) => d.id === grant.doorId)?.name}</strong
             >
             <p class="mt-1 text-muted-foreground">
-              {new Date(grant.start).toLocaleString(hostLanguage.current, {
-                timeZone: property.timezone,
-              })} → {new Date(grant.end).toLocaleString(hostLanguage.current, {
-                timeZone: property.timezone,
-              })}
+              {formatDisplayDateTime(grant.start, property.timezone)} → {formatDisplayDateTime(
+                grant.end,
+                property.timezone,
+              )}
             </p>
             <small
               >{grant.singleUse
@@ -1652,8 +1660,9 @@
       {#if preview.draft.breakfast}<section class="text-sm">
           <h3 class="font-medium">{l("Breakfast", "Colazioni")}</h3>
           <p>
-            {preview.draft.breakfast.total} · {preview.draft.breakfast.start} → {preview
-              .draft.breakfast.end}
+            {preview.draft.breakfast.total} · {formatDisplayDate(
+              preview.draft.breakfast.start,
+            )} → {formatDisplayDate(preview.draft.breakfast.end)}
           </p>
         </section>{/if}
       <dl class="space-y-3 text-sm">

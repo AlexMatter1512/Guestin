@@ -1,7 +1,7 @@
 {
   "id": "/guest/",
-  "name": "oshost guest",
-  "short_name": "oshost guest",
+  "name": "guestin guest",
+  "short_name": "guestin guest",
   "start_url": "/guest/",
   "scope": "/guest/",
   "display": "standalone",

@@ -10,7 +10,7 @@ process.env.LOG_FILE = "-";
 const { createApp } = await import("../server/app");
 
 const origin = "http://localhost:3115";
-const directory = mkdtempSync(join(tmpdir(), "oshost-transfer-ui-"));
+const directory = mkdtempSync(join(tmpdir(), "guestin-transfer-ui-"));
 const db = openDatabase(":memory:");
 let calls = 0;
 const app = createApp(db, {
@@ -169,7 +169,7 @@ try {
     .click();
   const downloaded = await downloadPromise;
   expect(downloaded.suggestedFilename()).toContain(
-    "oshost-doors-Transfer-house-",
+    "guestin-doors-Transfer-house-",
   );
   const json = JSON.parse(await Bun.file((await downloaded.path())!).text());
   expect(json.doors).toHaveLength(1);

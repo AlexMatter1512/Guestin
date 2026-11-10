@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // Disposable fixtures only: no external provider, actual unlock, or push delivery.
-const directory = mkdtempSync(join(tmpdir(), "oshost-mobile-ui-"));
+const directory = mkdtempSync(join(tmpdir(), "guestin-mobile-ui-"));
 const origin = "http://localhost:3096";
 const server = Bun.spawn(["bun", "server/index.ts"], {
   env: {

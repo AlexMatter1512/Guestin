@@ -6,7 +6,7 @@ async function replayTour(page: any) {
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-const dir = mkdtempSync(join(tmpdir(), "oshost-language-")),
+const dir = mkdtempSync(join(tmpdir(), "guestin-language-")),
   origin = "http://localhost:3097";
 const server = Bun.spawn(["bun", "server/index.ts"], {
   env: {

@@ -111,7 +111,7 @@
       </div>
       {#if stage === "install"}
         <h2>
-          {copy("Keep oshost one tap away", "oshost sempre a portata di tocco")}
+          {copy("Keep guestin one tap away", "guestin sempre a portata di tocco")}
         </h2>
         <p>
           {copy(
@@ -129,8 +129,8 @@
         {:else if !appInstallation.secure}
           <p>
             {copy(
-              "Open oshost using its HTTPS address to install it. You can continue the tour now and install later.",
-              "Apri oshost dal suo indirizzo HTTPS per installarlo. Puoi continuare il tour e installarlo in seguito.",
+              "Open guestin using its HTTPS address to install it. You can continue the tour now and install later.",
+              "Apri guestin dal suo indirizzo HTTPS per installarlo. Puoi continuare il tour e installarlo in seguito.",
             )}
           </p>
         {:else if appInstallation.ios}
@@ -149,8 +149,8 @@
             </li>
             <li>
               {copy(
-                "Open oshost from its new icon and sign in. Your tour continues here.",
-                "Apri oshost dalla nuova icona e accedi. Il tour riprenderà da qui.",
+                "Open guestin from its new icon and sign in. Your tour continues here.",
+                "Apri guestin dalla nuova icona e accedi. Il tour riprenderà da qui.",
               )}
             </li>
           </ol>
@@ -192,8 +192,8 @@
         {:else if appInstallation.ios && !appInstallation.installed}
           <p>
             {copy(
-              "On iPhone and iPad, open oshost from its Home Screen icon before enabling notifications. You can finish the tour now and enable them later in Settings.",
-              "Su iPhone e iPad, apri oshost dall’icona nella schermata Home prima di attivare le notifiche. Puoi terminare il tour e attivarle in seguito nelle Impostazioni.",
+              "On iPhone and iPad, open guestin from its Home Screen icon before enabling notifications. You can finish the tour now and enable them later in Settings.",
+              "Su iPhone e iPad, apri guestin dall’icona nella schermata Home prima di attivare le notifiche. Puoi terminare il tour e attivarle in seguito nelle Impostazioni.",
             )}
           </p>
         {:else if !pushSupported}

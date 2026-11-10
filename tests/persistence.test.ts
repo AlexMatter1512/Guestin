@@ -7,7 +7,7 @@ import { vault } from "../server/security";
 import { createApp } from "../server/app";
 import { initializeRuntimeSecrets } from "../server/runtime-secrets";
 test("versioned migrations, restart recovery, and backup/restore preserve encrypted data", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "oshost-db-")),
+  const dir = mkdtempSync(join(tmpdir(), "guestin-db-")),
     path = join(dir, "live.sqlite"),
     backup = join(dir, "backup"),
     key = "d".repeat(64);
@@ -54,7 +54,7 @@ test("versioned migrations, restart recovery, and backup/restore preserve encryp
       "action",
     );
     expect((db.query("SELECT COUNT(*) n FROM migrations").get() as any).n).toBe(
-      9,
+      10,
     );
     db.close();
     const proc = Bun.spawn(["bun", "scripts/backup.ts", backup], {
@@ -65,10 +65,10 @@ test("versioned migrations, restart recovery, and backup/restore preserve encryp
     expect(await proc.exited).toBe(0);
     const secrets = await Bun.file(join(backup, "secrets.json")).json();
     const restoredSecrets = initializeRuntimeSecrets({
-      DB_PATH: join(backup, "oshost.sqlite"),
+      DB_PATH: join(backup, "guestin.sqlite"),
     });
     expect(restoredSecrets.secrets.APP_KEY).toBe(key);
-    const restored = openDatabase(join(backup, "oshost.sqlite"));
+    const restored = openDatabase(join(backup, "guestin.sqlite"));
     expect(
       vault(secrets.APP_KEY).open(
         (restored.query("SELECT secret FROM codes").get() as any).secret,

@@ -1,3 +1,8 @@
+import {
+  formatDateTime,
+  DEFAULT_DATE_FORMAT,
+  type DateFormat,
+} from "./date-format";
 export type NotificationContext = {
   codeLabel?: string;
   doorName?: string;
@@ -92,6 +97,7 @@ export function notificationText(
   event: { type: string; message: string; context?: NotificationContext },
   language = "en",
   fallbackLabel?: string,
+  dateFormat: DateFormat = DEFAULT_DATE_FORMAT,
 ) {
   const it = language === "it",
     context = event.context ?? {};
@@ -119,15 +125,11 @@ export function notificationText(
         : `${context.suppressedAttempts} invalid-link attempts suppressed.`;
     if (context.previousVisit)
       body += it
-        ? ` Questo browser dichiara una visita precedente: ${context.previousVisit.label} (${context.previousVisit.date}). Informazione non verificata.`
-        : ` This browser reports a previous visit: ${context.previousVisit.label} (${context.previousVisit.date}). Unverified information.`;
+        ? ` Questo browser dichiara una visita precedente: ${context.previousVisit.label} (${formatDateTime(context.previousVisit.date, dateFormat)}). Informazione non verificata.`
+        : ` This browser reports a previous visit: ${context.previousVisit.label} (${formatDateTime(context.previousVisit.date, dateFormat)}). Unverified information.`;
   } else if (event.type === "code.created" && context.actor) {
     const date = (value: string) =>
-      new Date(value).toLocaleString(it ? "it-IT" : "en-GB", {
-        timeZone: context.timezone ?? "UTC",
-        dateStyle: "medium",
-        timeStyle: "short",
-      });
+      formatDateTime(value, dateFormat, context.timezone ?? "UTC");
     body = it
       ? `${context.actor} ha creato il codice di accesso ${label ?? ""}`
       : `${context.actor} created access code ${label ?? ""}`;

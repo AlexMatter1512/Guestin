@@ -41,7 +41,7 @@ async function fixture(path = ":memory:") {
       method,
       headers: {
         Origin: origin,
-        Cookie: `oshost_session=${role}`,
+        Cookie: `guestin_session=${role}`,
         "X-CSRF-Token": "csrf",
         "Content-Type": "application/json",
       },
@@ -338,7 +338,7 @@ test("owners delete collaborators with all sessions and receipts, and invited ac
 });
 
 test("v5 staff migration preserves foreign keys, sessions and previous capabilities", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "oshost-roles-")),
+  const directory = mkdtempSync(join(tmpdir(), "guestin-roles-")),
     path = join(directory, "db.sqlite");
   const f = await fixture(path);
   try {

@@ -1,24 +1,24 @@
-title = "oshost secret scanning"
+title = "guestin secret scanning"
 
 [extend]
 useDefault = true
 
 [[rules]]
-id = "oshost-app-key"
-description = "oshost installation encryption key"
+id = "guestin-app-key"
+description = "guestin installation encryption key"
 regex = '''(?i)\bAPP_KEY["']?\s*[=:]\s*["']?([a-f0-9]{64})\b'''
 secretGroup = 1
 keywords = ["app_key"]
 
 [[rules]]
-id = "oshost-bootstrap-key"
-description = "oshost setup token or private push key"
+id = "guestin-bootstrap-key"
+description = "guestin setup token or private push key"
 regex = '''(?i)\b(?:SETUP_TOKEN|VAPID_PRIVATE_KEY)["']?\s*[=:]\s*["']?([a-z0-9_-]{43})\b'''
 secretGroup = 1
 keywords = ["setup_token", "vapid_private_key"]
 
 [[rules]]
-id = "oshost-guest-link"
+id = "guestin-guest-link"
 description = "Guest link containing a full access token"
 regex = '''https?://[^\s"'<>]+/guest/[^\s"'<>]*#(?:[^\s"'<>]*&)?code=([A-Za-z0-9_-]{43})(?:\b|$)'''
 secretGroup = 1

@@ -48,7 +48,7 @@ async function fixture() {
       headers: {
         Origin: origin,
         "Content-Type": "application/json",
-        Cookie: `oshost_session=${options.role ?? "owner"}`,
+        Cookie: `guestin_session=${options.role ?? "owner"}`,
         "X-CSRF-Token": "csrf",
         ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
         ...(options.id ? { "Idempotency-Key": options.id } : {}),
@@ -287,7 +287,7 @@ test("missing, forged, expired and deleted host sessions neither attribute nor b
   try {
     for (const [role, extra] of [
       ["missing", { Cookie: "" }],
-      ["forged", { "X-Oshost-Username": "Alice" }],
+      ["forged", { "X-Guestin-Username": "Alice" }],
       ["owner", {}],
       ["collaborator", {}],
     ] as [string, Record<string, string>][]) {

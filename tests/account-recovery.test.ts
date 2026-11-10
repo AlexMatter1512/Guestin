@@ -11,7 +11,7 @@ const smtp = {
   username: "test",
   password: "smtp-secret",
   from: "app@example.test",
-  fromName: "oshost",
+  fromName: "guestin",
 };
 async function fixture() {
   const db = openDatabase(":memory:"),

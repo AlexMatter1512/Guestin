@@ -1,6 +1,6 @@
 # Security policy
 
-oshost controls physical access. Test changes with fake device adapters and
+guestin controls physical access. Test changes with fake device adapters and
 disposable data, never occupied properties or real guest links.
 
 ## Report a vulnerability privately

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatDisplayDateTime } from "$lib/date-settings.svelte";
   import {
     permissionLabels,
     type Permission,
@@ -82,9 +83,9 @@
     </div>
     <p>{t(account.emailVerified ? "Email verified" : "Email not verified")}</p>
     {#if account.passwordResetRequestedAt}<p role="status">
-        {t("Password reset requested")}: {new Date(
+        {t("Password reset requested")}: {formatDisplayDateTime(
           account.passwordResetRequestedAt,
-        ).toLocaleString()}
+        )}
       </p>{/if}
     <Button
       variant="outline"

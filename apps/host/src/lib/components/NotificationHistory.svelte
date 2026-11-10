@@ -1,4 +1,8 @@
 <script lang="ts">
+  import {
+    dateSettings,
+    formatDisplayDateTime,
+  } from "$lib/date-settings.svelte";
   import { notificationText } from "../../../../../shared/notifications";
   import { flip } from "svelte/animate";
   import { fly } from "svelte/transition";
@@ -219,6 +223,7 @@
       event,
       hostLanguage.current,
       codes.find((c) => c.id === event.code_id)?.label,
+      dateSettings.format,
     )}
     <div
       animate:flip={{ duration: prefersReducedMotion.current ? 0 : 220 }}
@@ -238,9 +243,7 @@
               ></span>{/if}</span
           ><span class="block text-sm">{text.body}</span><small
             class="mt-2 block text-xs text-muted-foreground"
-            >{new Date(event.created).toLocaleString(hostLanguage.current, {
-              timeZone: timezone,
-            })} · {event.read
+            >{formatDisplayDateTime(event.created, timezone)} · {event.read
               ? l("Read", "Letta")
               : l("Unread", "Non letta")}</small
           ></span

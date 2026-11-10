@@ -8,7 +8,10 @@ const header = {
 };
 export const doorTransferSchema = z
   .object({
-    format: z.literal("oshost-doors"),
+    format: z.preprocess(
+      (value) => (value === "oshost-doors" ? "guestin-doors" : value),
+      z.literal("guestin-doors"),
+    ),
     ...header,
     doors: z
       .array(
@@ -41,7 +44,10 @@ export const doorTransferSchema = z
   });
 export const codeTransferSchema = z
   .object({
-    format: z.literal("oshost-codes"),
+    format: z.preprocess(
+      (value) => (value === "oshost-codes" ? "guestin-codes" : value),
+      z.literal("guestin-codes"),
+    ),
     ...header,
     codes: backupSchema.shape.codes,
     events: backupSchema.shape.events,

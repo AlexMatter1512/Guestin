@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatDisplayDate } from "$lib/date-settings.svelte";
   import { parseDate } from "@internationalized/date";
   import * as Calendar from "$lib/components/ui/calendar";
   import * as Popover from "$lib/components/ui/popover";
@@ -16,14 +17,7 @@
   } = $props();
   let open = $state(false);
   const selected = $derived(parseDate(value));
-  const label = $derived(
-    new Intl.DateTimeFormat(hostLanguage.current, {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      timeZone: "UTC",
-    }).format(new Date(value + "T12:00:00Z")),
-  );
+  const label = $derived(formatDisplayDate(value));
 </script>
 
 <Popover.Root bind:open>

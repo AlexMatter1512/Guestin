@@ -1,3 +1,4 @@
+import { displaySettings } from "./display-settings";
 import { notificationPresentation } from "./notification-presentation";
 import { notificationIconURL } from "../shared/notification-presentation";
 import { notificationText, wantsNotification } from "../shared/notifications";
@@ -49,6 +50,7 @@ export async function deliverPush(db: DB, send = webpush.sendNotification) {
           },
           preferences.language ?? "en",
           j.code_data ? JSON.parse(j.code_data).label : undefined,
+          displaySettings(db).dateFormat,
         );
         const presentation = notificationPresentation(db, {
           ...j,

@@ -44,7 +44,7 @@ async function fixture() {
       headers: {
         Origin: origin,
         ...(authenticated
-          ? { Cookie: "oshost_session=owner", "X-CSRF-Token": "csrf" }
+          ? { Cookie: "guestin_session=owner", "X-CSRF-Token": "csrf" }
           : {}),
         "Content-Type": "application/json",
       },
@@ -169,7 +169,7 @@ test("code notices link to their code; successful door usage has the exact prote
     });
     expect((await f.app.request(accepted.thumbnail)).status).toBe(401);
     const image = await f.app.request(accepted.thumbnail, {
-      headers: { Cookie: "oshost_session=owner" },
+      headers: { Cookie: "guestin_session=owner" },
     });
     expect(image.status).toBe(200);
     expect(image.headers.get("content-type")).toBe("image/png");
@@ -344,7 +344,7 @@ test("new events obey the count cap at insertion and portable backups preserve b
 });
 
 test("schema 7 upgrades preserve existing retention settings and default the count to 1000", () => {
-  const directory = mkdtempSync(join(tmpdir(), "oshost-notification-upgrade-")),
+  const directory = mkdtempSync(join(tmpdir(), "guestin-notification-upgrade-")),
     path = join(directory, "db.sqlite");
   let db = openDatabase(path);
   try {

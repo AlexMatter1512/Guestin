@@ -6,8 +6,8 @@ import { join } from "node:path";
 // Use a real HTTP (non-localhost) browser origin to reproduce phone capabilities.
 // API data lives in a temporary database; clipboard calls are mocked to avoid
 // overwriting the user's clipboard. No device request is made.
-const dir = mkdtempSync(join(tmpdir(), "oshost-redesign-"));
-const origin = "http://oshost-lan.test:3092";
+const dir = mkdtempSync(join(tmpdir(), "guestin-redesign-"));
+const origin = "http://guestin-lan.test:3092";
 const transport = "http://localhost:3092";
 const server = Bun.spawn(["bun", "server/index.ts"], {
   env: {
@@ -92,7 +92,7 @@ try {
     channel: "chrome",
     headless: true,
     args: [
-      "--host-resolver-rules=MAP oshost-lan.test 127.0.0.1",
+      "--host-resolver-rules=MAP guestin-lan.test 127.0.0.1",
       "--no-proxy-server",
     ],
   });
@@ -102,9 +102,9 @@ try {
   });
   await context.addCookies([
     {
-      name: "oshost_session",
+      name: "guestin_session",
       value: cookie.split("=").slice(1).join("="),
-      domain: "oshost-lan.test",
+      domain: "guestin-lan.test",
       path: "/api/",
       httpOnly: true,
       sameSite: "Strict",

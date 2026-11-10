@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { localDate } from "../shared/schema";
 import { nextDate } from "../shared/draft-defaults";
 
-const directory = mkdtempSync(join(tmpdir(), "oshost-settings-backup-"));
+const directory = mkdtempSync(join(tmpdir(), "guestin-settings-backup-"));
 const instances = [3113, 3114].map((port, index) => {
   const origin = `http://localhost:${port}`;
   const process = Bun.spawn(["bun", "server/index.ts"], {

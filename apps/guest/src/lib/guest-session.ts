@@ -14,7 +14,7 @@ export function guestURL(href: string, page: string, language: string) {
 }
 export function previousVisit(storage: Pick<Storage, "getItem">) {
   try {
-    const saved = JSON.parse(storage.getItem("oshost.guest.visit") ?? "null");
+    const saved = JSON.parse(storage.getItem("guestin.guest.visit") ?? "null");
     if (
       typeof saved?.label !== "string" ||
       !saved.label.trim() ||
