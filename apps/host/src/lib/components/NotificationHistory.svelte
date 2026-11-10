@@ -1,11 +1,15 @@
 <script lang="ts">
   import { notificationText } from "../../../../../shared/notifications";
+  import { flip } from "svelte/animate";
+  import { fly } from "svelte/transition";
+  import { prefersReducedMotion } from "svelte/motion";
   import { untrack } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import * as Card from "$lib/components/ui/card";
   import { Bell, RefreshCw } from "@lucide/svelte";
   import { hostLanguage, t } from "$lib/i18n.svelte";
   let {
+    refreshToken = 0,
     propertyId,
     propertyName,
     retentionMonths = 3,
@@ -13,6 +17,7 @@
     codes,
     api,
   }: {
+    refreshToken?: number;
     propertyId: string;
     propertyName: string;
     retentionMonths?: number;
@@ -27,7 +32,7 @@
   let request = 0;
   const l = (en: string, it: string) =>
     hostLanguage.current === "it" ? it : en;
-  async function load(more = false) {
+  async function load(more = false, refresh = false) {
     const id = propertyId,
       ticket = ++request;
     loading = true;
@@ -37,14 +42,31 @@
       if (more && nextCursor) query.set("cursor", nextCursor);
       const data = await api("events?" + query);
       if (ticket !== request) return;
-      events = more ? [...events, ...data.events] : data.events;
-      nextCursor = data.nextCursor;
+      const combined = more
+        ? [...events, ...data.events]
+        : refresh
+          ? [...data.events, ...events]
+          : data.events;
+      events = [
+        ...new Map(combined.map((event: any) => [event.id, event])).values(),
+      ].sort(
+        (a: any, b: any) =>
+          b.created.localeCompare(a.created) || b.id.localeCompare(a.id),
+      );
+      if (!refresh) nextCursor = data.nextCursor;
     } catch (e) {
       if (ticket === request) error = (e as Error).message;
     } finally {
       if (ticket === request) loading = false;
     }
   }
+  $effect(() => {
+    const revision = refreshToken;
+    if (revision)
+      untrack(() => {
+        if (propertyId) void load(false, true);
+      });
+  });
   $effect(() => {
     const id = propertyId;
     untrack(() => {
@@ -90,18 +112,26 @@
       hostLanguage.current,
       codes.find((code) => code.id === event.code_id)?.label,
     )}
-    <Card.Root
-      ><Card.Content class="pt-4"
-        ><div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <strong>{text.title}</strong><small
-            >{new Date(event.created).toLocaleString(hostLanguage.current, {
-              timeZone: timezone,
-            })}</small
-          >
-        </div>
-        <p>{text.body}</p>
-      </Card.Content></Card.Root
+    <div
+      animate:flip={{ duration: prefersReducedMotion.current ? 0 : 220 }}
+      transition:fly={{
+        y: 8,
+        duration: prefersReducedMotion.current ? 0 : 180,
+      }}
     >
+      <Card.Root
+        ><Card.Content class="pt-4"
+          ><div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <strong>{text.title}</strong><small
+              >{new Date(event.created).toLocaleString(hostLanguage.current, {
+                timeZone: timezone,
+              })}</small
+            >
+          </div>
+          <p>{text.body}</p>
+        </Card.Content></Card.Root
+      >
+    </div>
   {:else}{#if !loading}<div class="empty-state">
         <Bell size={32} />
         <h2>{l("No notifications yet", "Nessuna notifica")}</h2>

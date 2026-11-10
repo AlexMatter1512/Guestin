@@ -218,16 +218,16 @@ try {
     page.getByText("Settings saved.", { exact: true }),
   ).toBeVisible();
   await page
-    .getByRole("checkbox", { name: "All structures", exact: true })
+    .getByRole("switch", { name: "All structures", exact: true })
     .uncheck();
   await page
-    .getByRole("checkbox", { name: "Garden House", exact: true })
+    .getByRole("switch", { name: "Garden House", exact: true })
     .check();
   await page
-    .getByRole("checkbox", { name: "All activity types", exact: true })
+    .getByRole("switch", { name: "All activity types", exact: true })
     .uncheck();
   await page
-    .getByRole("checkbox", { name: "Access accepted", exact: true })
+    .getByRole("switch", { name: "Access accepted", exact: true })
     .check();
   await page
     .getByRole("button", { name: "Enable / update notifications", exact: true })
@@ -240,10 +240,10 @@ try {
     "6",
   );
   await expect(
-    page.getByRole("checkbox", { name: "Garden House", exact: true }),
+    page.getByRole("switch", { name: "Garden House", exact: true }),
   ).toBeChecked();
   await expect(
-    page.getByRole("checkbox", { name: "Access accepted", exact: true }),
+    page.getByRole("switch", { name: "Access accepted", exact: true }),
   ).toBeChecked();
   await page
     .getByRole("button", { name: "Disable notifications", exact: true })

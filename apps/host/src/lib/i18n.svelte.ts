@@ -1,6 +1,13 @@
 export type HostLocale = "en" | "it";
 export const hostLanguage = $state({ current: "en" as HostLocale });
 const italian: Record<string, string> = {
+  "Install app": "Installa app",
+  "Add oshost to your iPhone or Android Home Screen":
+    "Aggiungi oshost alla Home di iPhone o Android",
+  "Guest links": "Link ospiti",
+  "Default check-in and instructions links":
+    "Link check-in e istruzioni predefiniti",
+  "KrossBooking, calendars and AI": "KrossBooking, calendari e AI",
   "No codes for this date": "Nessun codice per questa data",
   "Choose another date or use + below to create an access code.":
     "Scegli un’altra data o usa il + in basso per creare un codice di accesso.",

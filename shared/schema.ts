@@ -1,5 +1,30 @@
 import { z } from "zod";
+export const guestLinksSchema = z.object({
+  defaultCheckinLink: z
+    .union([
+      z.literal(""),
+      z
+        .url()
+        .refine(
+          (value) => ["https:", "http:"].includes(new URL(value).protocol),
+          "Use an HTTP or HTTPS link",
+        ),
+    ])
+    .default(""),
+  defaultInstructionsLink: z
+    .union([
+      z.literal(""),
+      z
+        .url()
+        .refine(
+          (value) => ["https:", "http:"].includes(new URL(value).protocol),
+          "Use an HTTP or HTTPS link",
+        ),
+    ])
+    .default(""),
+});
 export const propertySchema = z.object({
+  ...guestLinksSchema.shape,
   name: z.string().min(1).max(120),
   timezone: z.string().refine((v) => {
     try {

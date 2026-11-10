@@ -1,3 +1,5 @@
+import { portableBackupRoutes } from "./portable-backup";
+import { MAX_BACKUP_BYTES } from "../shared/backup";
 import {
   wantsNotification,
   type NotificationContext,
@@ -11,6 +13,7 @@ import {
   logRoute,
 } from "./log";
 import { Hono } from "hono";
+import { realtime, upgradeWebSocket } from "./realtime";
 import { z } from "zod";
 import type { DB } from "./db";
 import { vault, token, digest } from "./security";
@@ -19,6 +22,7 @@ import {
   codeSchema,
   doorSchema,
   propertySchema,
+  guestLinksSchema,
   defaultTemplates,
   localDate,
 } from "../shared/schema";
@@ -27,7 +31,7 @@ import { databaseLifecycle } from "./lifecycle";
 import { pruneNotifications } from "./notifications";
 import { breakfastAccessRoutes, mayReadBreakfast } from "./breakfast-access";
 type Env = {
-  Bindings: { clientIP?: string };
+  Bindings: { clientIP?: string; server?: Bun.Server<any> };
   Variables: { user: any; csrf: string };
 };
 export function createApp(
@@ -105,6 +109,7 @@ export function createApp(
       "activity.recorded",
       { eventId: id, eventType: type, propertyId, codeId },
     );
+    const created = new Date().toISOString();
     run(
       "INSERT INTO events VALUES(?,?,?,?,?,?)",
       id,
@@ -112,7 +117,7 @@ export function createApp(
       codeId,
       type,
       message,
-      new Date().toISOString(),
+      created,
     );
     const code = codeId
       ? get("SELECT data FROM codes WHERE id=?", codeId)
@@ -122,6 +127,19 @@ export function createApp(
       ...(code ? { codeLabel: JSON.parse(code.data).label } : {}),
     };
     run("INSERT INTO event_context VALUES(?,?)", id, JSON.stringify(details));
+    // Synchronous transactions have committed (or rolled back) before delivery.
+    queueMicrotask(() => {
+      if (get("SELECT id FROM events WHERE id=?", id))
+        realtime(db).publish({
+          id,
+          property_id: propertyId,
+          code_id: codeId,
+          type,
+          message,
+          created,
+          context: details,
+        });
+    });
     if (codeId && type.startsWith("access."))
       run(
         "INSERT INTO code_metrics(code_id,attempts,accepted) VALUES(?,1,?) ON CONFLICT(code_id) DO UPDATE SET attempts=attempts+1,accepted=accepted+excluded.accepted",
@@ -221,7 +239,11 @@ export function createApp(
     c.header("Cache-Control", "no-store");
     c.header("X-Content-Type-Options", "nosniff");
     c.header("Referrer-Policy", "no-referrer");
-    if (Number(c.req.header("content-length") ?? 0) > 8 * 1024 * 1024)
+    const bodyLimit =
+      c.req.path === "/api/v1/admin/import"
+        ? MAX_BACKUP_BYTES
+        : 8 * 1024 * 1024;
+    if (Number(c.req.header("content-length") ?? 0) > bodyLimit)
       return c.json({ error: "Request too large" }, 413);
     if (c.req.method !== "GET" && c.req.header("origin") !== config.origin)
       return c.json({ error: "Origin rejected" }, 403);
@@ -377,6 +399,30 @@ export function createApp(
     c.set("csrf", s.csrf);
     await next();
   });
+  app.get(
+    "/api/v1/live",
+    (c, next) => {
+      if (c.req.header("origin") !== config.origin)
+        return c.json({ error: "Origin rejected" }, 403);
+      return next();
+    },
+    upgradeWebSocket((c) => {
+      const session = digest(
+        c.req.header("cookie")!.match(/(?:^|; )oshost_session=([^;]+)/)![1],
+      );
+      return {
+        onOpen(_event, ws) {
+          realtime(db).connect(ws, session);
+        },
+        onClose(_event, ws) {
+          realtime(db).disconnect(ws);
+        },
+        onError(_event, ws) {
+          realtime(db).disconnect(ws);
+        },
+      };
+    }),
+  );
   app.get("/api/v1/me", (c) =>
     c.json({ user: c.get("user"), csrf: c.get("csrf") }),
   );
@@ -503,13 +549,36 @@ export function createApp(
   });
   app.put("/api/v1/properties/:id", async (c) => {
     owner(c);
-    const data = propertySchema.parse(await c.req.json());
+    const current = get(
+      "SELECT data FROM properties WHERE id=?",
+      c.req.param("id"),
+    );
+    if (!current) fail("Property missing", 404);
+    const data = propertySchema.parse({
+      ...JSON.parse(current.data),
+      ...(await c.req.json()),
+    });
     run(
       "UPDATE properties SET data=? WHERE id=?",
       JSON.stringify(data),
       c.req.param("id"),
     );
     return c.json({ ok: true });
+  });
+  app.patch("/api/v1/properties/:id/links", async (c) => {
+    owner(c);
+    const links = guestLinksSchema.parse(await c.req.json());
+    const current = get(
+      "SELECT data FROM properties WHERE id=?",
+      c.req.param("id"),
+    );
+    if (!current) fail("Property missing", 404);
+    run(
+      "UPDATE properties SET data=? WHERE id=?",
+      JSON.stringify({ ...JSON.parse(current.data), ...links }),
+      c.req.param("id"),
+    );
+    return c.json(links);
   });
   app.patch("/api/v1/properties/:id/notifications", async (c) => {
     const id = c.req.param("id");
@@ -760,6 +829,7 @@ export function createApp(
     )
       fail("Shelly cloud host, device ID and API key required");
   }
+  portableBackupRoutes(app, db, config.key, owner, validateDevice);
   const codeView = (row: any) => ({
     id: row.id,
     ...JSON.parse(row.data),
@@ -767,7 +837,9 @@ export function createApp(
     created: row.created,
     creator: row.creator,
     creatorName:
-      get("SELECT name FROM users WHERE id=?", row.creator)?.name ?? null,
+      get("SELECT name FROM users WHERE id=?", row.creator)?.name ??
+      JSON.parse(row.data).importedCreatorName ??
+      null,
     link: `${config.origin}/guest/#code=${crypto.open(row.secret)}`,
     grants: all(
       "SELECT door_id AS doorId,start,end,single_use AS singleUse,used,claim,active FROM grants WHERE code_id=?",
@@ -824,6 +896,10 @@ export function createApp(
       )
         fail("Resolve pending device action first", 409);
       const { grants, ...record } = data;
+      if (old && JSON.parse(old.data).importedCreatorName)
+        record.importedCreatorName = JSON.parse(old.data).importedCreatorName;
+      if (old && JSON.parse(old.data).importedCreatorId)
+        record.importedCreatorId = JSON.parse(old.data).importedCreatorId;
       if (isNew) {
         const raw = token();
         run(
@@ -864,6 +940,21 @@ export function createApp(
         isNew ? "Access code created" : "Access code updated",
         data.propertyId,
         id,
+        {
+          actor: get("SELECT name FROM users WHERE id=?", userId)?.name,
+          validFrom: grants.length
+            ? grants.map((g: { start: string }) => g.start).sort()[0]
+            : undefined,
+          validTo: grants.length
+            ? grants
+                .map((g: { end: string }) => g.end)
+                .sort()
+                .at(-1)
+            : undefined,
+          timezone: JSON.parse(
+            get("SELECT data FROM properties WHERE id=?", data.propertyId).data,
+          ).timezone,
+        },
       );
     })();
   }
@@ -924,6 +1015,9 @@ export function createApp(
       crypto.seal(raw),
       c.req.param("id"),
     );
+    const code = get("SELECT * FROM codes WHERE id=?", c.req.param("id"));
+    if (code)
+      event("code.updated", "Guest link replaced", code.property_id, code.id);
     return c.json({ ok: true });
   });
   app.post("/api/v1/codes/:id/resolve", async (c) => {
@@ -1032,7 +1126,7 @@ export function createApp(
   app.get("/api/v1/reports", (c) =>
     c.json(
       all(
-        "SELECT c.id,c.creator,u.name,c.created,c.property_id,COALESCE(m.attempts,0) attempts,COALESCE(m.accepted,0) accepted FROM codes c LEFT JOIN users u ON c.creator=u.id LEFT JOIN code_metrics m ON m.code_id=c.id",
+        "SELECT c.id,COALESCE(c.creator,json_extract(c.data,'$.importedCreatorId')) creator,COALESCE(u.name,json_extract(c.data,'$.importedCreatorName')) name,c.created,c.property_id,COALESCE(m.attempts,0) attempts,COALESCE(m.accepted,0) accepted FROM codes c LEFT JOIN users u ON c.creator=u.id LEFT JOIN code_metrics m ON m.code_id=c.id",
       ),
     ),
   );

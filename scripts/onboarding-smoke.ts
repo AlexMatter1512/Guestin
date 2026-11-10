@@ -219,7 +219,7 @@ try {
     "true",
   );
   await page.getByLabel("Guest name / label").fill("First guest");
-  const permission = page.getByRole("checkbox", { name: /Example entrance/ });
+  const permission = page.getByRole("switch", { name: /Example entrance/ });
   await permission.check();
   await page
     .getByRole("button", { name: "Save access code", exact: true })
@@ -466,17 +466,17 @@ try {
   });
   await draftProperty.selectOption(second.property.id);
   await expect(
-    codeForm.getByRole("checkbox", { name: /Second example door/ }),
+    codeForm.getByRole("switch", { name: /Second example door/ }),
   ).toBeVisible();
   await expect(
-    codeForm.getByRole("checkbox", { name: /Example entrance/ }),
+    codeForm.getByRole("switch", { name: /Example entrance/ }),
   ).toHaveCount(0);
   await draftProperty.selectOption(complete.properties[0].id);
   await expect(
-    codeForm.getByRole("checkbox", { name: /Example entrance/ }),
+    codeForm.getByRole("switch", { name: /Example entrance/ }),
   ).toBeVisible();
   await draftProperty.selectOption(second.property.id);
-  await codeForm.getByRole("checkbox", { name: /Second example door/ }).check();
+  await codeForm.getByRole("switch", { name: /Second example door/ }).check();
   await codeForm
     .getByRole("button", { name: "Save access code", exact: true })
     .click();

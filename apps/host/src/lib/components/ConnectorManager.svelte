@@ -1,4 +1,9 @@
 <script lang="ts">
+  import Modal from "$lib/components/Modal.svelte";
+  import {
+    guestLinkDefaults,
+    breakfastDefaults,
+  } from "../../../../../shared/draft-defaults";
   import { untrack } from "svelte";
   import {
     CalendarDays,
@@ -33,6 +38,7 @@
     krossProperties,
     krossReservations,
     krossReservationDraft,
+    type CalendarAccessDraft,
   } from "../../../../../shared/connectors";
   import type { AccessCodeDraft } from "../../../../../shared/schema";
   type View = "list" | "kross" | "ical" | "gemini";
@@ -97,7 +103,7 @@
     calendarUrl = $state(""),
     calendarName = $state(""),
     addingCalendar = $state(false),
-    calendarResults = $state<Partial<AccessCodeDraft>[]>([]),
+    calendarResults = $state<CalendarAccessDraft[]>([]),
     calendarFileName = $state(""),
     calendarText = $state("");
   let geminiKey = $state(""),
@@ -106,6 +112,13 @@
     imageUrl = $state(""),
     extraction = $state<Partial<AccessCodeDraft> | null>(null),
     extractionBreakfast = $state<number | undefined>();
+  let preview = $state<{
+    draft: AccessCodeDraft;
+    details: [string, string][];
+    source: string;
+  } | null>(null);
+  let extractionDetails = $state<[string, string][]>([]);
+  let screenshotInput = $state<HTMLInputElement | null>(null);
   let scope = "",
     loadedConnection = "",
     operation = 0;
@@ -122,7 +135,7 @@
   const providers = [
     { id: "kross" as const, name: "KrossBooking", icon: Plug },
     { id: "ical" as const, name: "iCal", icon: CalendarDays },
-    { id: "gemini" as const, name: "Gemini", icon: Image },
+    { id: "gemini" as const, name: "AI", icon: Image },
   ];
   $effect(() => {
     const next = propertyId + "/" + view;
@@ -130,6 +143,7 @@
     scope = next;
     untrack(() => {
       operation++;
+      preview = null;
       pending = false;
       error = "";
       notice = "";
@@ -137,6 +151,7 @@
       searched = false;
       providerProperties = [];
       providerProperty = "";
+      preview = null;
       password = "";
       verification = "";
       factors = [];
@@ -414,6 +429,16 @@
       );
     const result = await client().reservation(id);
     if (!current()) return;
+    const detail = result?.data?.reservation ?? result?.reservation ?? result;
+    const rooms = Array.isArray(detail.rooms)
+      ? detail.rooms
+          .map((r: any) =>
+            typeof r === "string"
+              ? r
+              : (r.number ?? r.name_room_type ?? r.name ?? ""),
+          )
+          .join(", ")
+      : String(item.name_room_type ?? "");
     review(
       krossReservationDraft(
         result,
@@ -426,19 +451,40 @@
         },
         item,
       ),
+      [
+        [l("Reservation", "Prenotazione"), String(id)],
+        [l("Arrival", "Arrivo"), String(detail.arrival ?? item.arrival ?? "")],
+        [
+          l("Departure", "Partenza"),
+          String(detail.departure ?? item.departure ?? ""),
+        ],
+        [l("Source rooms", "Camere della prenotazione"), rooms],
+        [l("Email", "Email"), String(detail.email ?? detail.email_guest ?? "")],
+        [l("Phone", "Telefono"), String(detail.phone ?? detail.mobile ?? "")],
+        [
+          l("Reservation notes", "Note prenotazione"),
+          String(detail.notes ?? detail.note ?? ""),
+        ],
+      ],
     );
   }
-  function review(value: Partial<AccessCodeDraft>) {
-    onDraft({
-      propertyId,
-      label: "",
-      notes: "",
-      checkinLink: "",
-      instructionsLink: "",
-      grants: [],
-      breakfast: null,
-      ...value,
-    });
+  function review(
+    value: Partial<AccessCodeDraft>,
+    details: [string, string][] = [],
+  ) {
+    preview = {
+      source: providers.find((p) => p.id === view)?.name ?? "",
+      details,
+      draft: {
+        propertyId,
+        label: "",
+        notes: "",
+        grants: [],
+        breakfast: null,
+        ...value,
+        ...guestLinkDefaults(property, value),
+      },
+    };
   }
   async function removeConnection(current: () => boolean) {
     if (
@@ -482,17 +528,41 @@
     calendarDoor = (event.currentTarget as HTMLSelectElement).value;
     if (calendarText) parseCalendar(calendarText);
   }
-  function reviewCalendar(value: Partial<AccessCodeDraft>) {
+  function reviewCalendar(value: CalendarAccessDraft) {
     const door = localDoors.find((d) => d.id === calendarDoor);
     if (!door) return;
-    review({
-      ...value,
-      grants: value.grants?.map((grant) => ({
-        ...grant,
-        doorId: door.id,
-        singleUse: door.singleUse,
-      })),
-    });
+    const { calendarDetails, ...draft } = value;
+    review(
+      {
+        ...draft,
+        grants: value.grants?.map((grant) => ({
+          ...grant,
+          doorId: door.id,
+          singleUse: door.singleUse,
+        })),
+      },
+      calendarDetails
+        ? [
+            [l("Calendar event", "Evento calendario"), calendarDetails.uid],
+            [l("Calendar start", "Inizio calendario"), calendarDetails.start],
+            [l("Calendar end", "Fine calendario"), calendarDetails.end],
+            [l("Description", "Descrizione"), calendarDetails.description],
+            [l("Location", "Luogo"), calendarDetails.location],
+            [
+              l("Date interpretation", "Interpretazione date"),
+              calendarDetails.allDay
+                ? l(
+                    "All-day event. The calendar end is exclusive; review the proposed access times below.",
+                    "Evento giornaliero. La fine calendario è esclusiva: controlla gli orari di accesso proposti sotto.",
+                  )
+                : l(
+                    "Timed event; access times use the structure timezone.",
+                    "Evento con orari; gli accessi usano il fuso della struttura.",
+                  ),
+            ],
+          ]
+        : [],
+    );
   }
   function calendarDates(value: Partial<AccessCodeDraft>) {
     const grant = value.grants?.[0];
@@ -556,7 +626,7 @@
     const r = await api("connections", {
       propertyId,
       kind: "gemini",
-      name: "Gemini",
+      name: "AI",
       secret: { key: geminiKey.trim() },
       data: { model: geminiModel.trim() },
     });
@@ -565,19 +635,21 @@
     selectedId = r.id;
     await reload();
     notice = l(
-      "Gemini connected. Select an image to prepare a draft.",
-      "Gemini collegato. Seleziona un’immagine per preparare una bozza.",
+      "AI connected. Select an image to prepare a draft.",
+      "AI collegata. Seleziona un’immagine per preparare una bozza.",
     );
   }
-  function clearImage() {
+  function clearImage(resetInput = true) {
+    if (resetInput && screenshotInput) screenshotInput.value = "";
     if (imageUrl) URL.revokeObjectURL(imageUrl);
     imageUrl = "";
     imageFile = null;
     extraction = null;
     extractionBreakfast = undefined;
+    extractionDetails = [];
   }
   function chooseImage(file: File) {
-    clearImage();
+    clearImage(false);
     imageFile = file;
     imageUrl = URL.createObjectURL(file);
   }
@@ -619,7 +691,36 @@
         : [],
       breakfast: null,
     };
+    if (completeDates && parsed.breakfastTotal && parsed.breakfastTotal > 0)
+      extraction.breakfast = {
+        ...breakfastDefaults(
+          {
+            grants: [
+              {
+                doorId: "",
+                start: new Date(parsed.start!).toISOString(),
+                end: new Date(parsed.end!).toISOString(),
+                singleUse: false,
+              },
+            ],
+          },
+          property.timezone,
+        ),
+        total: parsed.breakfastTotal,
+      };
     extractionBreakfast = parsed.breakfastTotal;
+    extractionDetails = [
+      [l("Source image", "Immagine originale"), imageFile.name],
+      [l("Extracted arrival", "Arrivo rilevato"), parsed.start ?? ""],
+      [l("Extracted departure", "Partenza rilevata"), parsed.end ?? ""],
+      [l("Extracted doors", "Porte rilevate"), parsed.doors.join(", ")],
+      [
+        l("Breakfast quantity found", "Colazioni rilevate"),
+        parsed.breakfastTotal === undefined
+          ? ""
+          : String(parsed.breakfastTotal),
+      ],
+    ];
   }
   function dates(item: any) {
     return [item.arrival ?? item.start, item.departure ?? item.end]
@@ -1315,7 +1416,7 @@
     {:else if view === "gemini"}
       {#if !selected && owner}<Card.Root
           ><Card.Header
-            ><Card.Title>{l("Connect Gemini", "Collega Gemini")}</Card.Title
+            ><Card.Title>{l("Connect AI", "Collega AI")}</Card.Title
             ><Card.Description
               >{l(
                 "Use your team’s Gemini key to prepare a draft from a screenshot.",
@@ -1359,7 +1460,7 @@
               <Button
                 type="submit"
                 disabled={pending || !geminiKey.trim() || !geminiModel.trim()}
-                >{l("Connect Gemini", "Collega Gemini")}</Button
+                >{l("Connect AI", "Collega AI")}</Button
               >
             </form></Card.Content
           ></Card.Root
@@ -1367,8 +1468,8 @@
       {:else if !selected}<Alert.Root role="note"
           ><Plug /><Alert.Description
             >{l(
-              "An owner needs to connect Gemini for the team first.",
-              "Un proprietario deve prima collegare Gemini per il team.",
+              "An owner needs to connect AI for the team first.",
+              "Un proprietario deve prima collegare AI per il team.",
             )}</Alert.Description
           ></Alert.Root
         >
@@ -1379,7 +1480,7 @@
                 <Badge variant="secondary"
                   ><Check class="size-3" />{l("Connected", "Collegato")}</Badge
                 ><span class="text-sm text-muted-foreground"
-                  >{selected.data.model ?? "Gemini"}</span
+                  >{selected.data.model ?? "AI"}</span
                 >
               </div>
               {#if owner}<Button
@@ -1403,6 +1504,7 @@
                 >{l("Screenshot", "Screenshot")}</Label
               ><Input
                 id="gemini-screenshot"
+                bind:ref={screenshotInput}
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 disabled={pending}
@@ -1468,7 +1570,7 @@
                   )}
                 </p>{/if}</Card.Content
             ><Card.Footer
-              ><Button onclick={() => review(extraction!)}
+              ><Button onclick={() => review(extraction!, extractionDetails)}
                 >{l("Review draft", "Controlla bozza")}<ArrowRight
                   class="size-4"
                 /></Button
@@ -1488,3 +1590,106 @@
       </p>{/if}
   {/if}
 </section>
+
+<Modal
+  open={!!preview}
+  title={l("Review imported details", "Controlla i dettagli importati")}
+  onclose={() => (preview = null)}
+>
+  {#if preview}<div class="space-y-6" data-connector-preview>
+      <div>
+        <Badge variant="secondary">{preview.source}</Badge>
+        <h2 class="mt-3 text-xl font-semibold">
+          {preview.draft.label ||
+            l("Guest name missing", "Nome ospite mancante")}
+        </h2>
+        <p class="mt-2 text-sm text-muted-foreground">
+          {l(
+            "Check the source details and proposed access before opening the editable code form. No access code has been created.",
+            "Controlla i dati originali e gli accessi proposti prima di aprire il modulo modificabile. Nessun codice è stato creato.",
+          )}
+        </p>
+      </div>
+      <dl class="grid gap-3">
+        {#each preview.details.filter(([, value]) => value) as [label, value], index (index)}<div
+            class="border-b pb-3"
+          >
+            <dt class="text-xs text-muted-foreground">{label}</dt>
+            <dd class="mt-1 whitespace-pre-wrap break-words text-sm">
+              {value}
+            </dd>
+          </div>{/each}
+      </dl>
+      <section class="space-y-3">
+        <h3 class="font-medium">
+          {l("Proposed door permissions", "Permessi porta proposti")}
+        </h3>
+        <p class="text-xs text-muted-foreground">{property.timezone}</p>
+        {#each preview.draft.grants as grant (grant.doorId)}<div
+            class="border-b pb-3 text-sm"
+          >
+            <strong
+              >{localDoors.find((d) => d.id === grant.doorId)?.name}</strong
+            >
+            <p class="mt-1 text-muted-foreground">
+              {new Date(grant.start).toLocaleString(hostLanguage.current, {
+                timeZone: property.timezone,
+              })} → {new Date(grant.end).toLocaleString(hostLanguage.current, {
+                timeZone: property.timezone,
+              })}
+            </p>
+            <small
+              >{grant.singleUse
+                ? l("Single use", "Monouso")
+                : l("Multiple uses", "Utilizzi multipli")}</small
+            >
+          </div>{:else}<p class="text-sm text-amber-700 dark:text-amber-400">
+            {l(
+              "No doors could be mapped with valid dates. Select doors and fill in dates in the form.",
+              "Nessuna porta associata con date valide. Seleziona porte e date nel modulo.",
+            )}
+          </p>{/each}
+      </section>
+      {#if preview.draft.breakfast}<section class="text-sm">
+          <h3 class="font-medium">{l("Breakfast", "Colazioni")}</h3>
+          <p>
+            {preview.draft.breakfast.total} · {preview.draft.breakfast.start} → {preview
+              .draft.breakfast.end}
+          </p>
+        </section>{/if}
+      <dl class="space-y-3 text-sm">
+        <div>
+          <dt class="text-muted-foreground">
+            {l("Check-in link", "Link check-in")}
+          </dt>
+          <dd class="break-all">
+            {preview.draft.checkinLink || l("Not supplied", "Non disponibile")}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-muted-foreground">
+            {l("Instructions link", "Link istruzioni")}
+          </dt>
+          <dd class="break-all">
+            {preview.draft.instructionsLink ||
+              l("Not supplied", "Non disponibile")}
+          </dd>
+        </div>
+      </dl>
+      <div class="flex flex-wrap gap-2">
+        <Button
+          onclick={() => {
+            const value = preview!.draft;
+            preview = null;
+            onDraft(value);
+          }}
+          >{l(
+            "Use details in access code",
+            "Usa i dettagli nel codice",
+          )}</Button
+        ><Button variant="outline" onclick={() => (preview = null)}
+          >{t("Cancel")}</Button
+        >
+      </div>
+    </div>{/if}
+</Modal>

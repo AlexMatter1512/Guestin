@@ -29,7 +29,7 @@ stay.example.com {
 }
 ```
 
-Allow ports 80 and 443. A proxy on the same Docker network can use `oshost:3000`. Forward paths unchanged. HTTPS is required for phone installation and push notifications.
+Allow ports 80 and 443. A proxy on the same Docker network can use `oshost:3000`. Forward paths unchanged and allow WebSocket upgrades on `/api/v1/live` (Caddy does this automatically). HTTPS is required for phone installation and push notifications.
 
 For direct TLS, mount your certificates read-only and set both `TLS_CERT` and `TLS_KEY` to their paths inside the container. Set `ORIGIN` to the resulting HTTPS address.
 
@@ -50,6 +50,10 @@ Push selection is local to each device, with delivery preferences attached to th
 Settings → Breakfast provides a direct link and optional password protection. Owners can set, change, or remove the password. Signed-in hosts can open the page directly. Other viewers enter the shared password and stay signed in for up to 12 hours. Changing the password invalidates existing breakfast sessions. The page and API count breakfasts actually used, using confirmed redemptions rather than assigned allowances. They expose aggregate totals only.
 
 ## Backups
+
+For a portable export, open **Settings → Data management → Download JSON backup**. Upload the file in the same section to preview and restore it (up to 32 MB). Confirmation requires the trust switch and typing `RESTORE`. Existing IDs are left unchanged; an old file cannot rewind current usage or revocations. Guest tokens are preserved, while links use the destination server’s address. Images are omitted. Device credentials are re-encrypted with the destination key. User accounts, push subscriptions and booking connector credentials are not transferred. Pending device requests remain uncertain and blocked until an owner checks and resolves them.
+
+JSON files contain guest tokens and device credentials in readable form. Keep them private and import only trusted files. For a full installation backup, including images, accounts, connector credentials and encryption keys, use the database backup below.
 
 From the stack directory:
 

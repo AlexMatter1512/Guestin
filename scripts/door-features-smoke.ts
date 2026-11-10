@@ -200,7 +200,7 @@ try {
   await connectedCard
     .getByRole("button", { name: "Test opening", exact: true })
     .click();
-  await confirm.getByRole("checkbox").check();
+  await confirm.getByRole("switch").check();
   await confirm.getByRole("button", { name: "Send unlock request" }).click();
   await expect(
     page.getByText("Uncertain result — check the door", { exact: true }),
@@ -209,7 +209,7 @@ try {
   await connectedCard
     .getByRole("button", { name: "Check uncertain test" })
     .click();
-  await confirm.getByRole("checkbox").check();
+  await confirm.getByRole("switch").check();
   await confirm.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(
     connectedCard.getByRole("button", { name: "Test opening", exact: true }),
@@ -218,7 +218,7 @@ try {
   await connectedCard
     .getByRole("button", { name: "Test opening", exact: true })
     .click();
-  await confirm.getByRole("checkbox").check();
+  await confirm.getByRole("switch").check();
   await confirm.getByRole("button", { name: "Send unlock request" }).click();
   await expect(
     page.getByText("Request accepted by device provider", { exact: true }),
@@ -233,7 +233,7 @@ try {
     .click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(confirm).toContainText("permanently deletes");
-  await confirm.getByRole("checkbox").check();
+  await confirm.getByRole("switch").check();
   await confirm.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(page.locator(".door-list > li")).toHaveCount(1);
   expect((await request("doors")).map((d: any) => d.id)).toEqual([

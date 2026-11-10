@@ -7,7 +7,6 @@
   import { Label } from "$lib/components/ui/label";
   import { Textarea } from "$lib/components/ui/textarea";
   import { Badge } from "$lib/components/ui/badge";
-  import { Checkbox } from "$lib/components/ui/checkbox";
   import { Switch } from "$lib/components/ui/switch";
   import { Separator } from "$lib/components/ui/separator";
   import * as Card from "$lib/components/ui/card";
@@ -477,7 +476,7 @@
       </Card.Header>
       <Card.Content>
         <div class="flex items-center gap-3">
-          <Checkbox id="door-action-confirm" bind:checked={acknowledged} />
+          <Switch id="door-action-confirm" bind:checked={acknowledged} />
           <Label for="door-action-confirm"
             >{l("I understand and confirm", "Ho compreso e confermo")}</Label
           >

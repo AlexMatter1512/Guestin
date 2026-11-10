@@ -265,7 +265,7 @@ try {
     exact: true,
   });
   await expect(wipe).toBeDisabled();
-  await page.getByRole("checkbox", { name: /I have a backup/ }).check();
+  await page.getByRole("switch", { name: /I have a backup/ }).check();
   await page
     .getByLabel("Current password", { exact: true })
     .fill("wrong-password");

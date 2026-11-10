@@ -67,7 +67,7 @@ Copy the setup token from the logs and create your owner account at `/host/`.
 
 ## Install it on your phone
 
-The onboarding tour walks you through installation and notification access. You can also manage these later in the host app.
+The onboarding tour walks you through installation and notification access. **Settings → Install app** keeps the iOS and Android instructions available later.
 
 - **Android and desktop:** use the install action when your browser offers it, or the browser's install menu.
 - **iPhone and iPad:** open the app in Safari, choose **Share → Add to Home Screen**, then open the installed app to enable notifications.
@@ -80,19 +80,23 @@ You can keep using the app if you skip installation or notifications. Door openi
 
 **iCal:** upload a calendar or fetch a saved calendar URL, inspect its events, then choose the door those events belong to. For example, a calendar for “Room 2” maps to the Room 2 door. In the draft, you can add the main entrance or other doors before saving. Importing a calendar alone creates no access codes.
 
-**Screenshots:** optionally configure a Gemini API key and review the extracted guest details and dates before saving.
+**AI:** optionally connect a Gemini API key and extract guest details from a screenshot. KrossBooking, iCal and AI each show source details, mapped doors, dates and links before you choose **Use details in access code**. You still review and save the final form yourself.
 
-All connectors are optional. You can create your first access code without configuring any of them.
+All connectors are optional. You can create your first access code without configuring any of them. Set reusable check-in and instructions links under **Settings → Guest links** for each structure. New forms use those defaults; reservation-specific links from a connector take priority. New breakfast allowances start the day after arrival by default, with editable dates.
 
 ## Notification history and push
 
 The bell shows the selected structure’s history for everyone on your team. Notifications are kept for **three months** by default. Change that period under **Settings → Notifications**; older entries are automatically deleted. Statistics are preserved independently.
+
+While the host app is open, notifications, access-code lists, and usage counts update over an authenticated WebSocket. Lists animate additions and changes, respecting reduced-motion preferences. Access-code creation can notify the team with the creator, code name, and validity dates. Save in-app preferences without enabling browser push.
 
 Push notifications are optional. Each device chooses the structures and event types it receives. History and push messages support Italian and English and include the access-code name when available. You can also receive alerts for invalid guest links, including attempts to load the guest page. Repeated attempts with the same link are throttled. Changing push filters does not hide or delete the shared history.
 
 Guest links keep their access code in the address, including when guests change pages or language. The token is never saved in browser storage. For visit history, the browser remembers just the last code’s name and visit date to help explain later invalid-link attempts; this history is an unverified hint, never proof of access.
 
 ## Updates and backups
+
+Owners can download a portable **JSON backup** under **Settings → Data management**, then upload it on another oshost installation. It includes structures, doors, guest tokens, permissions, usage, breakfast redemptions and history. Photos, user accounts and booking connector logins are excluded. Restore adds missing records and preserves the current state of existing ones. **The file contains guest tokens and device credentials: keep it private.**
 
 Docker images are released from version tags. Changes pushed to `main` run checks; they do not update the published image.
 

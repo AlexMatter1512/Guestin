@@ -312,6 +312,16 @@ export function wallTime(date: string, time: string, timezone: string) {
   }
   throw Error("This local time does not exist; select another time");
 }
+export type CalendarAccessDraft = Partial<AccessCodeDraft> & {
+  calendarDetails?: {
+    uid: string;
+    description: string;
+    location: string;
+    start: string;
+    end: string;
+    allDay: boolean;
+  };
+};
 export function calendarDrafts(
   text: string,
   options: {
@@ -324,11 +334,11 @@ export function calendarDrafts(
   },
   from = new Date(),
   max = 200,
-): Partial<AccessCodeDraft>[] {
+): CalendarAccessDraft[] {
   const component = new ICAL.Component(ICAL.parse(text));
   for (const tz of component.getAllSubcomponents("vtimezone"))
     ICAL.TimezoneService.register(new ICAL.Timezone(tz));
-  const drafts: Partial<AccessCodeDraft>[] = [];
+  const drafts: CalendarAccessDraft[] = [];
   const events = component.getAllSubcomponents("vevent");
   for (const sub of events) {
     if (sub.getFirstPropertyValue("recurrence-id")) continue;
@@ -378,6 +388,14 @@ export function calendarDrafts(
         ],
         breakfast: null,
         notes: "Imported calendar draft — review dates and guest details",
+        calendarDetails: {
+          uid: String(sub.getFirstPropertyValue("uid") ?? ""),
+          description: String(sub.getFirstPropertyValue("description") ?? ""),
+          location: String(sub.getFirstPropertyValue("location") ?? ""),
+          start: start.toString(),
+          end: end.toString(),
+          allDay: !!start.isDate,
+        },
       });
     };
     if (event.isRecurring()) {

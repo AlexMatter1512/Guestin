@@ -2,6 +2,7 @@ import { log, logError } from "./log";
 import { openDatabase } from "./db";
 import { createApp } from "./app";
 import { deliverPush } from "./push";
+import { realtime, websocket } from "./realtime";
 import { pruneNotifications } from "./notifications";
 import { resolve, extname } from "node:path";
 import {
@@ -75,11 +76,14 @@ const tls =
         key: Bun.file(process.env.TLS_KEY),
       }
     : undefined;
+const heartbeat = setInterval(() => realtime(db).heartbeat(), 25000);
 const server = Bun.serve({
+  websocket,
   hostname: "0.0.0.0",
   port: Number(process.env.PORT ?? 3000),
   fetch(request, server) {
     return app.fetch(request, {
+      server,
       clientIP:
         process.env.TRUST_PROXY === "1"
           ? (request.headers.get("x-real-ip") ??
@@ -88,13 +92,14 @@ const server = Bun.serve({
     });
   },
   tls,
-  maxRequestBodySize: 8 * 1024 * 1024,
+  maxRequestBodySize: 32 * 1024 * 1024,
 });
 log("info", "server.started", { port: server.port, tls: !!tls, schema: 4 });
 printSetupInstructions(db, secrets.SETUP_TOKEN);
 const stop = () => {
   log("info", "server.stopping");
   clearInterval(interval);
+  clearInterval(heartbeat);
   server.stop();
   db.close();
   process.exit(0);

@@ -106,7 +106,7 @@ try {
   await page
     .getByLabel("Nome ospite / etichetta", { exact: true })
     .fill("Primo ospite");
-  await page.getByRole("checkbox", { name: /Ingresso di esempio/ }).check();
+  await page.getByRole("switch", { name: /Ingresso di esempio/ }).check();
   await page
     .getByRole("button", { name: "Salva codice di accesso", exact: true })
     .click();

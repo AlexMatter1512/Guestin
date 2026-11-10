@@ -81,6 +81,8 @@ globalThis.fetch = (async (input: any, init?: RequestInit) => {
             arrival: "2030-04-03",
             departure: "2030-04-05",
             rooms: [{ number: "Suite 1" }],
+            email: "fixture-guest@example.test",
+            notes: "Arrival by train",
             link_guest_portal: "https://example.com/checkin",
             link_check_in_instructions: "https://example.com/instructions",
           },
@@ -102,6 +104,13 @@ globalThis.fetch = (async (input: any, init?: RequestInit) => {
                     : JSON.stringify({
                         label: "Extracted Guest",
                         doors: ["Suite 1"],
+                        ...(geminiState === "complete"
+                          ? {
+                              start: "2030-04-03T13:00:00Z",
+                              end: "2030-04-05T09:00:00Z",
+                              breakfastTotal: 3,
+                            }
+                          : {}),
                       }),
               },
             ],
@@ -174,6 +183,8 @@ try {
   const property = await api("properties", {
     name: "Connector property",
     timezone: "Europe/Rome",
+    defaultCheckinLink: "https://example.com/default-checkin",
+    defaultInstructionsLink: "https://example.com/default-instructions",
   });
   const door = await api("doors", {
     propertyId: property.id,
@@ -269,6 +280,26 @@ try {
   await page
     .getByRole("button", { name: /Fixture Guest.*Review draft/ })
     .click();
+  const imported = page.getByRole("dialog", {
+    name: "Review imported details",
+    exact: true,
+  });
+  await expect(imported).toBeVisible();
+  await expect(imported).toContainText("Source rooms");
+  await expect(imported).toContainText("fixture-guest@example.test");
+  await expect(imported).toContainText("Arrival by train");
+  await expect(imported).toContainText("Suite 1");
+  expect((await api("codes")).length).toBe(0);
+  await imported.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(
+    page.getByLabel("Guest name / label", { exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: /Fixture Guest.*Review draft/ })
+    .click();
+  await imported
+    .getByRole("button", { name: "Use details in access code", exact: true })
+    .click();
   await expect(
     page.getByLabel("Guest name / label", { exact: true }),
   ).toHaveValue("Fixture Guest");
@@ -336,11 +367,20 @@ try {
   await page
     .getByRole("button", { name: /Calendar Guest.*Review draft/ })
     .click();
+  await expect(imported).toBeVisible();
+  await expect(imported).toContainText("calendar end is exclusive");
+  expect((await api("codes")).length).toBe(0);
+  await imported
+    .getByRole("button", { name: "Use details in access code", exact: true })
+    .click();
   await expect(
     page.getByLabel("Guest name / label", { exact: true }),
   ).toHaveValue("Calendar Guest");
   await expect(
-    page.getByRole("checkbox", { name: "Suite 1", exact: true }),
+    page.getByLabel("Online check-in link", { exact: true }),
+  ).toHaveValue("https://example.com/default-checkin");
+  await expect(
+    page.getByRole("switch", { name: "Suite 1", exact: true }),
   ).toBeChecked();
   await expect(page.getByLabel("Valid from", { exact: true })).toHaveValue(
     `${start.slice(0, 4)}-${start.slice(4, 6)}-${start.slice(6, 8)}T15:00`,
@@ -351,9 +391,7 @@ try {
   expect((await api("codes")).length).toBe(0);
   await page.goto(origin + "/host/#/connectors/gemini");
   await page.getByLabel("Gemini API key", { exact: true }).fill("fixture-key");
-  await page
-    .getByRole("button", { name: "Connect Gemini", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Connect AI", exact: true }).click();
   await expect(page.getByLabel("Screenshot", { exact: true })).toBeVisible();
   const png = Buffer.from(
     await page.evaluate(() => {
@@ -381,11 +419,41 @@ try {
   await expect(
     page.getByText("Extracted Guest", { exact: true }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Review draft", exact: true }).click();
+  await expect(imported).toBeVisible();
+  await expect(imported).toContainText("Source image");
+  await expect(imported).toContainText(
+    "No doors could be mapped with valid dates",
+  );
+  await imported.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.getByText("Extracted Guest", { exact: true })).toHaveCount(
     0,
   );
   expect((await api("codes")).length).toBe(0);
+  geminiState = "complete";
+  await page
+    .getByLabel("Screenshot", { exact: true })
+    .setInputFiles({ name: "fixture.png", mimeType: "image/png", buffer: png });
+  await page
+    .getByRole("button", { name: "Extract details", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Review draft", exact: true }).click();
+  await expect(imported).toContainText("2030-04-04");
+  await imported
+    .getByRole("button", { name: "Use details in access code", exact: true })
+    .click();
+  await expect(
+    page.getByRole("switch", { name: "Include breakfast", exact: true }),
+  ).toBeChecked();
+  await expect(
+    page.getByLabel("First breakfast date", { exact: true }),
+  ).toHaveValue("2030-04-04");
+  await expect(
+    page.getByLabel("Total breakfasts", { exact: true }),
+  ).toHaveValue("3");
+  expect((await api("codes")).length).toBe(0);
+  await page.getByRole("button", { name: "Discard", exact: true }).click();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

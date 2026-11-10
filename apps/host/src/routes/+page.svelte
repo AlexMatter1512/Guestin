@@ -1,9 +1,22 @@
 <script lang="ts">
-  import { notificationTypes } from "../../../../shared/notifications";
+  import {
+    notificationText,
+    wantsNotification,
+    notificationTypes,
+  } from "../../../../shared/notifications";
+  import { connectLive } from "$lib/live";
+  import { flip } from "svelte/animate";
   import AccessCalendar from "$lib/components/AccessCalendar.svelte";
   import * as Popover from "$lib/components/ui/popover";
   import { buttonVariants } from "$lib/components/ui/button";
-  import { Checkbox } from "$lib/components/ui/checkbox";
+  import { Switch } from "$lib/components/ui/switch";
+  import GuestLinksSettings from "$lib/components/GuestLinksSettings.svelte";
+  import InstallAppInfo from "$lib/components/InstallAppInfo.svelte";
+  import JsonBackup from "$lib/components/JsonBackup.svelte";
+  import {
+    guestLinkDefaults,
+    breakfastDefaults,
+  } from "../../../../shared/draft-defaults";
   import { Input } from "$lib/components/ui/input";
   import { Textarea } from "$lib/components/ui/textarea";
   import { Label } from "$lib/components/ui/label";
@@ -36,6 +49,7 @@
     Bell,
     Coffee,
     Database,
+    Download,
     Copy,
     Link,
     Share2,
@@ -83,7 +97,7 @@
   import { wallTime } from "../../../../shared/connectors";
   import Button from "$lib/components/ui/button/button.svelte";
   let user = $state<any>(null),
-    csrf = "",
+    csrf = $state(""),
     ready = $state(false),
     needsSetup = $state(false),
     error = $state(""),
@@ -136,6 +150,20 @@
   let copyInput = $state<HTMLTextAreaElement | null>(null);
   const settingItems = [
     {
+      id: "install",
+      title: "Install app",
+      description: "Add oshost to your iPhone or Android Home Screen",
+      icon: Download,
+      group: "Preferences",
+    },
+    {
+      id: "guest-links",
+      title: "Guest links",
+      description: "Default check-in and instructions links",
+      icon: Link,
+      group: "Workspace",
+    },
+    {
       id: "appearance",
       title: "Appearance",
       description: "Light, dark or follow your device",
@@ -166,7 +194,7 @@
     {
       id: "connectors",
       title: "Connectors",
-      description: "KrossBooking, calendars and image import",
+      description: "KrossBooking, calendars and AI",
       icon: Plug,
       group: "Workspace",
     },
@@ -572,7 +600,6 @@
     pIn = $state("15:00"),
     pOut = $state("11:00");
   let editingDoor = $state("");
-  let date = $state(new Date().toISOString().slice(0, 10));
   let templates = $state<any>(structuredClone(defaultTemplates)),
     templatesLoading = $state(false),
     templateLang = $state("en"),
@@ -720,6 +747,62 @@
       await restoreDevicePushPreferences();
     }
   }
+  let liveRevision = $state(0);
+  $effect(() => {
+    const account = user?.id;
+    if (!account || !csrf) return;
+    let stopped = false;
+    let refreshing = false;
+    let pending = false;
+    async function refreshLive() {
+      pending = true;
+      if (refreshing) return;
+      refreshing = true;
+      try {
+        while (pending && !stopped) {
+          pending = false;
+          const [nextCodes, nextReports] = await Promise.all([
+            api("codes"),
+            api("reports"),
+          ]);
+          if (stopped || user?.id !== account) return;
+          codes = nextCodes;
+          reports = nextReports;
+          liveRevision++;
+        }
+      } catch {
+        /* Reconnection or the next event retries the snapshot. */
+      } finally {
+        refreshing = false;
+      }
+    }
+    const disconnect = connectLive((message) => {
+      if (stopped || user?.id !== account) return;
+      void refreshLive();
+      const event = message.event;
+      if (
+        message.type === "activity" &&
+        event &&
+        wantsNotification(
+          {
+            properties: pushProperties,
+            allProperties: pushAllProperties,
+            events: pushEvents.split(",").filter(Boolean),
+            allEvents: pushAllEvents,
+          },
+          event.property_id,
+          event.type,
+        )
+      ) {
+        const text = notificationText(event, hostLanguage.current);
+        notice = `${text.title}: ${text.body}`;
+      }
+    });
+    return () => {
+      stopped = true;
+      disconnect();
+    };
+  });
   let pushLoadedFor = "";
   async function restoreDevicePushPreferences() {
     const account = user?.id;
@@ -940,8 +1023,6 @@
       propertyId: p?.id ?? "",
       label: "",
       notes: "",
-      checkinLink: "",
-      instructionsLink: "",
       grants: doors
         .filter((d) => d.propertyId === p?.id && d.common)
         .map((d) => ({
@@ -952,6 +1033,7 @@
         })),
       breakfast: null,
       ...value,
+      ...guestLinkDefaults(p, value),
     };
     editing = true;
     tab = "Codes";
@@ -1222,7 +1304,7 @@
               ? {
                   kross: "KrossBooking",
                   ical: "Calendars",
-                  gemini: "Image import",
+                  gemini: "AI",
                 }[connectorView]
               : tab === "Reports"
                 ? "Statistics"
@@ -1717,9 +1799,29 @@
                       /></Label
                     ><Label class="field-label"
                       >{t("Property")}<NativeSelect.Root
+                        aria-label={t("Property")}
                         class="w-full"
-                        bind:value={draft.propertyId}
-                        onchange={() => {
+                        value={draft.propertyId}
+                        onchange={(event) => {
+                          const previous = properties.find(
+                              (p) => p.id === draft.propertyId,
+                            ),
+                            next = properties.find(
+                              (p) => p.id === event.currentTarget.value,
+                            );
+                          if (
+                            !draft.checkinLink ||
+                            draft.checkinLink === previous?.defaultCheckinLink
+                          )
+                            draft.checkinLink = next?.defaultCheckinLink ?? "";
+                          if (
+                            !draft.instructionsLink ||
+                            draft.instructionsLink ===
+                              previous?.defaultInstructionsLink
+                          )
+                            draft.instructionsLink =
+                              next?.defaultInstructionsLink ?? "";
+                          draft.propertyId = event.currentTarget.value;
                           draft.grants = [];
                           if (tourVisible) changeTourProperty(draft.propertyId);
                         }}
@@ -1758,7 +1860,7 @@
                       draft.grants.find((g) => g.doorId === d.id)}
                     <div class="door">
                       <Label class="inline"
-                        ><Checkbox
+                        ><Switch
                           checked={!!grant}
                           onCheckedChange={(checked) => selectDoor(d, checked)}
                         />{d.name}{d.common
@@ -1789,7 +1891,7 @@
                               required
                             /></Label
                           ><Label class="inline"
-                            ><Checkbox bind:checked={grant.singleUse} />{t(
+                            ><Switch bind:checked={grant.singleUse} />{t(
                               "Single use",
                             )}</Label
                           >
@@ -1802,11 +1904,15 @@
                 </Card.Root>
                 <Card.Root class="workspace-card stack">
                   <Label class="inline"
-                    ><Checkbox
+                    ><Switch
                       checked={!!draft.breakfast}
                       onCheckedChange={(checked) =>
                         (draft.breakfast = checked
-                          ? { total: 1, start: date, end: date }
+                          ? breakfastDefaults(
+                              draft,
+                              properties.find((p) => p.id === draft.propertyId)
+                                ?.timezone ?? "UTC",
+                            )
                           : null)}
                     />{t("Include breakfast")}</Label
                   >{#if draft.breakfast}<div class="form-grid">
@@ -2116,6 +2222,12 @@
                 </div>{/if}
               <Item.Group class="code-list workspace-list">
                 {#each filtered as c (c.id)}<article
+                    animate:flip={{ duration: reducedMotion.current ? 0 : 220 }}
+                    transition:fly={{
+                      y: 8,
+                      duration: reducedMotion.current ? 0 : 180,
+                      easing: cubicOut,
+                    }}
                     class="code-row"
                     data-code-id={c.id}
                   >
@@ -2229,6 +2341,7 @@
                   </div>{/each}
               </Item.Group>{/if}
           {:else if tab === "Activity"}<NotificationHistory
+              refreshToken={liveRevision}
               {propertyId}
               propertyName={property?.name ?? ""}
               retentionMonths={property?.notificationRetentionMonths ?? 3}
@@ -2506,7 +2619,16 @@
                 {reload}
               />
               <Card.Root class="workspace-card stack">
-                <h2>{t("Push on this device")}</h2>
+                <h2>
+                  {hostLanguage.current === "it"
+                    ? "Notifiche su questo dispositivo"
+                    : "Notifications on this device"}
+                </h2>
+                <p class="muted">
+                  {hostLanguage.current === "it"
+                    ? "Le preferenze qui sotto controllano gli avvisi nell’app. Abilita le notifiche push per riceverli anche quando l’app è chiusa."
+                    : "The preferences below control in-app alerts. Enable push to receive them when the app is closed too."}
+                </p>
                 <p class="muted">
                   {t(
                     "Install this app from your browser menu. On iPhone: Share → Add to Home Screen, then enable notifications here.",
@@ -2529,7 +2651,7 @@
                 >
                 <div class="row">
                   <Label class="inline"
-                    ><Checkbox
+                    ><Switch
                       checked={pushAllProperties}
                       onCheckedChange={(checked) => {
                         pushAllProperties = !!checked;
@@ -2539,7 +2661,7 @@
                   >
                   {#each properties as p, index (p.id ?? index)}<Label
                       class="inline"
-                      ><Checkbox
+                      ><Switch
                         checked={pushAllProperties ||
                           pushProperties.includes(p.id)}
                         onCheckedChange={(checked) => {
@@ -2558,7 +2680,7 @@
                 <fieldset class="stack">
                   <legend>{t("Notify me about")}</legend>
                   <Label class="inline"
-                    ><Checkbox
+                    ><Switch
                       checked={pushAllEvents}
                       onCheckedChange={(checked) => {
                         pushAllEvents = !!checked;
@@ -2566,9 +2688,9 @@
                       }}
                     />{t("All activity types")}</Label
                   >
-                  {#each [["access.accepted", "Access accepted"], ["access.denied", "Access denied"], ["access.failed", "Device failures"], ["access.uncertain", "Uncertain requests"], ["access.invalid", "Invalid access code attempts (including page loads)"], ["breakfast.redeemed", "Breakfast usage"], ["breakfast.denied", "Rejected breakfasts"]] as option (option[0])}<Label
+                  {#each [["code.created", "Access code created"], ["access.accepted", "Access accepted"], ["access.denied", "Access denied"], ["access.failed", "Device failures"], ["access.uncertain", "Uncertain requests"], ["access.invalid", "Invalid access code attempts (including page loads)"], ["breakfast.redeemed", "Breakfast usage"], ["breakfast.denied", "Rejected breakfasts"]] as option (option[0])}<Label
                       class="inline"
-                      ><Checkbox
+                      ><Switch
                         checked={pushAllEvents ||
                           pushEvents.split(",").includes(option[0])}
                         onCheckedChange={(checked) => {
@@ -2585,6 +2707,28 @@
                     >{/each}
                 </fieldset>
                 <div class="row">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onclick={() => {
+                      localStorage.setItem(
+                        "oshost.push." + user.id,
+                        JSON.stringify({
+                          properties: pushProperties,
+                          events: pushEvents.split(",").filter(Boolean),
+                          allEvents: pushAllEvents,
+                          allProperties: pushAllProperties,
+                        }),
+                      );
+                      notice =
+                        hostLanguage.current === "it"
+                          ? "Preferenze nell’app salvate."
+                          : "In-app preferences saved.";
+                    }}
+                    >{hostLanguage.current === "it"
+                      ? "Salva preferenze nell’app"
+                      : "Save in-app preferences"}</Button
+                  >
                   <Button
                     type="button"
                     variant="outline"
@@ -2616,6 +2760,13 @@
                   >
                 </div>
               </Card.Root>
+            {:else if settingsPage === "install"}<InstallAppInfo />
+            {:else if settingsPage === "guest-links"}<GuestLinksSettings
+                {property}
+                owner={user.role === "owner"}
+                {api}
+                {reload}
+              />
             {:else if settingsPage === "properties"}
               {#if propertyForm && user.role === "owner"}<form
                   data-tour="property-form"
@@ -2755,15 +2906,10 @@
                 {api}
                 {reload}
               />
-            {:else if settingsPage === "data" && user.role === "owner"}<div
-                class="page-intro"
-              >
-                <p>
-                  {t(
-                    "Export a backup on the server before resetting the workspace.",
-                  )}
-                </p>
-              </div>
+            {:else if settingsPage === "data" && user.role === "owner"}<JsonBackup
+                {api}
+                {reload}
+              />
               <Card.Root class="workspace-card stack danger-zone">
                 <h2>{t("Danger zone")}</h2>
                 <p>
@@ -2798,7 +2944,7 @@
                       )}
                     </p>
                     <Label class="inline"
-                      ><Checkbox bind:checked={wipeAcknowledged} required />{t(
+                      ><Switch bind:checked={wipeAcknowledged} required />{t(
                         "I have a backup or accept permanent data loss, and I have the setup token.",
                       )}</Label
                     >

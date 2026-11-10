@@ -2,6 +2,9 @@ export type NotificationContext = {
   codeLabel?: string;
   doorName?: string;
   actor?: string;
+  validFrom?: string;
+  validTo?: string;
+  timezone?: string;
   detail?: string;
   action?: "page" | "door" | "breakfast";
   previousVisit?: { label: string; date: string };
@@ -105,6 +108,21 @@ export function notificationText(
       body += it
         ? ` Questo browser dichiara una visita precedente: ${context.previousVisit.label} (${context.previousVisit.date}). Informazione non verificata.`
         : ` This browser reports a previous visit: ${context.previousVisit.label} (${context.previousVisit.date}). Unverified information.`;
+  } else if (event.type === "code.created" && context.actor) {
+    const date = (value: string) =>
+      new Date(value).toLocaleString(it ? "it-IT" : "en-GB", {
+        timeZone: context.timezone ?? "UTC",
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+    body = it
+      ? `${context.actor} ha creato il codice di accesso ${label ?? ""}`
+      : `${context.actor} created access code ${label ?? ""}`;
+    if (context.validFrom && context.validTo)
+      body += it
+        ? ` valido dal ${date(context.validFrom)} al ${date(context.validTo)}`
+        : ` valid from ${date(context.validFrom)} to ${date(context.validTo)}`;
+    if (context.timezone) body += ` (${context.timezone})`;
   } else if (event.type === "breakfast.redeemed") {
     const count = /^([0-9]+) breakfast/.exec(event.message)?.[1];
     body = count
