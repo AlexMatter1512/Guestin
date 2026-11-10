@@ -46,6 +46,15 @@ Properties also contain `defaultCheckinLink` and `defaultInstructionsLink`. Owne
 - `POST /doors/:id/test`: owner-only, explicitly confirmed device test, with an idempotency key. Disabled doors can be tested without enabling guest access or consuming a code grant.
 - `POST /doors/:id/resolve-test`: resolve an uncertain test after checking the device.
 
+## Email delivery and account recovery
+
+- `GET /auth/status` also reports `smtpConfigured`. Authenticated `GET /mail/status` returns `{configured}`.
+- Owner-only `GET`, `PUT` and `DELETE /admin/smtp` manage `{host,port,security,username,password,from,fromName}`. Security is `tls`, `starttls` or `plain`. Reads omit the password and report `hasPassword`; a blank password on save preserves it only when the username and host match. Settings are encrypted with `APP_KEY`. `POST /admin/smtp/test` sends a test message to the current owner.
+- Authenticated `POST /me/verify-email` sends a verification link. Public `POST /auth/verify-email` consumes `{token}`. Verification is tied to the account's current email address.
+- Public `POST /auth/password-reset-request` accepts `{email,method:"owner"|"email"}` and returns the same acknowledgement for unknown or ineligible accounts. Owner assistance records one pending request and an owner-only `account.reset_requested` notification linking to Team settings. Email recovery requires configured SMTP and a verified address; sends are limited to one per account/purpose per minute.
+- Owner-only `POST /users/:id/password-reset-link` returns `{url,expires}` for private sharing and clears the pending request. Public `POST /auth/reset-password` consumes `{token,password}` with a 12–200 character password. Reset and verification links expire after ten minutes, are single-use, and are invalidated by changes to the account email or password. New links replace earlier links of the same kind. A password reset revokes all account sessions and outstanding links.
+- User responses include `emailVerified` and `passwordResetRequestedAt`. Collaborators cannot read owner-only reset-request events through history, unread counts, realtime or push delivery.
+
 ## Access codes and guest actions
 
 - `GET /codes`, `POST /codes`, `PUT /codes/:id`: codes contain a property, label, optional notes/message links, per-door grants, and an optional breakfast allowance. Each grant has UTC `start`/`end` instants and a `singleUse` setting. Breakfast dates are inclusive property-local dates.
