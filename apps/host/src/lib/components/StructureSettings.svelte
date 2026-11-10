@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { demoNavigate } from "../../../../../shared/demo-workspace";
+  import { demoMode } from "$lib/transport";
   import FeedbackToast from "$lib/components/FeedbackToast.svelte";
   import { untrack } from "svelte";
   import * as Card from "$lib/components/ui/card";
@@ -167,7 +169,13 @@
           )}
         </p>
         <Button
-          href={"/breakfast/" + property.id}
+          onclick={(event) => {
+            if (demoMode && demoNavigate("cafe", property.id))
+              event.preventDefault();
+          }}
+          href={(demoMode ? "/demo/host/breakfast/" : "/breakfast/") +
+            property.id +
+            (demoMode ? "/" : "")}
           target="_blank"
           rel="noreferrer"
           variant="outline"

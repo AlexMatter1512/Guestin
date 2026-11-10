@@ -5,7 +5,7 @@ disposable data, never occupied properties or real guest links.
 
 ## Report a vulnerability privately
 
-Use [GitHub private vulnerability reporting](https://github.com/AlexMatter1512/oshost/security/advisories/new).
+Use [GitHub private vulnerability reporting](https://github.com/AlexMatter1512/guestin/security/advisories/new).
 Include the affected version or commit, impact, and minimal reproduction using
 dummy accounts and tokens. Remove passwords, live guest links, booking records,
 device credentials, backups, and runtime keys from attachments and logs.

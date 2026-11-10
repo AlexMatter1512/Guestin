@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { demoGuestRequest } from "../../../../shared/demo-guest";
+  const demoMode = import.meta.env.MODE === "demo";
   import { migrateBrowserPreferences } from "../../../../shared/browser-brand";
   import { dateSettings } from "$lib/date-settings.svelte";
   import {
@@ -207,6 +209,8 @@
     };
   });
   async function request(path = "", body?: any, key?: string) {
+    if (demoMode)
+      return demoGuestRequest(path, body, guestTokenFromURL(location.href));
     const credential = guestTokenFromURL(location.href);
     let hint: { label: string; date: string } | undefined;
     try {

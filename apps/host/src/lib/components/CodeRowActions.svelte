@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { demoMode } from "$lib/transport";
+  import { demoNavigate } from "../../../../../shared/demo-workspace";
   import { Copy, Ellipsis, ExternalLink, Share2 } from "@lucide/svelte";
   import * as Popover from "$lib/components/ui/popover";
   import { Button, buttonVariants } from "$lib/components/ui/button";
@@ -47,11 +49,17 @@
       <a
         class={cn(buttonVariants({ variant: "ghost" }), "code-menu-action")}
         href={link}
+        onclick={(event) => {
+          open = false;
+          if (demoMode) {
+            const token = new URLSearchParams(
+              new URL(link, location.href).hash.slice(1),
+            ).get("code");
+            if (token && demoNavigate("guest", token)) event.preventDefault();
+          }
+        }}
         target="_blank"
         rel="noopener noreferrer"
-        onclick={() => {
-          open = false;
-        }}
       >
         <ExternalLink size={18} />{t("Open link")}
       </a>

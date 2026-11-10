@@ -11,7 +11,7 @@
     <meta name="theme-color" content="#ffffff" />
     <script>
       try {
-        const p = localStorage.getItem("guestin.theme") || "system";
+        const p = location.pathname.startsWith("/demo/") ? "light" : localStorage.getItem("guestin.theme") || "system";
         const d =
           p === "dark" ||
           (p === "system" &&

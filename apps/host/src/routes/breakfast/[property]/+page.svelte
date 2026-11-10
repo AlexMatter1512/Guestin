@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { demoCafeTotals } from "../../../../../../shared/demo-guest";
+  const demoMode = import.meta.env.MODE === "demo";
   import { onMount } from "svelte";
   import { page } from "$app/state";
   import { parseDate, type DateValue } from "@internationalized/date";
@@ -69,7 +71,17 @@
           })
         : "";
     try {
-      const response = await fetch(endpoint + query, { cache: "no-store" });
+      const response = demoMode
+        ? new Response(
+            JSON.stringify(
+              demoCafeTotals(
+                range.start?.toString(),
+                range.end?.toString(),
+                propertyId,
+              ),
+            ),
+          )
+        : await fetch(endpoint + query, { cache: "no-store" });
       const next = await response.json();
       if (ticket !== revision || stopped) return;
       if (response.status === 401 && next.requiresPassword) {
@@ -130,6 +142,10 @@
     }
   }
   function connect() {
+    if (demoMode) {
+      connected = true;
+      return;
+    }
     if (stopped || locked || socket || !data) return;
     const ws = new WebSocket(
       `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}${endpoint}/live`,
@@ -191,6 +207,11 @@
     }
   }
   async function toggleNotifications() {
+    if (demoMode) {
+      notifications = !notifications;
+      notificationStatus = "page";
+      return;
+    }
     if (notifications) {
       notifications = false;
       notificationStatus = "";

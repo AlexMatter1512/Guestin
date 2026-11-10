@@ -1,3 +1,4 @@
+import { hostStorage } from "$lib/demo-storage";
 export type HostLocale = "en" | "it";
 export const hostLanguage = $state({ current: "en" as HostLocale });
 const italian: Record<string, string> = {
@@ -602,7 +603,7 @@ export function t(source: string) {
     : source;
 }
 export function savedHostLocale(userId: string): HostLocale | null {
-  const locale = localStorage.getItem("guestin.host.locale." + userId);
+  const locale = hostStorage.getItem("guestin.host.locale." + userId);
   return locale === "it" || locale === "en" ? locale : null;
 }
 export function restoreHostLocale(userId: string) {
@@ -610,5 +611,5 @@ export function restoreHostLocale(userId: string) {
 }
 export function setHostLocale(userId: string, locale: HostLocale) {
   hostLanguage.current = locale;
-  localStorage.setItem("guestin.host.locale." + userId, locale);
+  hostStorage.setItem("guestin.host.locale." + userId, locale);
 }

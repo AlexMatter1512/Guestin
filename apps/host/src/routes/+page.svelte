@@ -1,4 +1,8 @@
 <script lang="ts">
+  import { hostStorage } from "$lib/demo-storage";
+  import { appendDemoNotification } from "../../../../shared/demo-notifications";
+  import { demoNavigate } from "../../../../shared/demo-workspace";
+  import { demoMode, demoTransport } from "$lib/transport";
   import DateInput from "$lib/components/DateInput.svelte";
   import { migrateBrowserPreferences } from "../../../../shared/browser-brand";
   import {
@@ -172,8 +176,8 @@
     );
     deleteTarget = null;
     if (self) {
-      localStorage.removeItem("guestin.draft." + deletingUserId);
-      localStorage.removeItem("guestin.draft.lastUser");
+      hostStorage.removeItem("guestin.draft." + deletingUserId);
+      hostStorage.removeItem("guestin.draft.lastUser");
       resetAccountUI();
       user = null;
       csrf = "";
@@ -395,8 +399,8 @@
       .slice(0, 10);
   }
   function signedOut() {
-    localStorage.removeItem("guestin.draft." + user.id);
-    localStorage.removeItem("guestin.draft.lastUser");
+    hostStorage.removeItem("guestin.draft." + user.id);
+    hostStorage.removeItem("guestin.draft.lastUser");
     resetAccountUI();
     user = null;
     csrf = "";
@@ -526,7 +530,7 @@
     theme = user.preferences?.theme ?? "system";
     try {
       const saved = JSON.parse(
-        localStorage.getItem("guestin.push." + user.id) ?? "null",
+        hostStorage.getItem("guestin.push." + user.id) ?? "null",
       );
       if (saved) {
         pushProperties = saved.properties ?? [];
@@ -575,9 +579,9 @@
       "Activity",
     ].find((n) => n.toLowerCase() === destination);
     if (!found) return;
-    const savedDraft = user && localStorage.getItem("guestin.draft." + user.id);
+    const savedDraft = user && hostStorage.getItem("guestin.draft." + user.id);
     const savedEditId =
-      user && localStorage.getItem("guestin.draft.editId." + user.id);
+      user && hostStorage.getItem("guestin.draft.editId." + user.id);
     const canRestore =
       savedDraft &&
       (id === "new" ? !savedEditId : action === "edit" && savedEditId === id);
@@ -649,7 +653,7 @@
           `/host/manifest.webmanifest?theme=${effectiveTheme}`,
         );
       try {
-        localStorage.setItem("guestin.theme", theme);
+        hostStorage.setItem("guestin.theme", theme);
       } catch {
         /* Storage is optional. */
       }
@@ -738,8 +742,8 @@
       password: wipePassword,
       confirmation: wipeConfirmation,
     });
-    for (const key of Object.keys(localStorage))
-      if (key.startsWith("guestin.")) localStorage.removeItem(key);
+    for (const key of Object.keys(hostStorage))
+      if (key.startsWith("guestin.")) hostStorage.removeItem(key);
     sessionStorage.clear();
     location.replace("/host/");
   }
@@ -873,6 +877,7 @@
     method = body === undefined ? "GET" : "POST",
     headers: Record<string, string> = {},
   ) {
+    if (demoMode) return demoTransport(path, body, method, headers);
     const r = await fetch("/api/v1/" + path, {
       method,
       headers: {
@@ -928,7 +933,7 @@
   let liveRevision = $state(0);
   $effect(() => {
     const account = user?.id;
-    if (!account || !csrf) return;
+    if (demoMode || !account || !csrf) return;
     let stopped = false;
     let refreshing = false;
     let pending = false;
@@ -974,7 +979,7 @@
           })
           .catch((e) => {
             if (e.status === 401) {
-              localStorage.removeItem("guestin.draft.lastUser");
+              hostStorage.removeItem("guestin.draft.lastUser");
               resetAccountUI();
               user = null;
               csrf = "";
@@ -1037,10 +1042,11 @@
   });
   let pushLoadedFor = "";
   async function restoreDevicePushPreferences() {
+    if (demoMode) return;
     const account = user?.id;
     try {
       if (
-        localStorage.getItem("guestin.push." + account) ||
+        hostStorage.getItem("guestin.push." + account) ||
         !("serviceWorker" in navigator) ||
         !globalThis.crypto?.subtle
       )
@@ -1063,16 +1069,53 @@
         pushEvents = (saved.events ?? []).join(",");
         pushAllEvents = saved.allEvents ?? !saved.events?.length;
         pushAllProperties = saved.allProperties ?? !saved.properties?.length;
-        localStorage.setItem("guestin.push." + account, JSON.stringify(saved));
+        hostStorage.setItem("guestin.push." + account, JSON.stringify(saved));
       }
     } catch {
       /* Unsupported browsers keep local selection; history is always available. */
     }
   }
   onMount(() => {
-    migrateBrowserPreferences(localStorage);
+    migrateBrowserPreferences(hostStorage);
     migrateBrowserPreferences(sessionStorage);
-    const stopInstallTracking = appInstallation.listen();
+    const stopInstallTracking = demoMode ? () => {} : appInstallation.listen();
+    let demoTimer: ReturnType<typeof setTimeout>;
+    function scheduleDemoNotice() {
+      demoTimer = setTimeout(
+        () => {
+          if (user && document.visibilityState === "visible") {
+            const event = appendDemoNotification(propertyId);
+            if (event) {
+              liveRevision++;
+              void refreshUnread();
+              const text = notificationText(
+                event,
+                hostLanguage.current,
+                undefined,
+                dateSettings.format,
+              );
+              toast.custom(ActivityToast, {
+                id: event.id,
+                duration: 6000,
+                componentProps: {
+                  event,
+                  title: text.title,
+                  body: text.body,
+                  activate: async () => {
+                    await api("events/read", { eventIds: [event.id] });
+                    await refreshUnread();
+                    navigate("Activity");
+                  },
+                },
+              });
+            }
+          }
+          scheduleDemoNotice();
+        },
+        8000 + Math.random() * 8000,
+      );
+    }
+    if (demoMode) scheduleDemoNotice();
     const clockTimer = setInterval(() => (currentTime = Date.now()), 15000);
     const media = matchMedia("(prefers-color-scheme: dark)");
     const updateTheme = () => (systemDark = media.matches);
@@ -1088,18 +1131,17 @@
         applyPreferences();
         csrf = me.csrf;
         await reload();
-        const saved = localStorage.getItem("guestin.draft." + user.id);
+        const saved = hostStorage.getItem("guestin.draft." + user.id);
         if (saved) {
           draft = JSON.parse(saved);
-          editId =
-            localStorage.getItem("guestin.draft.editId." + user.id) ?? "";
+          editId = hostStorage.getItem("guestin.draft.editId." + user.id) ?? "";
           editing = true;
           notice = "Your unfinished draft has been restored.";
         }
       } catch {
-        const lastUser = localStorage.getItem("guestin.draft.lastUser");
+        const lastUser = hostStorage.getItem("guestin.draft.lastUser");
         const saved =
-          lastUser && localStorage.getItem("guestin.draft." + lastUser);
+          lastUser && hostStorage.getItem("guestin.draft." + lastUser);
         if (!navigator.onLine && saved) {
           draft = JSON.parse(saved);
           user = { id: lastUser, name: "Offline draft", role: "collaborator" };
@@ -1109,7 +1151,7 @@
             {
               id: draft.propertyId,
               name: "Draft property",
-              timezone: localStorage.getItem("guestin.draft.timezone") ?? "UTC",
+              timezone: hostStorage.getItem("guestin.draft.timezone") ?? "UTC",
             },
           ];
           propertyId = draft.propertyId;
@@ -1138,6 +1180,7 @@
     return () => {
       stopInstallTracking();
       clearInterval(clockTimer);
+      clearTimeout(demoTimer);
       media.removeEventListener("change", updateTheme);
       window.removeEventListener("popstate", readRoute);
       window.removeEventListener("hashchange", readRoute);
@@ -1145,10 +1188,10 @@
   });
   $effect(() => {
     if (user && editing) {
-      localStorage.setItem("guestin.draft." + user.id, JSON.stringify(draft));
-      localStorage.setItem("guestin.draft.editId." + user.id, editId);
-      localStorage.setItem("guestin.draft.lastUser", user.id);
-      localStorage.setItem(
+      hostStorage.setItem("guestin.draft." + user.id, JSON.stringify(draft));
+      hostStorage.setItem("guestin.draft.editId." + user.id, editId);
+      hostStorage.setItem("guestin.draft.lastUser", user.id);
+      hostStorage.setItem(
         "guestin.draft.timezone",
         properties.find((p) => p.id === draft.propertyId)?.timezone ?? "UTC",
       );
@@ -1364,7 +1407,7 @@
       data,
       editId ? "PUT" : "POST",
     );
-    localStorage.removeItem("guestin.draft." + user.id);
+    hostStorage.removeItem("guestin.draft." + user.id);
     editing = false;
     search = "";
     codeDate = data.staff
@@ -1376,6 +1419,7 @@
     codeStatus = data.staff ? "Non revoked" : "all";
     await reload();
     notice = "Access code saved. The guest link is ready to share.";
+    if (demoMode) detailCodeId = savedCode.id;
     if (tourVisible && tourStage === "code" && !editId) {
       tourCodeId = savedCode.id ?? editId;
       tourStage = "install";
@@ -1419,6 +1463,10 @@
     }
   }
   async function enablePush() {
+    if (demoMode) {
+      notice = "Notification preferences saved for this demo.";
+      return;
+    }
     if (
       !window.isSecureContext ||
       typeof Notification === "undefined" ||
@@ -1471,7 +1519,7 @@
         .map((s) => s.trim())
         .filter(Boolean),
     });
-    localStorage.setItem(
+    hostStorage.setItem(
       "guestin.push." + user.id,
       JSON.stringify({
         properties: pushProperties,
@@ -1709,11 +1757,11 @@
     if (!user || !navigator.onLine) return;
     if (!editing) {
       try {
-        const saved = localStorage.getItem("guestin.draft." + user.id);
+        const saved = hostStorage.getItem("guestin.draft." + user.id);
         if (saved) {
           draft = JSON.parse(saved);
           const storedId =
-            localStorage.getItem("guestin.draft.editId." + user.id) ?? "";
+            hostStorage.getItem("guestin.draft.editId." + user.id) ?? "";
           editId = codes.some((code) => code.id === storedId) ? storedId : "";
           editing = true;
           tab = "Codes";
@@ -1723,6 +1771,7 @@
         /* Ignore an invalid local draft; server records remain authoritative. */
       }
     }
+    if (demoMode) return;
     if (!user.preferences?.language) {
       suggestedLocale = navigator.language.toLowerCase().startsWith("it")
         ? "it"
@@ -2314,6 +2363,20 @@
                     "Active permissions are published after the server confirms this save.",
                   )}</small
                 >
+                {#if demoMode && editId}
+                  <div class="row">
+                    <a
+                      class="button"
+                      href={codes.find((c) => c.id === editId)?.link}
+                      onclick={(event) => {
+                        const c = codes.find((c) => c.id === editId);
+                        if (c && demoNavigate("guest", c.token))
+                          event.preventDefault();
+                      }}>{t("Visit guest page")}</a
+                    >
+                  </div>
+                {/if}
+
                 <div class="mobile-form-actions access-code-actions">
                   <Button
                     variant="outline"
@@ -2321,10 +2384,8 @@
                     disabled={busy}
                     onclick={() => {
                       editing = false;
-                      localStorage.removeItem("guestin.draft." + user.id);
-                      localStorage.removeItem(
-                        "guestin.draft.editId." + user.id,
-                      );
+                      hostStorage.removeItem("guestin.draft." + user.id);
+                      hostStorage.removeItem("guestin.draft.editId." + user.id);
                     }}>{t("Cancel")}</Button
                   >
                   <Button
@@ -2371,6 +2432,11 @@
                   ><a
                     class="button"
                     href={detailCode.link}
+                    onclick={(event) => {
+                      if (demoMode && demoNavigate("guest", detailCode.token)) {
+                        event.preventDefault();
+                      }
+                    }}
                     target="_blank"
                     rel="noreferrer"
                     ><ExternalLink size={17} />{t("Visit guest page")}</a
@@ -2669,7 +2735,8 @@
                       type="button"
                       variant="ghost"
                       class="code-summary"
-                      onclick={() => (detailCodeId = c.id)}
+                      onclick={() =>
+                        demoMode ? edit(c) : (detailCodeId = c.id)}
                       ><span class="row"
                         ><strong>{c.label}</strong>{#if c.revoked}<Badge
                             variant="secondary"
@@ -3241,7 +3308,7 @@
                     type="button"
                     variant="outline"
                     onclick={() => {
-                      localStorage.setItem(
+                      hostStorage.setItem(
                         "guestin.push." + user.id,
                         JSON.stringify({
                           properties: pushProperties,

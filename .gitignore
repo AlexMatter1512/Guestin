@@ -8,3 +8,5 @@ apps/*/.svelte-kit/
 apps/*/build/
 test-results/
 playwright-report/
+
+apps/*/build-demo/

@@ -1,4 +1,5 @@
 <script lang="ts">
+ import { hostStorage } from "$lib/demo-storage";
   import DateInput from "$lib/components/DateInput.svelte";
   import {
     formatDisplayDate,
@@ -195,7 +196,7 @@
       providerProperty = "";
       hotelId = String(source?.data.hotelId ?? "");
       deviceId = source?.data.deviceId ?? "";
-      localStorage.removeItem("guestin.kross.device");
+      hostStorage.removeItem("guestin.kross.device");
       connected = Boolean(source?.data.authenticated);
       if (source?.data.model) geminiModel = String(source.data.model);
       if (view === "ical") {
