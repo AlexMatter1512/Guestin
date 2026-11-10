@@ -1,0 +1,15 @@
+services:
+  guestin:
+    image: alexmatter/guestin:edge
+    restart: unless-stopped
+    environment:
+      ORIGIN: http://localhost:38471
+      VAPID_SUBJECT: mailto:admin@example.com
+      TRUST_PROXY: "0"
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:38471:3000"
+    volumes:
+      - guestin-data:/app/data
+volumes:
+  guestin-data:

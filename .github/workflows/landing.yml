@@ -1,0 +1,50 @@
+name: Landing page
+
+on:
+  push:
+    branches: [gh-pages]
+  pull_request:
+    branches: [gh-pages]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: landing
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - name: Read pinned application revision
+        id: source
+        working-directory: landing
+        run: |
+          bun -e 'const {revision}=await Bun.file("demo-source.json").json(); if(!/^[0-9a-f]{40}$/.test(revision)) throw Error("Expected a full application commit SHA"); console.log(`revision=${revision}`)' >> "$GITHUB_OUTPUT"
+      - name: Check out application source from this repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source.outputs.revision }}
+          path: application
+      - name: Install application dependencies
+        working-directory: application
+        run: bun install --frozen-lockfile
+      - name: Bundle fictional app demos
+        working-directory: application
+        run: bun scripts/export-landing-demo.ts "$GITHUB_WORKSPACE/landing"
+      - name: Install landing dependencies
+        working-directory: landing
+        run: bun install --frozen-lockfile
+      - name: Build landing page
+        working-directory: landing
+        run: bun run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: guestin-landing
+          path: landing/dist
+          include-hidden-files: true
+          if-no-files-found: error
