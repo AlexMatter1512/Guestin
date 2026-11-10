@@ -134,6 +134,7 @@ export const backupSchema = z
               actor: z.string().optional(),
               detail: z.string().optional(),
               action: z.enum(["page", "door", "breakfast"]).optional(),
+              suppressedAttempts: z.number().int().nonnegative().optional(),
               previousVisit: z
                 .object({ label: z.string().max(120), date: z.iso.datetime() })
                 .optional(),

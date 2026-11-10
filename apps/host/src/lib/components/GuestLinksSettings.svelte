@@ -1,4 +1,5 @@
 <script lang="ts">
+  import FeedbackToast from "$lib/components/FeedbackToast.svelte";
   import { untrack } from "svelte";
   import * as Card from "$lib/components/ui/card";
   import { Button } from "$lib/components/ui/button";
@@ -113,11 +114,9 @@
           placeholder="https://…"
         />
       </div>
-      {#if error}<p class="error" role="alert">{error}</p>{/if}{#if message}<p
-          role="status"
-        >
-          {message}
-        </p>{/if}
+      {#if error}<p class="error" role="alert">{error}</p>{/if}<FeedbackToast
+        {message}
+      />
       {#if owner}<Button type="submit" disabled={busy || !property}
           >{l("Save default links", "Salva link predefiniti")}</Button
         >{:else}<p class="text-sm text-muted-foreground">

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import FeedbackToast from "$lib/components/FeedbackToast.svelte";
   import Modal from "$lib/components/Modal.svelte";
   import {
     guestLinkDefaults,
@@ -819,9 +820,7 @@
           )}</Alert.Title
         ><Alert.Description>{error}</Alert.Description></Alert.Root
       >{/if}
-    {#if notice}<Alert.Root role="status"
-        ><Check /><Alert.Description>{notice}</Alert.Description></Alert.Root
-      >{/if}
+    <FeedbackToast message={notice} kind="info" />
     {#if currentConnections.length > 1}
       <div class="grid gap-2">
         <Label for="connector-connection"

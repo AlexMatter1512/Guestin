@@ -1,1 +1,35 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="apple-touch-icon" href="/host/icon-192.png"><meta name="color-scheme" content="light dark"><link rel="manifest" href="/host/manifest.webmanifest">%sveltekit.head%</head><body data-sveltekit-preload-data="hover"><div style="display:contents">%sveltekit.body%</div></body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"
+    />
+    <link rel="apple-touch-icon" href="/host/icon-192.png" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#ffffff" />
+    <script>
+      try {
+        const p = localStorage.getItem("oshost.theme") || "system";
+        const d =
+          p === "dark" ||
+          (p === "system" &&
+            matchMedia("(prefers-color-scheme: dark)").matches);
+        const t = d ? "dark" : "light";
+        const c = d ? "#0a0a0a" : "#ffffff";
+        document.documentElement.dataset.theme = t;
+        document.documentElement.classList.toggle("dark", d);
+        document.documentElement.style.colorScheme = t;
+        document.documentElement.style.backgroundColor = c;
+        document.querySelector('meta[name="theme-color"]').content = c;
+        document.querySelector('meta[name="color-scheme"]').content = t;
+      } catch {}
+    </script>
+    <link rel="manifest" href="/host/manifest.webmanifest" />
+    %sveltekit.head%
+  </head>
+  <body data-sveltekit-preload-data="hover">
+    <div style="display: contents">%sveltekit.body%</div>
+  </body>
+</html>

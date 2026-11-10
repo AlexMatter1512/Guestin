@@ -87,7 +87,7 @@ try {
   await expect(page.locator(`[data-code-id="${fresh.id}"]`)).toContainText(
     "Live arrival",
   );
-  await expect(page.getByRole("status")).toContainText(
+  await expect(page.locator("[data-sonner-toast]").last()).toContainText(
     "Alex created access code Live arrival valid from",
   );
   await api(`codes/${fresh.id}`, draft("Live renamed"), "PUT");
@@ -122,7 +122,7 @@ try {
   await page
     .getByRole("button", { name: "Save in-app preferences", exact: true })
     .click();
-  await expect(page.getByRole("status")).toContainText(
+  await expect(page.locator("[data-sonner-toast]").last()).toContainText(
     "In-app preferences saved",
   );
   expect(errors).toEqual([]);

@@ -3,13 +3,15 @@
   import { flip } from "svelte/animate";
   import { fly } from "svelte/transition";
   import { prefersReducedMotion } from "svelte/motion";
-  import { untrack } from "svelte";
+  import { untrack, onMount } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import * as Card from "$lib/components/ui/card";
   import { Bell, RefreshCw } from "@lucide/svelte";
   import { hostLanguage, t } from "$lib/i18n.svelte";
   let {
     refreshToken = 0,
+    userId,
+    onread,
     propertyId,
     propertyName,
     retentionMonths = 3,
@@ -18,12 +20,14 @@
     api,
   }: {
     refreshToken?: number;
+    userId: string;
+    onread: () => Promise<void>;
     propertyId: string;
     propertyName: string;
     retentionMonths?: number;
     timezone?: string;
     codes: any[];
-    api: (path: string) => Promise<any>;
+    api: (path: string, body?: any, method?: string) => Promise<any>;
   } = $props();
   let events = $state<any[]>([]),
     nextCursor = $state<string | null>(null),
@@ -32,6 +36,49 @@
   let request = 0;
   const l = (en: string, it: string) =>
     hostLanguage.current === "it" ? it : en;
+  async function markRead(items: any[], ticket: number) {
+    if (document.visibilityState !== "visible") return;
+    const ids = items.filter((event) => !event.read).map((event) => event.id);
+    for (let offset = 0; offset < ids.length; offset += 100) {
+      if (ticket !== request) return;
+      const batch = ids.slice(offset, offset + 100);
+      await api("events/read", { eventIds: batch });
+      if (ticket !== request) return;
+      events = events.map((event) =>
+        batch.includes(event.id)
+          ? {
+              ...event,
+              read: true,
+              readBy: [...new Set([...(event.readBy ?? []), userId])],
+            }
+          : event,
+      );
+    }
+    if (ids.length) await onread();
+  }
+  async function markAll() {
+    try {
+      await api("events/read-all", { propertyId });
+      events = events.map((event) => ({
+        ...event,
+        read: true,
+        readBy: [...new Set([...(event.readBy ?? []), userId])],
+      }));
+      await onread();
+    } catch (e) {
+      error = (e as Error).message;
+    }
+  }
+  onMount(() => {
+    const resume = () => {
+      if (document.visibilityState === "visible")
+        void markRead(events, request).catch((e) => {
+          error = e.message;
+        });
+    };
+    document.addEventListener("visibilitychange", resume);
+    return () => document.removeEventListener("visibilitychange", resume);
+  });
   async function load(more = false, refresh = false) {
     const id = propertyId,
       ticket = ++request;
@@ -54,6 +101,7 @@
           b.created.localeCompare(a.created) || b.id.localeCompare(a.id),
       );
       if (!refresh) nextCursor = data.nextCursor;
+      await markRead(data.events, ticket);
     } catch (e) {
       if (ticket === request) error = (e as Error).message;
     } finally {
@@ -81,7 +129,7 @@
   });
 </script>
 
-<div class="mb-6 flex items-start justify-between gap-4">
+<div class="mb-6 flex flex-wrap items-start justify-between gap-4">
   <div>
     <p class="text-sm text-muted-foreground">
       {propertyName} · {l(
@@ -96,13 +144,21 @@
       )}</small
     >
   </div>
-  <Button
-    variant="outline"
-    size="icon"
-    aria-label={t("Refresh")}
-    disabled={loading || !propertyId}
-    onclick={() => load()}><RefreshCw size={17} /></Button
-  >
+  <div class="flex items-center gap-2">
+    <Button
+      variant="outline"
+      disabled={loading || !propertyId}
+      onclick={markAll}
+      >{l("Mark all as read", "Segna tutte come lette")}</Button
+    >
+    <Button
+      variant="outline"
+      size="icon"
+      aria-label={t("Refresh")}
+      disabled={loading || !propertyId}
+      onclick={() => load()}><RefreshCw size={17} /></Button
+    >
+  </div>
 </div>
 {#if error}<p class="error" role="alert">{error}</p>{/if}
 <div class="notification-history space-y-3" aria-busy={loading}>
@@ -119,7 +175,7 @@
         duration: prefersReducedMotion.current ? 0 : 180,
       }}
     >
-      <Card.Root
+      <Card.Root data-notification-id={event.id} data-unread={!event.read}
         ><Card.Content class="pt-4"
           ><div class="mb-2 flex flex-wrap items-center justify-between gap-2">
             <strong>{text.title}</strong><small

@@ -50,11 +50,29 @@ When protected, anonymous requests return `401` with `{requiresPassword:true,err
 
 ## Shared history and reports
 
+Notification readers are persisted as `(event_id,user_id,read_at)` receipts.
+History entries include `readBy` (reader user IDs) and `read` for the authenticated
+user. `GET /events/unread` returns `{total,global,properties}`; property counts
+exclude the unattributed events counted in `global`.
+
+`POST /events/read` accepts `{eventIds:[...]}` with 1–100 UUIDs and marks only
+those existing events read by the signed-in user. Duplicate reads are idempotent.
+`POST /events/read-all` accepts `{propertyId}` to mark that structure and global
+events, or `{}` for all structures. Both require the normal session, Origin,
+and CSRF checks; clients cannot nominate another reader. Receipts cascade when
+events expire or users are deleted. Portable JSON backups omit receipts because
+they do not transfer user accounts; full database backups preserve them.
+
+When receipts change, all live sessions for that reader receive
+`{type:"notifications.read"}` and refresh their counts/history. Other users'
+unread counts are independent. The host marks loaded history entries read only
+while the page is visible, and also offers **Mark all as read**.
+
 `GET /live` upgrades to a WebSocket using the host session cookie. The request must have an `Origin` matching the configured public origin. The server sends `{type:"sync"}` on connection, `{type:"activity",event}` after committed activity, and `{type:"heartbeat"}` every 25 seconds. Activity uses the same event shape as `/events`; it never includes guest link tokens. Clients reload code/report snapshots after activity and on reconnect, regardless of notification filters. Expired or deleted sessions are disconnected before further delivery. Reverse proxies must forward WebSocket upgrades for `/api/v1/live`.
 
 `code.created` context includes the creator’s `actor` name, `codeLabel`, `validFrom`/`validTo` (the earliest/latest door grant boundaries when present), and the property’s `timezone`. This snapshot is shared by history, in-app alerts, and push notifications in English and Italian.
 
-`GET /events?propertyId=<id>&pageSize=50` returns `{events,nextCursor}`. Pass `cursor` to load older records. Events are shared with the team, scoped to the selected structure; unattributed security events can also appear. `pageSize` accepts 1–100. Legacy calls without pagination return an array. Events may include `context.codeLabel` and unverified `context.previousVisit` metadata. Unknown invalid links appear as unattributed security events; known revoked links remain associated with their structure. Invalid page loads and actions use the `access.invalid` push option, throttled per client/link for one minute.
+`GET /events?propertyId=<id>&pageSize=50` returns `{events,nextCursor}`. Pass `cursor` to load older records. Events are shared with the team, scoped to the selected structure; unattributed security events can also appear. `pageSize` accepts 1–100. Legacy calls without pagination return an array. Events may include `context.codeLabel` and unverified `context.previousVisit` metadata. Unknown invalid links appear as unattributed security events; known revoked links remain associated with their structure. Invalid page loads and actions use the `access.invalid` push option, grouped per client for one minute and bounded globally, with suppression summaries.
 
 `GET /reports` returns code creation and lifetime usage counters by code/creator/property. These counters survive notification retention cleanup.
 

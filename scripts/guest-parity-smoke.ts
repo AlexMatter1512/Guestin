@@ -1,5 +1,11 @@
 import { chromium, expect, type Page } from "@playwright/test";
-import { cpSync, mkdtempSync, mkdirSync, symlinkSync } from "node:fs";
+import {
+  existsSync,
+  cpSync,
+  mkdtempSync,
+  mkdirSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { openDatabase } from "../server/db";
@@ -7,9 +13,28 @@ import { createApp } from "../server/app";
 
 // Render the untouched legacy visual sources from a disposable copy. Only its
 // server loader is replaced with fake data; original repositories are read-only.
+const referencePath = process.env.OSHOST_LEGACY_GUEST_ROOT;
+if (!referencePath) {
+  console.log(
+    "SKIP: legacy guest parity is optional. Set OSHOST_LEGACY_GUEST_ROOT to a local BnBFrontend checkout with dependencies installed.",
+  );
+  process.exit(0);
+}
+const originalRoot = resolve(referencePath);
+for (const name of [
+  "src",
+  "static",
+  "package.json",
+  "svelte.config.js",
+  "vite.config.ts",
+  "tsconfig.json",
+  "node_modules",
+]) {
+  if (!existsSync(join(originalRoot, name)))
+    throw Error(`Legacy guest reference is missing ${name}: ${originalRoot}`);
+}
 const directory = mkdtempSync(join(tmpdir(), "oshost-guest-parity-"));
 const referenceRoot = join(directory, "reference");
-const originalRoot = resolve("../BnB_Server_Bot/BnBFrontend");
 mkdirSync(referenceRoot);
 for (const name of [
   "src",

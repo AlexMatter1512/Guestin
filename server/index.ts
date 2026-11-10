@@ -12,7 +12,7 @@ import {
 process.umask(0o077);
 const { secrets } = initializeRuntimeSecrets();
 const db = openDatabase(process.env.DB_PATH ?? "data/oshost.sqlite");
-log("info", "database.ready", { schema: 4 });
+log("info", "database.ready", { schema: 5 });
 const app = createApp(db, {
   key: secrets.APP_KEY,
   setupToken: secrets.SETUP_TOKEN,
@@ -22,6 +22,21 @@ app.get("/breakfast/:property", async (c) =>
   c.html(await Bun.file("server/breakfast.html").text()),
 );
 app.get("/", (c) => c.redirect("/host/"));
+app.get("/host/manifest.webmanifest", async (c) => {
+  const manifest = await Bun.file(
+    "apps/host/build/manifest.webmanifest",
+  ).json();
+  const color = c.req.query("theme") === "dark" ? "#0a0a0a" : "#ffffff";
+  c.header("Cache-Control", "no-cache");
+  c.header("Content-Type", "application/manifest+json");
+  return c.body(
+    JSON.stringify({
+      ...manifest,
+      theme_color: color,
+      background_color: color,
+    }),
+  );
+});
 app.get("*", async (c) => {
   const appName = c.req.path.split("/")[1];
   if (!["host", "guest"].includes(appName)) return c.notFound();
@@ -94,7 +109,7 @@ const server = Bun.serve({
   tls,
   maxRequestBodySize: 32 * 1024 * 1024,
 });
-log("info", "server.started", { port: server.port, tls: !!tls, schema: 4 });
+log("info", "server.started", { port: server.port, tls: !!tls, schema: 5 });
 printSetupInstructions(db, secrets.SETUP_TOKEN);
 const stop = () => {
   log("info", "server.stopping");

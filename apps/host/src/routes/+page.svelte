@@ -4,6 +4,9 @@
     wantsNotification,
     notificationTypes,
   } from "../../../../shared/notifications";
+  import { Toaster } from "$lib/components/ui/sonner";
+  import FeedbackToast from "$lib/components/FeedbackToast.svelte";
+  import { toast } from "svelte-sonner";
   import { connectLive } from "$lib/live";
   import { flip } from "svelte/animate";
   import AccessCalendar from "$lib/components/AccessCalendar.svelte";
@@ -142,11 +145,23 @@
     copyDialog = $state(false),
     filtersOpen = $state(false);
   const reducedMotion = new MediaQuery("(prefers-reduced-motion: reduce)");
-  const browserThemeColor = $derived(
-    (theme === "system" ? systemDark : theme === "dark")
-      ? "#0a0a0a"
-      : "#ffffff",
+  const effectiveTheme = $derived(
+    (theme === "system" ? systemDark : theme === "dark") ? "dark" : "light",
   );
+  const browserThemeColor = $derived(
+    effectiveTheme === "dark" ? "#0a0a0a" : "#ffffff",
+  );
+  let unread = $state({
+    total: 0,
+    global: 0,
+    properties: {} as Record<string, number>,
+  });
+  async function refreshUnread() {
+    const account = user?.id;
+    if (!account) return;
+    const counts = await api("events/unread");
+    if (user?.id === account) unread = counts;
+  }
   let copyInput = $state<HTMLTextAreaElement | null>(null);
   const settingItems = [
     {
@@ -493,8 +508,26 @@
   }
   $effect(() => {
     if (typeof document !== "undefined") {
-      document.documentElement.dataset.theme =
-        theme === "system" ? (systemDark ? "dark" : "light") : theme;
+      document.documentElement.dataset.theme = effectiveTheme;
+      document.documentElement.style.backgroundColor = browserThemeColor;
+      document.body.style.backgroundColor = browserThemeColor;
+      document
+        .querySelector('meta[name="theme-color"]')
+        ?.setAttribute("content", browserThemeColor);
+      document
+        .querySelector('meta[name="color-scheme"]')
+        ?.setAttribute("content", effectiveTheme);
+      document
+        .querySelector('link[rel="manifest"]')
+        ?.setAttribute(
+          "href",
+          `/host/manifest.webmanifest?theme=${effectiveTheme}`,
+        );
+      try {
+        localStorage.setItem("oshost.theme", theme);
+      } catch {
+        /* Storage is optional. */
+      }
       document.documentElement.style.colorScheme =
         document.documentElement.dataset.theme;
       document.documentElement.classList.toggle(
@@ -741,6 +774,7 @@
       ),
     );
     if (!propertyId) propertyId = properties[0]?.id ?? "";
+    await refreshUnread();
     if (user?.role === "owner") users = await api("users");
     if (user?.id && pushLoadedFor !== user.id) {
       pushLoadedFor = user.id;
@@ -761,13 +795,15 @@
       try {
         while (pending && !stopped) {
           pending = false;
-          const [nextCodes, nextReports] = await Promise.all([
+          const [nextCodes, nextReports, nextUnread] = await Promise.all([
             api("codes"),
             api("reports"),
+            api("events/unread"),
           ]);
           if (stopped || user?.id !== account) return;
           codes = nextCodes;
           reports = nextReports;
+          unread = nextUnread;
           liveRevision++;
         }
       } catch {
@@ -795,7 +831,14 @@
         )
       ) {
         const text = notificationText(event, hostLanguage.current);
-        notice = `${text.title}: ${text.body}`;
+        toast(text.title, {
+          description: text.body,
+          id: event.id,
+          action: {
+            label: t("Notifications"),
+            onClick: () => navigate("Activity"),
+          },
+        });
       }
     });
     return () => {
@@ -960,6 +1003,8 @@
     codeStatus = "all";
     error = "";
     notice = "";
+    unread = { total: 0, global: 0, properties: {} };
+    toast.dismiss();
     theme = "system";
     draft = {
       propertyId: "",
@@ -1570,8 +1615,25 @@
   ><title>{t("oshost · Host workspace")}</title><meta
     name="description"
     content="Your properties, doors and guest access in one place."
-  /><meta name="theme-color" content={browserThemeColor} /></svelte:head
+  /></svelte:head
 >
+<Toaster
+  theme={effectiveTheme}
+  position="bottom-center"
+  closeButton
+  offset={{
+    bottom: "calc(84px + env(safe-area-inset-bottom))",
+    left: "24px",
+    right: "24px",
+  }}
+  mobileOffset={{
+    bottom: "calc(84px + env(safe-area-inset-bottom))",
+    left: "16px",
+    right: "16px",
+  }}
+/>
+<FeedbackToast message={notice ? t(notice) : ""} />
+<FeedbackToast message={user && error ? t(error) : ""} kind="error" />
 {#if !ready}<div class="auth">{t("Opening your workspace…")}</div>
 {:else if !user}<main class="auth">
     <p class="muted">{t("oshost / host workspace")}</p>
@@ -1644,20 +1706,25 @@
           {#if properties.length}
             <div class="header-structure">
               <Building2 size={18} aria-hidden="true" />
-              <NativeSelect.Root
-                class="w-full"
-                aria-label={t("Structure")}
-                value={editing ? draft.propertyId : propertyId}
-                disabled={editing || doorEditor || propertyForm}
-                onchange={(event) => {
-                  propertyId = event.currentTarget.value;
-                  changeTourProperty(propertyId);
-                }}
-              >
-                {#each properties as p (p.id)}<NativeSelect.Option value={p.id}
-                    >{p.name}</NativeSelect.Option
-                  >{/each}
-              </NativeSelect.Root>
+              {#if properties.length === 1}<span
+                  data-testid="structure-title"
+                  class="min-w-0 truncate font-semibold"
+                  >{properties[0].name}</span
+                >
+              {:else}<NativeSelect.Root
+                  class="w-full"
+                  aria-label={t("Structure")}
+                  value={editing ? draft.propertyId : propertyId}
+                  disabled={editing || doorEditor || propertyForm}
+                  onchange={(event) => {
+                    propertyId = event.currentTarget.value;
+                    changeTourProperty(propertyId);
+                  }}
+                >
+                  {#each properties as p (p.id)}<NativeSelect.Option
+                      value={p.id}>{p.name}</NativeSelect.Option
+                    >{/each}
+                </NativeSelect.Root>{/if}
             </div>
           {:else}<span class="font-semibold">oshost</span>{/if}
         </div>
@@ -1666,11 +1733,20 @@
             type="button"
             variant="ghost"
             size="icon"
-            class="icon-button"
+            class="icon-button relative"
             aria-label={t("Notifications")}
             title={t("Notification history")}
-            onclick={() => navigate("Activity")}><Bell size={20} /></Button
-          ><Button
+            onclick={() => navigate("Activity")}
+            ><Bell size={20} />
+            {#if unread.total > 0}<span
+                data-testid="notification-badge"
+                class="absolute -right-1 -top-1 flex min-w-4 h-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white"
+                aria-label={hostLanguage.current === "it"
+                  ? `${unread.total} notifiche non lette`
+                  : `${unread.total} unread notifications`}
+                >{unread.total > 99 ? "99+" : unread.total}</span
+              >{/if}
+          </Button><Button
             type="button"
             variant="ghost"
             size="icon"
@@ -1739,25 +1815,6 @@
           />{/key}
       {/if}
 
-      {#if error}<div class="error row spread" role="alert">
-          <span>{t(error)}</span><Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            class="icon-button"
-            aria-label={t("Dismiss")}
-            onclick={() => (error = "")}><X size={17} /></Button
-          >
-        </div>{/if}{#if notice}<div class="toast" role="status">
-          <Check size={17} /><span>{t(notice)}</span><Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            class="icon-button"
-            aria-label={t("Dismiss")}
-            onclick={() => (notice = "")}><X size={16} /></Button
-          >
-        </div>{/if}
       {#key tab + ":" + settingsPage}
         <div
           class="view-content"
@@ -2341,6 +2398,8 @@
                   </div>{/each}
               </Item.Group>{/if}
           {:else if tab === "Activity"}<NotificationHistory
+              userId={user.id}
+              onread={refreshUnread}
               refreshToken={liveRevision}
               {propertyId}
               propertyName={property?.name ?? ""}
@@ -3030,12 +3089,7 @@
             disabled={busy}
             aria-label={t("Message preview")}
             bind:value={shareText}
-          ></Textarea>{#if notice === "Copied to clipboard."}<p
-              class="muted"
-              role="status"
-            >
-              {t(notice)}
-            </p>{/if}
+          ></Textarea>
           <div class="row">
             <Button
               type="button"

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import FeedbackToast from "$lib/components/FeedbackToast.svelte";
   import { untrack } from "svelte";
   import * as Card from "$lib/components/ui/card";
   import { Button } from "$lib/components/ui/button";
@@ -215,7 +216,7 @@
       {#if error}<p role="alert" class="text-sm text-destructive">
           {error}
         </p>{/if}
-      {#if notice}<p role="status" class="text-sm">{notice}</p>{/if}
+      <FeedbackToast message={notice} />
     </Card.Content>
   </Card.Root>
 {:else}<p class="muted">

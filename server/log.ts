@@ -187,6 +187,7 @@ export function logError(
 }
 // Log route patterns, never arbitrary client URLs, queries, fragments, or path tokens.
 const routes = [
+  /^\/api\/v1\/events\/(unread|read|read-all)$/,
   /^\/api\/v1\/(health|live|me|logout|users|invites|properties|doors|codes|events|reports|connections)$/,
   /^\/api\/v1\/auth\/(status|setup|login|accept-invite)$/,
   /^\/api\/v1\/me\/preferences$/,

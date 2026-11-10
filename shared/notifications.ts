@@ -7,6 +7,7 @@ export type NotificationContext = {
   timezone?: string;
   detail?: string;
   action?: "page" | "door" | "breakfast";
+  suppressedAttempts?: number;
   previousVisit?: { label: string; date: string };
 };
 const titles: Record<string, [string, string]> = {
@@ -104,6 +105,10 @@ export function notificationText(
           : it
             ? "La pagina ospite è stata aperta con un link non valido o revocato."
             : "The guest page was requested with an invalid or revoked link.";
+    if (context.suppressedAttempts)
+      body = it
+        ? `${context.suppressedAttempts} tentativi con link non valido sono stati raggruppati.`
+        : `${context.suppressedAttempts} invalid-link attempts suppressed.`;
     if (context.previousVisit)
       body += it
         ? ` Questo browser dichiara una visita precedente: ${context.previousVisit.label} (${context.previousVisit.date}). Informazione non verificata.`

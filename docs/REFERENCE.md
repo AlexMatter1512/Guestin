@@ -41,9 +41,33 @@ Connectors prepare drafts for review. They do not synchronize bookings or create
 
 ## Notifications
 
+The host bell shows the signed-in user's unread count across structures.
+Reading the loaded history marks those entries read on that user's other
+devices; it does not clear another team member's badge. **Mark all as read**
+applies to the selected structure and unattributed events. Read receipts survive
+restarts and are removed with expired history or deleted users.
+
+In-app activity and transient success messages use shadcn Sonner. They follow
+the host's light/dark setting and device notification filters independently of
+read status. With one structure, the header shows its name directly; additional
+structures enable the selector.
+
 Notification history belongs to the structure and is shared with the team. Its default retention is three calendar months, adjustable from 1 to 120 months in Settings → Notifications. Cleanup runs automatically; shortening retention removes older entries. Reports retain lifetime totals independently of this history.
 
 Push selection is local to each device, with delivery preferences attached to that device’s server subscription. Disabling push on one device does not disable another. iPhone/iPad push requires opening the installed Home Screen app.
+
+Invalid guest links are always rejected. To bound database writes and push jobs,
+each one-minute window records at most one unknown-link alert per client and
+one per revoked code, with at most three alerts per client and twenty globally.
+Changing a random token does not create a new alert. The next invalid request
+after the window ends records one summary of suppressed attempts, counted
+against the new global budget. Summaries have no guest or property attribution;
+normal valid-link activity is unaffected. These in-memory budgets reset on restart.
+
+Password hashing and verification share two execution slots and four waiting
+slots per installation process. Excess work receives HTTP 429; retry shortly.
+Invalid setup and invite tokens are rejected before hashing, and eligibility is
+rechecked after waiting and when the user is committed.
 
 ## Breakfast page
 

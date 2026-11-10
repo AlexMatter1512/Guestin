@@ -1,4 +1,5 @@
 <script lang="ts">
+  import FeedbackToast from "$lib/components/FeedbackToast.svelte";
   import * as Card from "$lib/components/ui/card";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
@@ -231,10 +232,8 @@
           >
         </div>
       </form>{/if}
-    {#if error}<p class="error" role="alert">{error}</p>{/if}{#if notice}<p
-        role="status"
-      >
-        {notice}
-      </p>{/if}
+    {#if error}<p class="error" role="alert">{error}</p>{/if}<FeedbackToast
+      message={notice}
+    />
   </Card.Content>
 </Card.Root>

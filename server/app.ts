@@ -1,3 +1,5 @@
+import { passwordWorkLimiter, invalidLinkBudget } from "./abuse-limits";
+import { notificationReads } from "./notification-reads";
 import { portableBackupRoutes } from "./portable-backup";
 import { MAX_BACKUP_BYTES } from "../shared/backup";
 import {
@@ -45,6 +47,9 @@ export function createApp(
 ) {
   const app = new Hono<Env>(),
     crypto = vault(config.key);
+  const passwordWork = passwordWorkLimiter();
+  const invalidAlerts = invalidLinkBudget();
+  const reads = notificationReads(db);
   const adapter = config.device ?? openDevice;
   const device: DeviceAdapter = async (kind, credentials) => {
     const started = performance.now();
@@ -264,13 +269,17 @@ export function createApp(
     ) {
       const key = c.env?.clientIP ?? "direct";
       const now = Date.now();
-      if (buckets.size > 10000)
-        for (const [k, v] of buckets) if (v.until < now) buckets.delete(k);
+      if (buckets.size >= 10000)
+        for (const [k, v] of buckets) if (v.until <= now) buckets.delete(k);
       const b = buckets.get(key);
       if (b && b.until > now) {
         if (++b.n > 100)
           return c.json({ error: "Too many attempts; try again shortly" }, 429);
-      } else buckets.set(key, { n: 1, until: now + 60000 });
+      } else {
+        if (!b && buckets.size >= 10000)
+          return c.json({ error: "Too many attempts; try again shortly" }, 429);
+        buckets.set(key, { n: 1, until: now + 60000 });
+      }
     }
     await next();
   });
@@ -290,7 +299,7 @@ export function createApp(
       status as any,
     );
   });
-  app.get("/api/v1/health", (c) => c.json({ status: "ok", schema: 4 }));
+  app.get("/api/v1/health", (c) => c.json({ status: "ok", schema: 5 }));
   app.get("/api/v1/auth/status", (c) =>
     c.json({ needsSetup: !get("SELECT 1 FROM users LIMIT 1") }),
   );
@@ -302,15 +311,21 @@ export function createApp(
   app.post("/api/v1/auth/setup", async (c) => {
     const body = await c.req.json();
     const data = identity.parse(body);
-    const password = await Bun.password.hash(data.password, {
-      algorithm: "argon2id",
-    });
-    const user = db.transaction(() => {
+    const checkSetup = () => {
       if (
         get("SELECT 1 FROM users") ||
-        digest(body.setupToken ?? "") !== digest(config.setupToken)
+        typeof body.setupToken !== "string" ||
+        digest(body.setupToken) !== digest(config.setupToken)
       )
         fail("Setup unavailable", 403);
+    };
+    checkSetup();
+    const password = await passwordWork(() => {
+      checkSetup();
+      return Bun.password.hash(data.password, { algorithm: "argon2id" });
+    });
+    const user = db.transaction(() => {
+      checkSetup();
       const user = { id: cryptoRandom(), ...data, role: "owner" };
       run(
         "INSERT INTO users VALUES(?,?,?,?,?)",
@@ -325,14 +340,18 @@ export function createApp(
     return session(c, user);
   });
   app.post("/api/v1/auth/login", async (c) => {
-    const body = await c.req.json();
-    const user = get(
-      "SELECT * FROM users WHERE email=?",
-      String(body.email).toLowerCase(),
-    );
+    const body = z
+      .object({
+        email: z.email().transform((value) => value.toLowerCase()),
+        password: z.string().max(200),
+      })
+      .parse(await c.req.json());
+    const user = get("SELECT * FROM users WHERE email=?", body.email);
     if (
       !user ||
-      !(await Bun.password.verify(String(body.password), user.password))
+      !(await passwordWork(() =>
+        Bun.password.verify(body.password, user.password),
+      ))
     ) {
       log("warn", "auth.rejected", { reason: "invalid_credentials" });
       fail("Invalid credentials", 401);
@@ -341,19 +360,27 @@ export function createApp(
   });
   app.post("/api/v1/auth/accept-invite", async (c) => {
     const body = await c.req.json(),
-      data = identity.parse(body),
-      password = await Bun.password.hash(data.password, {
-        algorithm: "argon2id",
-      });
-    const user = db.transaction(() => {
+      data = identity.parse(body);
+    const checkInvite = () => {
+      if (typeof body.invite !== "string")
+        fail("Invitation invalid or expired", 403);
       const invite = get(
         "SELECT * FROM invites WHERE digest=? AND expires>?",
-        digest(body.invite ?? ""),
+        digest(body.invite),
         Date.now(),
       );
       if (!invite) fail("Invitation invalid or expired", 403);
       if (get("SELECT 1 FROM users WHERE email=?", data.email))
         fail("Email already exists");
+      return invite;
+    };
+    checkInvite();
+    const password = await passwordWork(() => {
+      checkInvite();
+      return Bun.password.hash(data.password, { algorithm: "argon2id" });
+    });
+    const user = db.transaction(() => {
+      const invite = checkInvite();
       const u = { id: cryptoRandom(), ...data, role: "staff" };
       run(
         "INSERT INTO users VALUES(?,?,?,?,?)",
@@ -454,7 +481,12 @@ export function createApp(
       })
       .parse(await c.req.json());
     const user = get("SELECT * FROM users WHERE id=?", c.get("user").id);
-    if (!user || !(await Bun.password.verify(input.password, user.password)))
+    if (
+      !user ||
+      !(await passwordWork(() =>
+        Bun.password.verify(input.password, user.password),
+      ))
+    )
       fail("Current password is incorrect", 403);
     if (lifecycle.active !== 1)
       fail(
@@ -466,6 +498,7 @@ export function createApp(
       db.transaction(() => {
         for (const table of [
           "jobs",
+          "event_reads",
           "subscriptions",
           "events",
           "breakfast_sessions",
@@ -489,6 +522,7 @@ export function createApp(
       })();
       log("warn", "workspace.wiped");
       buckets.clear();
+      invalidAlerts.reset();
       c.header(
         "Set-Cookie",
         "oshost_session=; Path=/api/; HttpOnly; SameSite=Strict; Max-Age=0",
@@ -595,7 +629,14 @@ export function createApp(
     pruneNotifications(db);
     return c.json({ retentionMonths });
   });
-  breakfastAccessRoutes(app as any, db, config.origin, owner, fail);
+  breakfastAccessRoutes(
+    app as any,
+    db,
+    config.origin,
+    owner,
+    fail,
+    passwordWork,
+  );
   const doorView = (d: any) => {
     const data = JSON.parse(d.data);
     const test = get(
@@ -1070,6 +1111,30 @@ export function createApp(
     );
     return c.json({ ok: true });
   });
+  app.get("/api/v1/events/unread", (c) => {
+    pruneNotifications(db);
+    return c.json(reads.unread(c.get("user").id));
+  });
+  app.post("/api/v1/events/read", async (c) => {
+    const input = z
+      .object({ eventIds: z.array(z.uuid()).min(1).max(100) })
+      .strict()
+      .parse(await c.req.json());
+    const id = c.get("user").id;
+    const changed = reads.mark(id, input.eventIds);
+    if (changed) realtime(db).notificationReads(id);
+    return c.json({ changed, unread: reads.unread(id) });
+  });
+  app.post("/api/v1/events/read-all", async (c) => {
+    const input = z
+      .object({ propertyId: z.uuid().optional() })
+      .strict()
+      .parse(await c.req.json());
+    const id = c.get("user").id;
+    const changed = reads.markAll(id, input.propertyId);
+    if (changed) realtime(db).notificationReads(id);
+    return c.json({ changed, unread: reads.unread(id) });
+  });
   app.get("/api/v1/events", (c) => {
     pruneNotifications(db);
     const paged = c.req.query("pageSize") !== undefined;
@@ -1107,13 +1172,21 @@ export function createApp(
       ...args,
       limit + 1,
     );
-    const events = rows.slice(0, limit).map((row) => ({
-        ...row,
-        context: JSON.parse(
-          get("SELECT data FROM event_context WHERE event_id=?", row.id)
-            ?.data ?? "{}",
-        ),
-      })),
+    const events = rows.slice(0, limit).map((row) => {
+        const readBy = all(
+          "SELECT user_id FROM event_reads WHERE event_id=?",
+          row.id,
+        ).map((r) => r.user_id);
+        return {
+          ...row,
+          readBy,
+          read: readBy.includes(c.get("user").id),
+          context: JSON.parse(
+            get("SELECT data FROM event_context WHERE event_id=?", row.id)
+              ?.data ?? "{}",
+          ),
+        };
+      }),
       last = events.at(-1);
     const nextCursor =
       rows.length > limit && last
@@ -1130,55 +1203,55 @@ export function createApp(
       ),
     ),
   );
-  const invalidAlerts = new Map<string, number>();
   function guest(c: any) {
     const raw = c.req.header("authorization")?.replace(/^Bearer /, "") ?? "";
     const r = get("SELECT * FROM codes WHERE digest=?", digest(raw));
     if (!r || r.revoked) {
-      // Per-client and link throttling keeps distinct attempts visible without alert storms.
-      // Only a digest is retained in memory; never a bearer token or forwarded IP header.
-      const key = digest((c.env?.clientIP ?? "unknown") + ":" + raw);
-      const now = Date.now();
-      if (now - (invalidAlerts.get(key) ?? 0) > 60000) {
-        if (invalidAlerts.size >= 10000) {
-          for (const [id, at] of invalidAlerts)
-            if (now - at > 60000) invalidAlerts.delete(id);
-        }
-        if (invalidAlerts.size < 10000 || invalidAlerts.has(key)) {
-          let previousVisit: NotificationContext["previousVisit"];
-          const hint = c.req.header("X-Oshost-Previous-Visit");
-          if (hint && hint.length <= 2048) {
-            try {
-              const value = z
-                .object({
-                  label: z.string().trim().min(1).max(120),
-                  date: z.iso.datetime(),
-                })
-                .parse(JSON.parse(decodeURIComponent(hint)));
-              previousVisit = {
-                label: value.label.replace(/[\x00-\x1f\x7f]/g, ""),
-                date: value.date,
-              };
-            } catch {
-              /* Untrusted, optional browser hint; never authorizes or attributes a structure. */
-            }
+      const budget = invalidAlerts.take(
+        digest(c.env?.clientIP ?? "unknown"),
+        r?.id,
+      );
+      if (budget.summary)
+        event(
+          "access.invalid",
+          `${budget.summary} invalid-link attempts suppressed`,
+          null,
+          null,
+          { suppressedAttempts: budget.summary },
+        );
+      if (budget.allowed) {
+        let previousVisit: NotificationContext["previousVisit"];
+        const hint = c.req.header("X-Oshost-Previous-Visit");
+        if (hint && hint.length <= 2048) {
+          try {
+            const value = z
+              .object({
+                label: z.string().trim().min(1).max(120),
+                date: z.iso.datetime(),
+              })
+              .parse(JSON.parse(decodeURIComponent(hint)));
+            previousVisit = {
+              label: value.label.replace(/[\x00-\x1f\x7f]/g, ""),
+              date: value.date,
+            };
+          } catch {
+            /* Untrusted, optional browser hint; never authorizes or attributes a structure. */
           }
-          event(
-            "access.invalid",
-            "An invalid or revoked guest link was attempted",
-            r?.property_id ?? null,
-            r?.id ?? null,
-            {
-              action: c.req.path.endsWith("/open")
-                ? "door"
-                : c.req.path.endsWith("/breakfast")
-                  ? "breakfast"
-                  : "page",
-              ...(previousVisit ? { previousVisit } : {}),
-            },
-          );
-          invalidAlerts.set(key, now);
         }
+        event(
+          "access.invalid",
+          "An invalid or revoked guest link was attempted",
+          r?.property_id ?? null,
+          r?.id ?? null,
+          {
+            action: c.req.path.endsWith("/open")
+              ? "door"
+              : c.req.path.endsWith("/breakfast")
+                ? "breakfast"
+                : "page",
+            ...(previousVisit ? { previousVisit } : {}),
+          },
+        );
       }
       fail("Invalid or revoked access link", 403);
     }

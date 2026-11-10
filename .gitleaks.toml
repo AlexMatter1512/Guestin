@@ -1,0 +1,48 @@
+title = "oshost secret scanning"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "oshost-app-key"
+description = "oshost installation encryption key"
+regex = '''(?i)\bAPP_KEY["']?\s*[=:]\s*["']?([a-f0-9]{64})\b'''
+secretGroup = 1
+keywords = ["app_key"]
+
+[[rules]]
+id = "oshost-bootstrap-key"
+description = "oshost setup token or private push key"
+regex = '''(?i)\b(?:SETUP_TOKEN|VAPID_PRIVATE_KEY)["']?\s*[=:]\s*["']?([a-z0-9_-]{43})\b'''
+secretGroup = 1
+keywords = ["setup_token", "vapid_private_key"]
+
+[[rules]]
+id = "oshost-guest-link"
+description = "Guest link containing a full access token"
+regex = '''https?://[^\s"'<>]+/guest/[^\s"'<>]*#(?:[^\s"'<>]*&)?code=([A-Za-z0-9_-]{43})(?:\b|$)'''
+secretGroup = 1
+keywords = ["/guest/", "code="]
+
+# The shared Kross mobile client constant was verified in the installed APK.
+# This exception does not cover account bearer tokens or other provider keys.
+[[allowlists]]
+description = "Exact shared Kross app constant in client and protocol test"
+condition = "AND"
+paths = ['''(^|/)(shared/connectors\.ts|tests/connectors\.test\.ts)$''']
+regexTarget = "secret"
+regexes = ['''^apf6phf4eeb70da55fa972e3b7g403d4$''']
+
+[[allowlists]]
+description = "Historical environment template placeholder"
+condition = "AND"
+paths = ['''(^|/)\.env\.example$''']
+regexTarget = "secret"
+regexes = ['''^replace-with-64-hex-characters$''']
+
+[[allowlists]]
+description = "Prose describing device outcomes, not a credential"
+condition = "AND"
+paths = ['''(^|/)(README\.md|docs/REFERENCE\.md)$''']
+regexTarget = "secret"
+regexes = ['''^accepted/failed/uncertain$''']

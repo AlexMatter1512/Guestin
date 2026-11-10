@@ -27,6 +27,17 @@ worker.addEventListener("fetch", (event) => {
     url.pathname.startsWith("/api/")
   )
     return;
+  // Theme-specific manifests must not inherit the cached light installation color.
+  if (url.pathname === "/host/manifest.webmanifest") {
+    event.respondWith(
+      fetch(event.request).catch(
+        async () =>
+          (await caches.match("/host/manifest.webmanifest")) ??
+          Response.error(),
+      ),
+    );
+    return;
+  }
   if (ASSETS.includes(url.pathname))
     event.respondWith(
       caches

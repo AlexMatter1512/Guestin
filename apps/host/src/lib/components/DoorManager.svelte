@@ -1,4 +1,5 @@
 <script lang="ts">
+  import FeedbackToast from "$lib/components/FeedbackToast.svelte";
   import { flip } from "svelte/animate";
   import { MediaQuery } from "svelte/reactivity";
   import { randomUUID } from "$lib/browser";
@@ -408,9 +409,7 @@
       ></Alert.Root
     >
   {/if}
-  {#if message}<Alert.Root role="status"
-      ><Alert.Description>{message}</Alert.Description></Alert.Root
-    >{/if}
+  <FeedbackToast {message} />
   {#if result}
     <Alert.Root
       role="status"

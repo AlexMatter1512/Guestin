@@ -50,6 +50,7 @@ export function breakfastAccessRoutes(
   origin: string,
   owner: (c: any) => void,
   fail: (message: string, status?: number) => never,
+  passwordWork: <T>(work: () => Promise<T>) => Promise<T>,
 ) {
   app.put("/api/v1/properties/:id/breakfast-settings", async (c) => {
     owner(c);
@@ -70,7 +71,9 @@ export function breakfastAccessRoutes(
     let hash = saved?.breakfast_password ?? null;
     if (!input.enabled) hash = null;
     else if (input.password)
-      hash = await Bun.password.hash(input.password, { algorithm: "argon2id" });
+      hash = await passwordWork(() =>
+        Bun.password.hash(input.password!, { algorithm: "argon2id" }),
+      );
     else if (!hash) fail("Choose a password of at least 8 characters");
     db.transaction(() => {
       db.query(
@@ -86,7 +89,7 @@ export function breakfastAccessRoutes(
     const id = c.req.param("property");
     const key = c.env?.clientIP ?? "direct";
     const now = Date.now();
-    if (attempts.size > 10000)
+    if (attempts.size >= 10000)
       for (const [key, bucket] of attempts)
         if (bucket.until <= now) attempts.delete(key);
     let bucket = attempts.get(key);
@@ -110,7 +113,9 @@ export function breakfastAccessRoutes(
       .get(id) as any;
     if (
       saved?.breakfast_password &&
-      !(await Bun.password.verify(password, saved.breakfast_password))
+      !(await passwordWork(() =>
+        Bun.password.verify(password, saved.breakfast_password),
+      ))
     )
       return c.json(
         { error: "Incorrect password", requiresPassword: true },

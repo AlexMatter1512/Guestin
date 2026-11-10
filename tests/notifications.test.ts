@@ -48,6 +48,20 @@ test("notification titles and explanations translate in both languages and inclu
   expect(invalid.body).toContain("non verificata");
 });
 
+test("suppressed invalid-link summaries retain counts in both notification languages", () => {
+  const event = {
+    type: "access.invalid",
+    message: "unused",
+    context: { suppressedAttempts: 42 },
+  };
+  expect(notificationText(event, "en").body).toBe(
+    "42 invalid-link attempts suppressed.",
+  );
+  expect(notificationText(event, "it").body).toBe(
+    "42 tentativi con link non valido sono stati raggruppati.",
+  );
+});
+
 test("guest navigation retains URL credentials and never recovers them from storage", () => {
   const original = "https://stay.example/guest/#code=secret-token&lang=it";
   const breakfast = guestURL(original, "breakfast", "en");

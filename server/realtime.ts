@@ -49,5 +49,14 @@ function createHub(db: DB) {
       for (const [ws, session] of clients)
         send(ws, session, { type: "activity", event });
     },
+    notificationReads(userId: string) {
+      for (const [ws, session] of clients) {
+        const owner = db
+          .query("SELECT user_id FROM sessions WHERE digest=?")
+          .get(session) as { user_id: string } | null;
+        if (owner?.user_id === userId)
+          send(ws, session, { type: "notifications.read" });
+      }
+    },
   };
 }

@@ -61,6 +61,17 @@ export function openDatabase(path: string) {
       db.exec(`CREATE TABLE event_context(event_id TEXT PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE,data TEXT NOT NULL);
         INSERT INTO migrations VALUES(4);`);
     })();
+  if (!db.query("SELECT 1 FROM migrations WHERE version=5").get())
+    db.transaction(() => {
+      db.exec(`CREATE TABLE event_reads(
+        event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        read_at TEXT NOT NULL,
+        PRIMARY KEY(event_id,user_id)
+      );
+      CREATE INDEX event_reads_user ON event_reads(user_id,event_id);
+      INSERT INTO migrations VALUES(5);`);
+    })();
   return db;
 }
 export type DB = ReturnType<typeof openDatabase>;

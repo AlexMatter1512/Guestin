@@ -143,8 +143,7 @@
 
   <div class="relative">
     <img
-      src={activePhoto?.url ??
-        `/guest/doors_images/${door.name.replace(/\s+/g, "_")}.png`}
+      src={activePhoto?.url ?? "/guest/default_door.png"}
       alt={activePhoto?.alt || translatedName}
       class="door-photo w-44 h-44 object-cover rounded-2xl border-2 border-slate-200 shadow-lg"
       onerror={(e) => {

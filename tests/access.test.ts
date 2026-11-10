@@ -826,7 +826,7 @@ test("wipe requires owner, exact phrase and password; destroys records and sessi
       ).toBe(0);
     expect(
       (f.db.query("SELECT MAX(version) n FROM migrations").get() as any).n,
-    ).toBe(4);
+    ).toBe(5);
     expect(
       (
         await f.req("auth/setup", {
@@ -1027,7 +1027,7 @@ test("device onboarding progress resumes per user across sessions without alteri
   }
 });
 
-test("invalid guest page loads notify with safe unverified prior-visit context, per-link deduplication and code titles", async () => {
+test("invalid guest page loads notify with safe unverified prior-visit context, per-client deduplication and code titles", async () => {
   const f = await fixture();
   try {
     const ownerId = (f.db.query("SELECT id FROM users").get() as any).id;
@@ -1061,8 +1061,8 @@ test("invalid guest page loads notify with safe unverified prior-visit context, 
     const invalid = f.db
       .query("SELECT * FROM events WHERE type='access.invalid'")
       .all() as any[];
-    expect(invalid).toHaveLength(2);
-    expect(f.db.query("SELECT * FROM jobs").all()).toHaveLength(2);
+    expect(invalid).toHaveLength(1);
+    expect(f.db.query("SELECT * FROM jobs").all()).toHaveLength(1);
     const context = JSON.parse(
       (
         f.db
@@ -1142,9 +1142,13 @@ test("push event choices can explicitly select none or exclude invalid page atte
       events: ["access.invalid"],
       allEvents: false,
     });
-    await f.app.request("/api/v1/guest", {
-      headers: { Authorization: "Bearer included-invalid" },
-    });
+    await f.app.request(
+      "/api/v1/guest",
+      {
+        headers: { Authorization: "Bearer included-invalid" },
+      },
+      { clientIP: "192.0.2.2" },
+    );
     expect(f.db.query("SELECT * FROM jobs").all()).toHaveLength(1);
   } finally {
     f.db.close();

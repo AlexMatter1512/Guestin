@@ -5,7 +5,7 @@ name: Test and publish Docker image
     branches: [main]
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -16,6 +16,10 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  secrets:
+    name: Secret scan before release
+    uses: ./.github/workflows/secrets.yml
+
   test:
     name: Type checks and tests
     runs-on: ubuntu-latest
@@ -31,11 +35,11 @@ jobs:
       - run: bun run check
       - run: bun test
         env:
-          LOG_FILE: '-'
+          LOG_FILE: "-"
 
   docker:
     name: Build, smoke test and publish
-    needs: test
+    needs: [test, secrets]
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
