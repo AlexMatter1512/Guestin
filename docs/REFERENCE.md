@@ -1,6 +1,6 @@
-# Self-hosting guestin
+# Self-hosting GuestIn
 
-For the quickest start, use the [README](../README.md). The same [Compose file](../compose.yaml) works with Docker Compose and Portainer.
+For the quickest start, use the [getting-started guide](GETTING_STARTED.md). The same [Compose file](../compose.yaml) works with Docker Compose and Portainer.
 
 ## Configuration
 
@@ -62,7 +62,7 @@ Connectors prepare drafts for review. They do not synchronize bookings or create
 ## Notifications
 
 The host bell shows the signed-in user's unread count across structures.
-Reading the loaded history marks those entries read on that user's other
+Clicking a notification marks it read on that user's other
 devices; it does not clear another team member's badge. **Mark all as read**
 applies to the selected structure and unattributed events. Read receipts survive
 restarts and are removed with expired history or deleted users.

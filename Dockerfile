@@ -9,14 +9,13 @@ COPY . .
 RUN bun run check && bun run build
 FROM oven/bun:1.4.0 AS runtime
 WORKDIR /app
-COPY --from=build /app/package.json /app/bun.lock ./
+COPY --from=build /app/package.json /app/bun.lock /app/LICENSE ./
 COPY --from=build /app/apps/host/package.json apps/host/package.json
 COPY --from=build /app/apps/guest/package.json apps/guest/package.json
 RUN bun install --production --frozen-lockfile
 COPY --from=build /app/server server
 COPY --from=build /app/shared shared
 COPY --from=build /app/scripts scripts
-COPY --from=build /app/docs/PROVENANCE.md docs/PROVENANCE.md
 COPY --from=build /app/docs/licenses docs/licenses
 COPY --from=build /app/apps/host/build apps/host/build
 COPY --from=build /app/apps/guest/build apps/guest/build
