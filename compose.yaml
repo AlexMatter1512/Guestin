@@ -8,7 +8,8 @@ services:
       VAPID_SUBJECT: mailto:admin@example.com
       PORT: "3000"
       DB_PATH: /app/data/oshost.sqlite
-      TRUST_PROXY: "0"
+      # Requires an isolated backend and a proxy that overwrites X-Real-IP.
+      TRUST_PROXY: "1"
       LOG_LEVEL: info
       LOG_FILE: /app/data/logs/server.jsonl
       LOG_MAX_BYTES: "10485760"

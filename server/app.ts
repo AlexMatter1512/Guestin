@@ -1,3 +1,11 @@
+import {
+  collaboratorPermissionsSchema,
+  collaboratorPermissionChangesSchema,
+  hasPermission,
+  type Permission,
+} from "../shared/permissions";
+import { deleteCode, deleteProperty } from "./deletion";
+import { accountBackoff } from "./account-backoff";
 import { passwordWorkLimiter, invalidLinkBudget } from "./abuse-limits";
 import { notificationReads } from "./notification-reads";
 import { portableBackupRoutes } from "./portable-backup";
@@ -21,7 +29,9 @@ import type { DB } from "./db";
 import { vault, token, digest } from "./security";
 import { openDevice, type DeviceAdapter } from "./devices";
 import {
-  codeSchema,
+  codeInputSchema,
+  STAFF_ACCESS_START,
+  STAFF_ACCESS_END,
   doorSchema,
   propertySchema,
   guestLinksSchema,
@@ -48,6 +58,14 @@ export function createApp(
   const app = new Hono<Env>(),
     crypto = vault(config.key);
   const passwordWork = passwordWorkLimiter();
+  const accountAttempts = accountBackoff(db);
+  function checkAccountAttempts(c: any, email: string) {
+    const retryAfter = accountAttempts.take(email);
+    if (retryAfter) {
+      c.header("Retry-After", String(retryAfter));
+      fail("Too many attempts; try again shortly", 429);
+    }
+  }
   const invalidAlerts = invalidLinkBudget();
   const reads = notificationReads(db);
   const adapter = config.device ?? openDevice;
@@ -166,6 +184,10 @@ export function createApp(
   function owner(c: any) {
     if (c.get("user").role !== "owner") fail("Owner permission required", 403);
   }
+  function permission(c: any, key: Permission) {
+    if (!hasPermission(c.get("user"), key))
+      fail("Collaborator permission required: " + key, 403);
+  }
   const defaultPreferences = {
     tour: "pending",
     language: null,
@@ -177,6 +199,22 @@ export function createApp(
       name: user.name,
       email: user.email,
       role: user.role,
+      permissions:
+        user.role === "owner"
+          ? {
+              createAccessCodes: true,
+              createDoors: true,
+              useBookingConnectors: true,
+              createStaffCodes: true,
+            }
+          : collaboratorPermissionsSchema.parse(
+              JSON.parse(
+                get(
+                  "SELECT data FROM user_permissions WHERE user_id=?",
+                  user.id,
+                )?.data ?? "{}",
+              ),
+            ),
       preferences: {
         ...defaultPreferences,
         ...JSON.parse(
@@ -267,7 +305,7 @@ export function createApp(
       c.req.path.startsWith("/api/v1/guest/") ||
       c.req.path.startsWith("/api/v1/auth/")
     ) {
-      const key = c.env?.clientIP ?? "direct";
+      const key = `${c.req.path.startsWith("/api/v1/auth/") ? "auth" : "guest"}:${c.env?.clientIP ?? "direct"}`;
       const now = Date.now();
       if (buckets.size >= 10000)
         for (const [k, v] of buckets) if (v.until <= now) buckets.delete(k);
@@ -299,7 +337,7 @@ export function createApp(
       status as any,
     );
   });
-  app.get("/api/v1/health", (c) => c.json({ status: "ok", schema: 5 }));
+  app.get("/api/v1/health", (c) => c.json({ status: "ok", schema: 7 }));
   app.get("/api/v1/auth/status", (c) =>
     c.json({ needsSetup: !get("SELECT 1 FROM users LIMIT 1") }),
   );
@@ -346,6 +384,7 @@ export function createApp(
         password: z.string().max(200),
       })
       .parse(await c.req.json());
+    checkAccountAttempts(c, body.email);
     const user = get("SELECT * FROM users WHERE email=?", body.email);
     if (
       !user ||
@@ -356,6 +395,13 @@ export function createApp(
       log("warn", "auth.rejected", { reason: "invalid_credentials" });
       fail("Invalid credentials", 401);
     }
+    // Password verification yields: a rotation or deletion may have committed.
+    if (
+      get("SELECT password FROM users WHERE id=?", user.id)?.password !==
+      user.password
+    )
+      fail("Invalid credentials", 401);
+    accountAttempts.clear(body.email);
     return session(c, user);
   });
   app.post("/api/v1/auth/accept-invite", async (c) => {
@@ -381,7 +427,7 @@ export function createApp(
     });
     const user = db.transaction(() => {
       const invite = checkInvite();
-      const u = { id: cryptoRandom(), ...data, role: "staff" };
+      const u = { id: cryptoRandom(), ...data, role: "collaborator" };
       run(
         "INSERT INTO users VALUES(?,?,?,?,?)",
         u.id,
@@ -393,6 +439,7 @@ export function createApp(
       run("DELETE FROM invites WHERE digest=?", invite.digest);
       return u;
     })();
+    realtime(db).workspaceChanged();
     return session(c, user);
   });
   app.use("/api/v1/*", async (c, next) => {
@@ -425,6 +472,123 @@ export function createApp(
     c.set("user", userView(s));
     c.set("csrf", s.csrf);
     await next();
+  });
+  app.use("/api/v1/*", async (c, next) => {
+    const [resource, id, action] = c.req.path
+      .slice("/api/v1/".length)
+      .split("/");
+    if (resource === "codes" && !["GET", "DELETE"].includes(c.req.method)) {
+      if (id) {
+        const row = get("SELECT data FROM codes WHERE id=?", id);
+        if (row)
+          permission(
+            c,
+            JSON.parse(row.data).staff === true
+              ? "createStaffCodes"
+              : "createAccessCodes",
+          );
+      }
+      if ((!id || !action) && ["POST", "PUT"].includes(c.req.method)) {
+        const body = await c.req.raw.clone().json();
+        permission(
+          c,
+          body.staff === true ? "createStaffCodes" : "createAccessCodes",
+        );
+      }
+    }
+    if (
+      resource === "connections" &&
+      (c.req.method === "GET" || action === "request")
+    )
+      permission(c, "useBookingConnectors");
+    await next();
+  });
+  function requireActiveProperty(id: string) {
+    const property = get("SELECT data FROM properties WHERE id=?", id);
+    if (!property) fail("Property missing", 404);
+    if (JSON.parse(property.data).active === false)
+      fail("Structure is deactivated", 403);
+  }
+  // Apply the same scope guard to host, public breakfast and connector routes.
+  app.use("/api/v1/*", async (c, next) => {
+    const parts = c.req.path.slice("/api/v1/".length).split("/");
+    const [resource, id, action] = parts;
+    if (
+      resource === "properties" &&
+      id &&
+      action !== "status" &&
+      c.req.method !== "DELETE"
+    )
+      requireActiveProperty(id);
+    if (resource === "templates" && id) requireActiveProperty(id);
+    if (resource === "public" && id === "breakfast" && action)
+      requireActiveProperty(action);
+    if (
+      ["codes", "doors", "connections"].includes(resource) &&
+      id &&
+      id !== "order" &&
+      c.req.method !== "DELETE"
+    ) {
+      const row = get(`SELECT property_id FROM ${resource} WHERE id=?`, id);
+      if (row) requireActiveProperty(row.property_id);
+    }
+    if (
+      ["codes", "doors", "connections"].includes(resource) &&
+      ["POST", "PUT"].includes(c.req.method) &&
+      (!id || id === "order")
+    ) {
+      const body = await c.req.raw.clone().json();
+      if (typeof body.propertyId === "string")
+        requireActiveProperty(body.propertyId);
+    }
+    await next();
+  });
+  function exclusiveMutation() {
+    if (lifecycle.active !== 1)
+      fail("Another operation is running. Please try again shortly.", 409);
+  }
+  app.patch("/api/v1/properties/:id/status", async (c) => {
+    owner(c);
+    const { active } = z
+      .object({ active: z.boolean() })
+      .strict()
+      .parse(await c.req.json());
+    exclusiveMutation();
+    const id = c.req.param("id"),
+      row = get("SELECT data FROM properties WHERE id=?", id);
+    if (!row) fail("Property missing", 404);
+    run(
+      "UPDATE properties SET data=? WHERE id=?",
+      JSON.stringify({ ...JSON.parse(row.data), active }),
+      id,
+    );
+    realtime(db).workspaceChanged();
+    return c.json({ ok: true });
+  });
+  app.delete("/api/v1/properties/:id", async (c) => {
+    owner(c);
+    z.object({ confirmation: z.literal("DELETE STRUCTURE") })
+      .strict()
+      .parse(await c.req.json());
+    exclusiveMutation();
+    const id = c.req.param("id");
+    if (!get("SELECT 1 FROM properties WHERE id=?", id))
+      fail("Property missing", 404);
+    db.transaction(() => deleteProperty(db, id))();
+    realtime(db).workspaceChanged();
+    return c.json({ ok: true });
+  });
+  app.delete("/api/v1/codes/:id", async (c) => {
+    owner(c);
+    z.object({ confirmation: z.literal("DELETE CODE") })
+      .strict()
+      .parse(await c.req.json());
+    exclusiveMutation();
+    const id = c.req.param("id");
+    if (!get("SELECT 1 FROM codes WHERE id=?", id)) fail("Code missing", 404);
+    db.transaction(() => deleteCode(db, id))();
+    realtime(db).workspaceChanged();
+    return c.json({ ok: true });
   });
   app.get(
     "/api/v1/live",
@@ -472,6 +636,47 @@ export function createApp(
     );
     return c.json({ preferences });
   });
+  app.post("/api/v1/me/password", async (c) => {
+    const input = z
+      .object({
+        currentPassword: z.string().max(200),
+        newPassword: z.string().min(12).max(200),
+      })
+      .parse(await c.req.json());
+    const user = get("SELECT * FROM users WHERE id=?", c.get("user").id);
+    if (!user) fail("Authentication required", 401);
+    checkAccountAttempts(c, user.email);
+    const password = await passwordWork(async () => {
+      if (!(await Bun.password.verify(input.currentPassword, user.password)))
+        fail("Current password is incorrect", 403);
+      if (input.newPassword === input.currentPassword)
+        fail("Choose a different password");
+      return Bun.password.hash(input.newPassword, { algorithm: "argon2id" });
+    });
+    db.transaction(() => {
+      if (
+        get("SELECT password FROM users WHERE id=?", user.id)?.password !==
+          user.password ||
+        !get(
+          "SELECT 1 FROM sessions WHERE user_id=? AND csrf=? AND expires>?",
+          user.id,
+          c.get("csrf"),
+          Date.now(),
+        )
+      )
+        fail("Authentication required", 401);
+      run("UPDATE users SET password=? WHERE id=?", password, user.id);
+      run("DELETE FROM sessions WHERE user_id=?", user.id);
+      accountAttempts.clear(user.email);
+    })();
+    realtime(db).heartbeat();
+    log("info", "auth.password_changed");
+    c.header(
+      "Set-Cookie",
+      `oshost_session=; Path=/api/; HttpOnly; SameSite=Strict; Max-Age=0${config.origin.startsWith("https:") ? "; Secure" : ""}`,
+    );
+    return c.json({ ok: true });
+  });
   app.post("/api/v1/admin/wipe", async (c) => {
     owner(c);
     const input = z
@@ -516,7 +721,9 @@ export function createApp(
           "sessions",
           "invites",
           "user_preferences",
+          "user_permissions",
           "users",
+          "account_backoff",
         ])
           db.exec(`DELETE FROM ${table}`);
       })();
@@ -542,13 +749,66 @@ export function createApp(
   });
   app.get("/api/v1/users", (c) => {
     owner(c);
-    return c.json(all("SELECT id,name,email,role FROM users"));
+    return c.json(all("SELECT id,name,email,role FROM users").map(userView));
   });
-  app.delete("/api/v1/users/:id", (c) => {
+  app.patch("/api/v1/users/:id", async (c) => {
     owner(c);
-    if (c.req.param("id") === c.get("user").id) fail("Cannot remove yourself");
-    run("DELETE FROM sessions WHERE user_id=?", c.req.param("id"));
-    run("DELETE FROM users WHERE id=? AND role=?", c.req.param("id"), "staff");
+    const input = z
+      .object({
+        role: z.literal("owner").optional(),
+        permissions: collaboratorPermissionChangesSchema.optional(),
+      })
+      .strict()
+      .refine(
+        (v) => !!v.role !== !!v.permissions,
+        "Choose promotion or permissions",
+      )
+      .parse(await c.req.json());
+    const id = c.req.param("id"),
+      target = get("SELECT * FROM users WHERE id=?", id);
+    if (!target) fail("Account missing", 404);
+    if (target.role === "owner")
+      fail("Owner accounts cannot be changed by another account", 403);
+    db.transaction(() => {
+      if (input.role) {
+        run("UPDATE users SET role='owner' WHERE id=?", id);
+        run("DELETE FROM user_permissions WHERE user_id=?", id);
+      } else {
+        const permissions = collaboratorPermissionsSchema.parse({
+          ...userView(target).permissions,
+          ...input.permissions,
+        });
+        run(
+          "INSERT INTO user_permissions VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET data=excluded.data",
+          id,
+          JSON.stringify(permissions),
+        );
+      }
+    })();
+    realtime(db).accountChanged(id);
+    realtime(db).workspaceChanged();
+    return c.json(userView(get("SELECT * FROM users WHERE id=?", id)));
+  });
+  app.delete("/api/v1/users/:id", async (c) => {
+    owner(c);
+    z.object({ confirmation: z.literal("DELETE ACCOUNT") })
+      .strict()
+      .parse(await c.req.json());
+    const id = c.req.param("id"),
+      target = get("SELECT * FROM users WHERE id=?", id);
+    if (!target) fail("Account missing", 404);
+    if (target.role === "owner" && id !== c.get("user").id)
+      fail("Owners can only delete their own accounts", 403);
+    if (
+      target.role === "owner" &&
+      get("SELECT COUNT(*) count FROM users WHERE role='owner'").count <= 1
+    )
+      fail("Promote another owner before deleting your account", 409);
+    // Notify active sessions before cascading their deletion; HTTP checks see the new state immediately.
+    realtime(db).accountChanged(id);
+    accountAttempts.clear(target.email);
+    run("DELETE FROM users WHERE id=?", id);
+    realtime(db).workspaceChanged();
     return c.json({ ok: true });
   });
   app.post("/api/v1/invites", (c) => {
@@ -557,26 +817,34 @@ export function createApp(
     run("INSERT INTO invites VALUES(?,?)", digest(raw), Date.now() + 86400000);
     return c.json({ link: `${config.origin}/host/#invite=${raw}` });
   });
-  app.get("/api/v1/properties", (c) =>
-    c.json(
-      all("SELECT * FROM properties").map((p) => ({
-        id: p.id,
-        ...JSON.parse(p.data),
-        notificationRetentionMonths:
-          get(
-            "SELECT notification_months FROM property_settings WHERE property_id=?",
+  app.get("/api/v1/properties", (c) => {
+    const includeInactive = c.req.query("includeInactive") === "1";
+    if (includeInactive) owner(c);
+    return c.json(
+      all("SELECT * FROM properties")
+        .filter((p) => includeInactive || JSON.parse(p.data).active !== false)
+        .map((p) => ({
+          active: true,
+          id: p.id,
+          ...JSON.parse(p.data),
+          notificationRetentionMonths:
+            get(
+              "SELECT notification_months FROM property_settings WHERE property_id=?",
+              p.id,
+            )?.notification_months ?? 3,
+          breakfastProtected: !!get(
+            "SELECT breakfast_password FROM property_settings WHERE property_id=?",
             p.id,
-          )?.notification_months ?? 3,
-        breakfastProtected: !!get(
-          "SELECT breakfast_password FROM property_settings WHERE property_id=?",
-          p.id,
-        )?.breakfast_password,
-      })),
-    ),
-  );
+          )?.breakfast_password,
+        })),
+    );
+  });
   app.post("/api/v1/properties", async (c) => {
     owner(c);
-    const data = propertySchema.parse(await c.req.json()),
+    const data = propertySchema.parse({
+        ...(await c.req.json()),
+        active: true,
+      }),
       id = cryptoRandom();
     run("INSERT INTO properties VALUES(?,?)", id, JSON.stringify(data));
     return c.json({ id, ...data }, 201);
@@ -591,6 +859,7 @@ export function createApp(
     const data = propertySchema.parse({
       ...JSON.parse(current.data),
       ...(await c.req.json()),
+      active: JSON.parse(current.data).active !== false,
     });
     run(
       "UPDATE properties SET data=? WHERE id=?",
@@ -658,7 +927,9 @@ export function createApp(
   };
   app.get("/api/v1/doors", (c) =>
     c.json(
-      all("SELECT * FROM doors")
+      all(
+        "SELECT * FROM doors WHERE property_id IN (SELECT id FROM properties WHERE json_extract(data,'$.active') IS NOT 0)",
+      )
         .map(doorView)
         .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)),
     ),
@@ -688,7 +959,7 @@ export function createApp(
     return c.json({ ok: true });
   });
   app.post("/api/v1/doors", async (c) => {
-    owner(c);
+    permission(c, "createDoors");
     const { config: secret, ...data } = doorSchema.parse(await c.req.json());
     validateDoorPhotos(data);
     validateDevice(data.integration, secret);
@@ -773,6 +1044,7 @@ export function createApp(
     return c.json({ ok: true });
   });
   app.post("/api/v1/doors/:id/test", async (c) => {
+    owner(c);
     z.object({ confirm: z.literal(true) }).parse(await c.req.json());
     const id = actionId(c),
       doorId = c.req.param("id");
@@ -835,6 +1107,7 @@ export function createApp(
     return c.json({ id, ...result });
   });
   app.post("/api/v1/doors/:id/resolve-test", async (c) => {
+    owner(c);
     const b = z
       .object({ actionId: z.string(), confirm: z.literal(true) })
       .parse(await c.req.json());
@@ -873,6 +1146,7 @@ export function createApp(
   portableBackupRoutes(app, db, config.key, owner, validateDevice);
   const codeView = (row: any) => ({
     id: row.id,
+    staff: false,
     ...JSON.parse(row.data),
     revoked: !!row.revoked,
     created: row.created,
@@ -892,9 +1166,22 @@ export function createApp(
     ).n,
   });
   app.get("/api/v1/codes", (c) =>
-    c.json(all("SELECT * FROM codes ORDER BY created DESC").map(codeView)),
+    c.json(
+      all(
+        "SELECT * FROM codes WHERE property_id IN (SELECT id FROM properties WHERE json_extract(data,'$.active') IS NOT 0) ORDER BY created DESC",
+      ).map(codeView),
+    ),
   );
   function saveCode(data: any, id: string, userId: string, isNew: boolean) {
+    if (data.staff)
+      data = {
+        ...data,
+        grants: data.grants.map((g: any) => ({
+          ...g,
+          start: STAFF_ACCESS_START,
+          end: STAFF_ACCESS_END,
+        })),
+      };
     db.transaction(() => {
       if (!get("SELECT 1 FROM properties WHERE id=?", data.propertyId))
         fail("Property missing");
@@ -983,15 +1270,17 @@ export function createApp(
         id,
         {
           actor: get("SELECT name FROM users WHERE id=?", userId)?.name,
-          validFrom: grants.length
-            ? grants.map((g: { start: string }) => g.start).sort()[0]
-            : undefined,
-          validTo: grants.length
-            ? grants
-                .map((g: { end: string }) => g.end)
-                .sort()
-                .at(-1)
-            : undefined,
+          validFrom:
+            !data.staff && grants.length
+              ? grants.map((g: { start: string }) => g.start).sort()[0]
+              : undefined,
+          validTo:
+            !data.staff && grants.length
+              ? grants
+                  .map((g: { end: string }) => g.end)
+                  .sort()
+                  .at(-1)
+              : undefined,
           timezone: JSON.parse(
             get("SELECT data FROM properties WHERE id=?", data.propertyId).data,
           ).timezone,
@@ -1001,12 +1290,17 @@ export function createApp(
   }
   app.post("/api/v1/codes", async (c) => {
     const id = cryptoRandom();
-    saveCode(codeSchema.parse(await c.req.json()), id, c.get("user").id, true);
+    saveCode(
+      codeInputSchema.parse(await c.req.json()),
+      id,
+      c.get("user").id,
+      true,
+    );
     return c.json(codeView(get("SELECT * FROM codes WHERE id=?", id)), 201);
   });
   app.put("/api/v1/codes/:id", async (c) => {
     saveCode(
-      codeSchema.parse(await c.req.json()),
+      codeInputSchema.parse(await c.req.json()),
       c.req.param("id"),
       c.get("user").id,
       false,
@@ -1142,7 +1436,9 @@ export function createApp(
       ? z.coerce.number().int().min(1).max(100).parse(c.req.query("pageSize"))
       : 1000;
     const propertyId = c.req.query("propertyId");
-    const clauses: string[] = [],
+    const clauses: string[] = [
+        "(property_id IS NULL OR property_id IN (SELECT id FROM properties WHERE json_extract(data,'$.active') IS NOT 0))",
+      ],
       args: any[] = [];
     if (propertyId) {
       z.string().uuid().parse(propertyId);
@@ -1199,13 +1495,14 @@ export function createApp(
   app.get("/api/v1/reports", (c) =>
     c.json(
       all(
-        "SELECT c.id,COALESCE(c.creator,json_extract(c.data,'$.importedCreatorId')) creator,COALESCE(u.name,json_extract(c.data,'$.importedCreatorName')) name,c.created,c.property_id,COALESCE(m.attempts,0) attempts,COALESCE(m.accepted,0) accepted FROM codes c LEFT JOIN users u ON c.creator=u.id LEFT JOIN code_metrics m ON m.code_id=c.id",
+        "SELECT c.id,COALESCE(c.creator,json_extract(c.data,'$.importedCreatorId')) creator,COALESCE(u.name,json_extract(c.data,'$.importedCreatorName')) name,c.created,c.property_id,COALESCE(m.attempts,0) attempts,COALESCE(m.accepted,0) accepted FROM codes c LEFT JOIN users u ON c.creator=u.id LEFT JOIN code_metrics m ON m.code_id=c.id WHERE c.property_id IN (SELECT id FROM properties WHERE json_extract(data,'$.active') IS NOT 0)",
       ),
     ),
   );
   function guest(c: any) {
     const raw = c.req.header("authorization")?.replace(/^Bearer /, "") ?? "";
     const r = get("SELECT * FROM codes WHERE digest=?", digest(raw));
+    if (r) requireActiveProperty(r.property_id);
     if (!r || r.revoked) {
       const budget = invalidAlerts.take(
         digest(c.env?.clientIP ?? "unknown"),
@@ -1255,6 +1552,7 @@ export function createApp(
       }
       fail("Invalid or revoked access link", 403);
     }
+    requireActiveProperty(r.property_id);
     setLogResource({ codeId: r.id, propertyId: r.property_id });
     return r;
   }
@@ -1266,6 +1564,7 @@ export function createApp(
       );
     return c.json({
       codeId: r.id,
+      staff: d.staff === true,
       label: d.label,
       property: p.name,
       timezone: p.timezone,
@@ -1280,6 +1579,7 @@ export function createApp(
       )
         .map((g) => ({
           id: g.door_id,
+          timeUnrestricted: d.staff === true,
           name: JSON.parse(g.data).name,
           translations: JSON.parse(g.data).translations,
           description: JSON.parse(g.data).description ?? "",
@@ -1338,9 +1638,9 @@ export function createApp(
                 ? "Door permission paused"
                 : JSON.parse(d.data).integration === "none"
                   ? "This door has no device connector yet"
-                  : now < g.start
+                  : JSON.parse(r.data).staff !== true && now < g.start
                     ? "Access is not yet valid"
-                    : now >= g.end
+                    : JSON.parse(r.data).staff !== true && now >= g.end
                       ? "Access expired"
                       : g.claim
                         ? "Previous action is unresolved"

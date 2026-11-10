@@ -26,7 +26,10 @@ export async function deliverPush(db: DB, send = webpush.sendNotification) {
           events: [],
           ...JSON.parse(j.preferences),
         };
-        if (!wantsNotification(preferences, j.property_id, j.type)) {
+        if (
+          (j.property_data && JSON.parse(j.property_data).active === false) ||
+          !wantsNotification(preferences, j.property_id, j.type)
+        ) {
           db.query(
             "DELETE FROM jobs WHERE event_id=? AND subscription_id=?",
           ).run(j.event_id, j.subscription_id);

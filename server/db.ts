@@ -72,6 +72,42 @@ export function openDatabase(path: string) {
       CREATE INDEX event_reads_user ON event_reads(user_id,event_id);
       INSERT INTO migrations VALUES(5);`);
     })();
+  // Both unreleased worktrees used version 6. Detect the account schema too,
+  // so databases created by either worktree upgrade without losing data.
+  if (
+    !db.query("SELECT 1 FROM migrations WHERE version=6").get() ||
+    !db
+      .query(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='user_permissions'",
+      )
+      .get()
+  ) {
+    // Rebuild the role CHECK constraint without firing cascades on child tables.
+    db.exec("PRAGMA foreign_keys=OFF");
+    try {
+      db.transaction(() => {
+        db.exec(`
+          CREATE TABLE users_v6(id TEXT PRIMARY KEY,name TEXT NOT NULL,email TEXT UNIQUE NOT NULL,password TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('owner','collaborator')));
+          INSERT INTO users_v6 SELECT id,name,email,password,CASE role WHEN 'staff' THEN 'collaborator' ELSE role END FROM users;
+          DROP TABLE users;
+          ALTER TABLE users_v6 RENAME TO users;
+          CREATE TABLE user_permissions(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,data TEXT NOT NULL);
+          INSERT INTO user_permissions SELECT id,'{"createAccessCodes":true,"createDoors":false,"useBookingConnectors":true,"createStaffCodes":true}' FROM users WHERE role='collaborator';
+          INSERT OR IGNORE INTO migrations VALUES(6);
+        `);
+        if (db.query("PRAGMA foreign_key_check").all().length)
+          throw Error("Account migration would break foreign keys");
+      })();
+    } finally {
+      db.exec("PRAGMA foreign_keys=ON");
+    }
+  }
+  if (!db.query("SELECT 1 FROM migrations WHERE version=7").get())
+    db.transaction(() => {
+      db.exec(`CREATE TABLE IF NOT EXISTS account_backoff(identity TEXT PRIMARY KEY,attempts INTEGER NOT NULL,next INTEGER NOT NULL,expires INTEGER NOT NULL);
+        CREATE INDEX IF NOT EXISTS account_backoff_expiry ON account_backoff(expires);
+        INSERT INTO migrations VALUES(7);`);
+    })();
   return db;
 }
 export type DB = ReturnType<typeof openDatabase>;

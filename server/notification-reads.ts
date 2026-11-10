@@ -5,7 +5,8 @@ export function notificationReads(db: DB) {
     const rows = db
       .query(
         `SELECT e.property_id,COUNT(*) count FROM events e
-      WHERE NOT EXISTS (SELECT 1 FROM event_reads r WHERE r.event_id=e.id AND r.user_id=?)
+      WHERE (e.property_id IS NULL OR e.property_id IN (SELECT id FROM properties WHERE json_extract(data,'$.active') IS NOT 0))
+      AND NOT EXISTS (SELECT 1 FROM event_reads r WHERE r.event_id=e.id AND r.user_id=?)
       GROUP BY e.property_id`,
       )
       .all(userId) as { property_id: string | null; count: number }[];

@@ -94,7 +94,13 @@ export function connectorRoutes(
     db.query("SELECT * FROM connections WHERE id=?").get(id) as any;
   app.get("/api/v1/connections", (c) =>
     c.json(
-      (db.query("SELECT * FROM connections").all() as any[]).map((row) => {
+      (
+        db
+          .query(
+            "SELECT * FROM connections WHERE property_id IN (SELECT id FROM properties WHERE json_extract(data,'$.active') IS NOT 0)",
+          )
+          .all() as any[]
+      ).map((row) => {
         const { secret: encrypted, ...safe } = row;
         const data = JSON.parse(row.data);
         if (row.kind === "kross") {

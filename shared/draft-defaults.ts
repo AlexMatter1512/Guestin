@@ -26,12 +26,11 @@ export function breakfastDefaults(
   timezone: string,
   now = new Date(),
 ) {
-  const starts = (draft.grants ?? [])
+  const grants = draft.staff ? [] : (draft.grants ?? []);
+  const starts = grants
     .map((g) => localDate(timezone, new Date(g.start)))
     .sort();
-  const ends = (draft.grants ?? [])
-    .map((g) => localDate(timezone, new Date(g.end)))
-    .sort();
+  const ends = grants.map((g) => localDate(timezone, new Date(g.end))).sort();
   const start = nextDate(starts[0] ?? localDate(timezone, now));
   return {
     total: 1,

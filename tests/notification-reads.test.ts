@@ -10,7 +10,7 @@ import { pruneNotifications } from "../server/notifications";
 import { realtime } from "../server/realtime";
 
 function seed(db: ReturnType<typeof openDatabase>) {
-  for (const id of ["owner", "staff"]) {
+  for (const id of ["owner", "collaborator"]) {
     db.query("INSERT INTO users VALUES(?,?,?,?,?)").run(
       id,
       id,
@@ -74,7 +74,8 @@ test("notification readers and unread badges are per-user; reads are authenticat
   try {
     expect((await req("/unread")).data.total).toBe(3);
     expect(
-      (await req("/read", { eventIds: [eventIds[0]], userId: "staff" })).status,
+      (await req("/read", { eventIds: [eventIds[0]], userId: "collaborator" }))
+        .status,
     ).toBe(400);
     expect((await req("/read", { eventIds }, "owner", "wrong")).status).toBe(
       403,
@@ -95,7 +96,9 @@ test("notification readers and unread badges are per-user; reads are authenticat
       read: true,
       readBy: ["owner"],
     });
-    expect((await req("/unread", undefined, "staff")).data.total).toBe(3);
+    expect((await req("/unread", undefined, "collaborator")).data.total).toBe(
+      3,
+    );
     expect(
       (await req("/read-all", { propertyId: propertyIds[0] })).data.unread,
     ).toMatchObject({
@@ -105,14 +108,14 @@ test("notification readers and unread badges are per-user; reads are authenticat
     });
     expect((await req("/read-all", {})).data.unread.total).toBe(0);
     expect(
-      (await req("/read", { eventIds: [eventIds[0]] }, "staff")).data.unread
-        .total,
+      (await req("/read", { eventIds: [eventIds[0]] }, "collaborator")).data
+        .unread.total,
     ).toBe(2);
     expect(
-      (await req("", undefined, "staff")).data
+      (await req("", undefined, "collaborator")).data
         .find((e: any) => e.id === eventIds[0])
         .readBy.sort(),
-    ).toEqual(["owner", "staff"]);
+    ).toEqual(["collaborator", "owner"]);
   } finally {
     db.close();
   }
@@ -125,11 +128,11 @@ test("read receipts survive restart and cascade with notification retention and 
   try {
     const { eventIds } = seed(db);
     notificationReads(db).mark("owner", eventIds);
-    notificationReads(db).mark("staff", eventIds);
+    notificationReads(db).mark("collaborator", eventIds);
     db.close();
     db = openDatabase(path);
     expect(notificationReads(db).unread("owner").total).toBe(0);
-    db.query("DELETE FROM users WHERE id='staff'").run();
+    db.query("DELETE FROM users WHERE id='collaborator'").run();
     expect(
       db.query("SELECT 1 FROM event_reads WHERE user_id='staff'").get(),
     ).toBeNull();
@@ -159,7 +162,7 @@ test("read updates synchronize all sessions of the reader without notifying othe
     for (const [index, session] of [
       "owner",
       "owner-second",
-      "staff",
+      "collaborator",
     ].entries()) {
       hub.connect(
         {

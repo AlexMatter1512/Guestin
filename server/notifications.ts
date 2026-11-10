@@ -16,7 +16,7 @@ export function pruneNotifications(db: DB, now = new Date()) {
   db.transaction(() => {
     const scopes = db
       .query(
-        "SELECT p.id,COALESCE(s.notification_months,3) months FROM properties p LEFT JOIN property_settings s ON s.property_id=p.id",
+        "SELECT p.id,COALESCE(s.notification_months,3) months FROM properties p LEFT JOIN property_settings s ON s.property_id=p.id WHERE json_extract(p.data,'$.active') IS NOT 0",
       )
       .all() as { id: string | null; months: number }[];
     scopes.push({ id: null, months: 3 });

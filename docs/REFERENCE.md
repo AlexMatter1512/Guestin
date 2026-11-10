@@ -25,13 +25,33 @@ The host port is `127.0.0.1:38471`. Point your domain at the server and configur
 
 ```caddyfile
 stay.example.com {
-  reverse_proxy 127.0.0.1:38471
+  reverse_proxy 127.0.0.1:38471 {
+    header_up X-Real-IP {remote_host}
+  }
 }
 ```
 
-Allow ports 80 and 443. A proxy on the same Docker network can use `oshost:3000`. Forward paths unchanged and allow WebSocket upgrades on `/api/v1/live` (Caddy does this automatically). HTTPS is required for phone installation and push notifications.
+Allow ports 80 and 443. A proxy on the same Docker network can use `oshost:3000`. Forward paths unchanged and allow WebSocket upgrades on `/api/v1/live` (Caddy does this automatically). HTTPS is required for public deployments, as well as phone installation and push notifications. The supplied Compose file enables `TRUST_PROXY=1`: the proxy must overwrite `X-Real-IP` with the actual connecting client address, as above. Never forward a client-supplied value. For nginx use `proxy_set_header X-Real-IP $remote_addr;`. Restrict backend access to the proxy. Set `TRUST_PROXY=0` when serving clients directly; forwarded headers are then ignored.
 
 For direct TLS, mount your certificates read-only and set both `TLS_CERT` and `TLS_KEY` to their paths inside the container. Set `ORIGIN` to the resulting HTTPS address.
+
+## Guest and staff access codes
+
+Guest codes use the calendar and each door's validity dates. **Filters → Non
+revoked** includes codes that have not been revoked, independently of whether
+their dates are current, upcoming or expired on the selected calendar day.
+
+Enable **Staff access code** in the code form for cleaning, laundry or other
+recurring staff. Selected doors have no start or end date. Switch **Staff codes**
+on the list page to see these codes without a calendar. This view defaults to
+non-revoked codes; its filters can show revoked codes or all staff codes. Search,
+usage counts, sharing, editing, pausing permissions and revocation remain available.
+Creating a code from this view enables the staff flag by default.
+
+Single-use rules, disabled doors and unresolved device requests still apply.
+An optional breakfast allowance keeps its own date and quantity limits. Editing
+or changing a code's kind preserves recorded usage; changing back to a guest
+code exposes its validity fields again. Portable backups preserve the staff flag.
 
 ## Connections
 
@@ -69,6 +89,10 @@ slots per installation process. Excess work receives HTTP 429; retry shortly.
 Invalid setup and invite tokens are rejected before hashing, and eligibility is
 rechecked after waiting and when the user is committed.
 
+Login and password changes share a persistent account budget, independent of client IP. Five attempts are allowed initially; subsequent attempts require a 30-second delay, doubling to a maximum of 15 minutes. Rejected attempts during a delay do not extend it. HTTP 429 includes `Retry-After`. Successful authentication clears the budget; inactive records expire after 24 hours. The budget stores email digests for registered accounts only, so random nonexistent emails cannot fill a global lockout budget. Guest and authentication routes have separate per-IP limits of 100 requests per minute.
+
+Open **Your account → Change password** to rotate a password. Enter the current password and a different new password of 12–200 characters. All sessions are revoked, including the current one; sign in again on every device. This flow is available to owners and collaborators.
+
 ## Breakfast page
 
 Settings → Breakfast provides a direct link and optional password protection. Owners can set, change, or remove the password. Signed-in hosts can open the page directly. Other viewers enter the shared password and stay signed in for up to 12 hours. Changing the password invalidates existing breakfast sessions. The page and API count breakfasts actually used, using confirmed redemptions rather than assigned allowances. They expose aggregate totals only.
@@ -101,10 +125,12 @@ docker compose up -d
 
 Keep the same stack name and data volume. `docker compose down -v` deletes that volume.
 
-Only version tags publish images. A stable tag such as `v1.2.3` publishes `:1.2.3`, `:1.2`, and `:latest`. Prereleases do not move `latest`. Main pushes, pull requests, and manual workflows run checks only. To publish a reviewed commit:
+Every pushed Git tag runs CI and publishes an image after successful checks. Arbitrary tags publish `:tag-<sanitized-tag>-<hash>` and `:sha-<commit>`. SemVer tags (with optional `v` prefix) also create a GitHub release. A stable tag such as `v1.2.3` publishes `:1.2.3`, `:1.2`, `:latest` and the SHA alias. Prereleases and versions with build metadata do not move `latest` or minor aliases. Main pushes, pull requests, and manual workflows run checks only.
+
+Before releasing, review the complete diff and commits since the preceding release, including pending changes, and commit notes to `docs/releases/<exact-tag>.md`. CI uses those notes for the GitHub release, falling back to GitHub-generated notes when the file is absent. See [AGENTS.md](../AGENTS.md). To tag a reviewed commit that includes its notes:
 
 ```sh
-git tag v1.2.3
+git tag -a v1.2.3 -m "Release v1.2.3"
 git push origin v1.2.3
 ```
 

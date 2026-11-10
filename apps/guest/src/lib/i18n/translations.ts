@@ -82,6 +82,9 @@ export function t(key: string): string {
 
 const extra: Record<string, Record<string, string>> = {
   en: {
+    staffIntro:
+      "Use this link to open your assigned doors. Access has no time limit.",
+    unrestricted: "No time limit",
     disabled: "Temporarily unavailable",
     paused: "Temporarily unavailable",
     photo: "Photo",
@@ -101,6 +104,9 @@ const extra: Record<string, Record<string, string>> = {
     future: "Not yet valid",
   },
   it: {
+    staffIntro:
+      "Usa questo link per aprire le porte assegnate. L’accesso non ha limiti di orario.",
+    unrestricted: "Senza limiti di orario",
     disabled: "Temporaneamente non disponibile",
     paused: "Temporaneamente non disponibile",
     photo: "Foto",
@@ -119,6 +125,9 @@ const extra: Record<string, Record<string, string>> = {
     future: "Non ancora valido",
   },
   fr: {
+    staffIntro:
+      "Utilisez ce lien pour ouvrir les portes qui vous sont attribuées. L’accès est sans limite horaire.",
+    unrestricted: "Sans limite horaire",
     disabled: "Temporairement indisponible",
     paused: "Temporairement indisponible",
     photo: "Photo",
@@ -137,6 +146,9 @@ const extra: Record<string, Record<string, string>> = {
     future: "Pas encore valide",
   },
   es: {
+    staffIntro:
+      "Usa este enlace para abrir las puertas asignadas. El acceso no tiene límite de horario.",
+    unrestricted: "Sin límite de horario",
     disabled: "Temporalmente no disponible",
     paused: "Temporalmente no disponible",
     photo: "Foto",
@@ -156,6 +168,9 @@ const extra: Record<string, Record<string, string>> = {
     future: "Todavía no válido",
   },
   de: {
+    staffIntro:
+      "Mit diesem Link öffnen Sie die Ihnen zugewiesenen Türen. Der Zugang ist zeitlich unbegrenzt.",
+    unrestricted: "Ohne zeitliche Begrenzung",
     disabled: "Vorübergehend nicht verfügbar",
     paused: "Vorübergehend nicht verfügbar",
     photo: "Foto",

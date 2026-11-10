@@ -15,6 +15,7 @@
     enabled?: boolean;
     active?: boolean;
     configured?: boolean;
+    timeUnrestricted?: boolean;
     photos?: Photo[];
     primaryPhotoId?: string | null;
     description?: string;
@@ -45,8 +46,12 @@
     ownsLock = false;
   const valid_from = $derived(new Date(door.times.from));
   const valid_to = $derived(new Date(door.times.to));
-  const expired = $derived(Date.parse(door.times.to) <= clock);
-  const not_yet_valid = $derived(Date.parse(door.times.from) > clock);
+  const expired = $derived(
+    !door.timeUnrestricted && Date.parse(door.times.to) <= clock,
+  );
+  const not_yet_valid = $derived(
+    !door.timeUnrestricted && Date.parse(door.times.from) > clock,
+  );
   const consumed = $derived(!!door.single_use && !!door.used);
   const translatedName = $derived(
     door.translations?.[locale_state.current] || door.name,
@@ -256,7 +261,10 @@
     </div>{/if}
 
   <!-- date di validita' -->
-  {#if door.times.from && door.times.to && !consumed}
+  {#if door.timeUnrestricted}<p class="text-sm text-slate-600">
+      {guestText("unrestricted")}
+    </p>{/if}
+  {#if !door.timeUnrestricted && door.times.from && door.times.to && !consumed}
     <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 w-full">
       <div class="text-center space-y-3">
         {#if expired}

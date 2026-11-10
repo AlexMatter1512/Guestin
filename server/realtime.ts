@@ -49,6 +49,19 @@ function createHub(db: DB) {
       for (const [ws, session] of clients)
         send(ws, session, { type: "activity", event });
     },
+    accountChanged(userId: string) {
+      for (const [ws, session] of clients) {
+        const row = db
+          .query("SELECT user_id FROM sessions WHERE digest=?")
+          .get(session) as { user_id: string } | null;
+        if (row?.user_id === userId)
+          send(ws, session, { type: "account.changed" });
+      }
+    },
+    workspaceChanged() {
+      for (const [ws, session] of clients)
+        send(ws, session, { type: "workspace.changed" });
+    },
     notificationReads(userId: string) {
       for (const [ws, session] of clients) {
         const owner = db

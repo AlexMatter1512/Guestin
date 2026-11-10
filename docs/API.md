@@ -10,19 +10,34 @@ All endpoints use JSON under `/api/v1`. Errors return `{error}` with a non-2xx s
 | POST | `/auth/setup` | Create the first owner with `{setupToken,name,email,password}`. |
 | POST | `/auth/login` | Sign in with `{email,password}`. |
 | POST | `/auth/accept-invite` | Join with `{invite,name,email,password}`. |
-| GET | `/me` | Current user, preferences, and CSRF token. |
+| GET | `/me` | Current user, effective permissions, preferences, and CSRF token. |
 | PATCH | `/me/preferences` | Update language, theme, and tour progress for the current user. |
 | POST | `/logout` | Sign out. |
+| POST | `/me/password` | Change own password with `{currentPassword,newPassword}` (12–200 characters). Revokes every session; sign in again. Available to owners and collaborators. Login and password changes share persistent per-account backoff; HTTP 429 includes `Retry-After`. |
 | GET | `/users` | Owner-only team list. |
 | POST | `/invites` | Owner-only one-use invitation link, valid for 24 hours. |
-| DELETE | `/users/:id` | Owner-only removal of a staff member. |
+| PATCH | `/users/:id` | Owner-only update of collaborator `{permissions:{...}}` or promotion with `{role:"owner"}`. |
+| DELETE | `/users/:id` | Owner-only deletion with `{confirmation:"DELETE ACCOUNT"}`. Owners may delete collaborators or themselves, never another owner. At least one owner must remain. |
 
 Authentication sets an HttpOnly session cookie. Passwords require at least 12 characters when creating an account.
+
+## Account roles and permissions
+
+Owner and admin refer to the same unrestricted `owner` role. Team accounts use `collaborator`; staff access codes remain a separate concept. New invited collaborators have no permissions until an owner grants them. Existing staff accounts migrate to collaborators with their previous code creation and connector capabilities preserved.
+
+`user.permissions` contains `createAccessCodes`, `createDoors`, `useBookingConnectors`, and `createStaffCodes`. `PATCH /users/:id` accepts a partial permissions object, preserving omitted flags. These are the only grantable permissions; unknown permission keys are rejected. Owners receive every capability regardless of permission storage. Permissions are enforced from the database on every authenticated request and account changes refresh active browsers.
+
+Ordinary and staff code permissions are independent. Each controls creating and managing codes of its type, including updates, revocation, replacement, permission pauses and action resolution. Changing a code's type requires both permissions. `createDoors` permits adding doors, with their initial integration settings; editing, deleting, reordering and testing existing doors remain owner-only. `useBookingConnectors` permits listing and using saved connectors (including iCal/Gemini); credential configuration, Kross login/verification and deletion remain owner-only.
+
+Account management, invitations, property administration, permanent code deletion, backups/import and workspace wiping remain owner-only and cannot be delegated through flags. Owners cannot demote or delete another owner. Promoting a collaborator grants the full owner role. Self-deletion requires another owner, invalidates all account sessions and subscriptions, removes personal preferences/permissions/read receipts, and preserves workspace data and access codes (creator becomes null).
 
 ## Structures and doors
 
 Properties also contain `defaultCheckinLink` and `defaultInstructionsLink`. Owner-only `PATCH /properties/:id/links` updates those HTTP(S) URL defaults; empty strings clear them. They prefill new host forms and do not change existing access codes. Nonempty connector links override the defaults.
 
+- Owner-only `PATCH /properties/:id/status` accepts `{active:boolean}`. Inactive structures and their codes, doors, connectors, reports and notifications are hidden; guest links and property-scoped operations return 403 until reactivated. Notification retention pauses for inactive structures. `GET /properties?includeInactive=1` is owner-only and includes archived structures. Legacy structures default to active.
+- Owner-only `DELETE /properties/:id` requires `{confirmation:"DELETE STRUCTURE"}` and transactionally deletes related codes, grants, actions, redemptions, counters, events/read receipts/push jobs, doors/tests, connectors, templates and breakfast settings/sessions. Shared users and subscriptions remain; the deleted structure is removed from subscription preferences. Existing backup files are unaffected.
+- Owner-only `DELETE /codes/:id` requires `{confirmation:"DELETE CODE"}` and deletes that code, its grants, usage, counters, events/read receipts and push jobs. Other codes and structure settings remain. Deletion and lifecycle changes return 409 while another operation is in flight.
 - `GET /properties`, `POST /properties`, `PUT /properties/:id`: structure name, IANA timezone, and check-in/check-out defaults. Creation and updates require an owner. Reads include `notificationRetentionMonths` and `breakfastProtected`, never password hashes.
 - `PATCH /properties/:id/notifications`: any host can set `{retentionMonths}` from 1 to 120 for the shared structure history. The default is three calendar months; older records are removed automatically. Shortening retention applies immediately.
 - `PUT /properties/:id/breakfast-settings`: owner-only `{enabled,password?}`. New passwords require 8–128 characters. Leaving the password unset keeps an existing password; disabling removes protection. Changes invalidate breakfast sessions.
@@ -47,6 +62,22 @@ Guest links keep their token in a URL fragment (`#code=…&page=breakfast`) thro
 `GET /public/breakfast/:property` returns `property`, `timezone`, `today`, `thisMonth`, `lastMonth`, `from`, `to`, and `total`. Optional `from`/`to` query parameters use `YYYY-MM-DD`. Counts sum confirmed redemption quantities by the redemption date in the structure’s timezone. Unused allowances do not contribute. Responses contain aggregates only.
 
 When protected, anonymous requests return `401` with `{requiresPassword:true,error}`. `POST /public/breakfast/:property/auth` with `{password}` sets a scoped HttpOnly cookie, valid for up to 12 hours. The endpoint is rate-limited. Authenticated hosts can read totals directly.
+
+## Staff access codes
+
+Codes include `staff` (default `false`). Set `staff:true` when creating or editing
+a time-unrestricted door-access link. Staff grants may omit `start` and `end`;
+the server stores compatibility bounds, but authorization uses the staff flag
+and does not impose a time window. Guest-code grants continue to require and
+enforce their dates. Staff codes retain revocation, paused permissions, disabled
+doors, single-use consumption, unresolved-action protection, and usage metrics.
+This flag grants door access through a link; it does not create a host account.
+
+`GET /guest` includes `staff`, and each door includes `timeUnrestricted` so
+clients can omit date restrictions from staff links. Optional breakfast
+allowances keep their own dates and quantities. Portable JSON exports preserve
+the staff flag and permission usage. Existing codes without the flag remain
+dated guest codes.
 
 ## Shared history and reports
 

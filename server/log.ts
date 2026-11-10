@@ -190,7 +190,7 @@ const routes = [
   /^\/api\/v1\/events\/(unread|read|read-all)$/,
   /^\/api\/v1\/(health|live|me|logout|users|invites|properties|doors|codes|events|reports|connections)$/,
   /^\/api\/v1\/auth\/(status|setup|login|accept-invite)$/,
-  /^\/api\/v1\/me\/preferences$/,
+  /^\/api\/v1\/me\/(preferences|password)$/,
   /^\/api\/v1\/admin\/(wipe|export|import)$/,
   /^\/api\/v1\/doors\/order$/,
   /^\/api\/v1\/push\/(key|subscriptions)$/,
@@ -200,6 +200,7 @@ const routes = [
 export function logRoute(path: string) {
   if (routes.some((re) => re.test(path))) return path;
   for (const [re, pattern] of [
+    [/^\/api\/v1\/properties\/[^/]+\/status$/, "/api/v1/properties/:id/status"],
     [/^\/api\/v1\/properties\/[^/]+\/links$/, "/api/v1/properties/:id/links"],
     [
       /^\/api\/v1\/public\/breakfast\/[^/]+\/auth$/,

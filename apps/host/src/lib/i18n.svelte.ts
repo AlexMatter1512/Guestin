@@ -1,6 +1,73 @@
 export type HostLocale = "en" | "it";
 export const hostLanguage = $state({ current: "en" as HostLocale });
 const italian: Record<string, string> = {
+  Collaborator: "Collaboratore",
+  collaborator: "collaboratore",
+  "Owner / Admin": "Proprietario / Admin",
+  "Invite and manage collaborators": "Invita e gestisci i collaboratori",
+  "Former collaborator": "Ex collaboratore",
+  "Create access codes": "Crea codici di accesso",
+  "Create new doors": "Crea nuove porte",
+  "Use booking connectors": "Usa i connettori delle prenotazioni",
+  "Create staff access codes": "Crea codici di accesso staff",
+  "Promote to owner": "Promuovi a proprietario",
+  "Confirm promotion": "Conferma promozione",
+  "Delete account": "Elimina account",
+  "Delete my account": "Elimina il mio account",
+  "Account updated": "Account aggiornato",
+  "Owners and admins have the same unrestricted role. Collaborators only receive the permissions you enable below.":
+    "Proprietari e admin hanno lo stesso ruolo senza restrizioni. I collaboratori ricevono solo i permessi abilitati qui sotto.",
+  "New collaborators start without permissions. Code permissions also control editing and managing codes of that type.":
+    "I nuovi collaboratori iniziano senza permessi. I permessi dei codici controllano anche la modifica e la gestione dei codici di quel tipo.",
+  "Only you can delete your owner account. Another owner must remain.":
+    "Solo tu puoi eliminare il tuo account proprietario. Deve rimanere un altro proprietario.",
+  "Owners can only delete their own accounts.":
+    "I proprietari possono eliminare solo il proprio account.",
+  "This grants unrestricted administration, including deleting collaborator accounts, configuring connectors and wiping the entire database. Owners cannot be demoted or deleted by another owner.":
+    "Concede l’amministrazione completa, inclusa l’eliminazione dei collaboratori, la configurazione dei connettori e la cancellazione dell’intero database. Un proprietario non può essere declassato o eliminato da un altro proprietario.",
+  "This permanently deletes this account and revokes all its sessions and notification subscriptions. Workspace data and access codes are preserved. This cannot be undone.":
+    "Elimina definitivamente l’account e revoca tutte le sue sessioni e iscrizioni alle notifiche. I dati dello spazio di lavoro e i codici di accesso vengono conservati. Non è possibile annullare l’operazione.",
+  "Promote another owner before deleting your account":
+    "Promuovi un altro proprietario prima di eliminare il tuo account",
+  "Owner accounts cannot be changed by another account":
+    "Gli account proprietari non possono essere modificati da un altro account",
+  "Collaborator permission required: createAccessCodes":
+    "Serve il permesso per creare codici di accesso",
+  "Collaborator permission required: createStaffCodes":
+    "Serve il permesso per creare codici staff",
+  "Collaborator permission required: createDoors":
+    "Serve il permesso per creare porte",
+  "Collaborator permission required: useBookingConnectors":
+    "Serve il permesso per usare i connettori delle prenotazioni",
+
+  Notes: "Note",
+  "Delete permanently": "Elimina definitivamente",
+  "Permanently deleted": "Eliminazione definitiva completata",
+  "Type to confirm": "Digita per confermare",
+  Deactivated: "Disattivata",
+  Deactivate: "Disattiva",
+  Reactivate: "Riattiva",
+  "Structure deactivated": "Struttura disattivata",
+  "Structure reactivated": "Struttura riattivata",
+  "Deactivation hides this structure and disables guest links while preserving its data.":
+    "La disattivazione nasconde la struttura e disabilita i link ospiti, conservando i dati.",
+  "This permanently deletes the structure and all its doors, codes, usage history, notifications and settings. This cannot be undone.":
+    "Elimina definitivamente la struttura e tutte le sue porte, i codici, lo storico degli utilizzi, le notifiche e le impostazioni. Non è possibile annullare l’operazione.",
+  "This permanently deletes this code, its usage history and notifications. Its guest link will stop working. This cannot be undone.":
+    "Elimina definitivamente il codice, lo storico degli utilizzi e le notifiche. Il link ospite smetterà di funzionare. Non è possibile annullare l’operazione.",
+  "Non revoked": "Non revocati",
+  "Staff codes": "Codici staff",
+  "Staff name / label": "Nome staff / etichetta",
+  "Search staff access…": "Cerca accessi staff…",
+  "Staff access code": "Codice di accesso staff",
+  "No time limit": "Senza limiti di orario",
+  "Use + below to create a staff access code.":
+    "Usa il + in basso per creare un codice di accesso staff.",
+  "No staff codes yet": "Nessun codice staff",
+  "Time-unrestricted access for cleaners, laundry and other staff. Door permissions and revocation still apply.":
+    "Accesso senza limiti di orario per pulizie, lavanderia e altro personale. Restano validi i permessi delle porte e la revoca.",
+  "No start or end date. Door permissions and single-use rules still apply.":
+    "Nessuna data di inizio o fine. Restano validi i permessi delle porte e le regole monouso.",
   "Install app": "Installa app",
   "Add oshost to your iPhone or Android Home Screen":
     "Aggiungi oshost alla Home di iPhone o Android",
@@ -80,6 +147,14 @@ const italian: Record<string, string> = {
   "Danger zone": "Area pericolosa",
   "Wipe database…": "Svuota database…",
   "Current password": "Password attuale",
+  "Change password": "Cambia password",
+  "New password": "Nuova password",
+  "Confirm new password": "Conferma nuova password",
+  "Passwords do not match": "Le password non coincidono",
+  "Changing your password signs out every device, including this one.":
+    "Cambiare la password disconnette tutti i dispositivi, incluso questo.",
+  "Password changed. Sign in again on each device.":
+    "Password cambiata. Accedi di nuovo su ogni dispositivo.",
   "Type WIPE ALL DATA to confirm": "Digita WIPE ALL DATA per confermare",
   "Permanently wipe database": "Svuota definitivamente il database",
   "An identical access code already exists. Create another anyway?":

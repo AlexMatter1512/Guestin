@@ -73,6 +73,14 @@
   import NotificationHistory from "$lib/components/NotificationHistory.svelte";
   import ConnectorManager from "$lib/components/ConnectorManager.svelte";
   import Modal from "$lib/components/Modal.svelte";
+  import CollaboratorManager from "$lib/components/CollaboratorManager.svelte";
+  import {
+    hasPermission,
+    type Permission,
+  } from "../../../../shared/permissions";
+  const can = (key: Permission) => hasPermission(user, key);
+  const canManageCode = (code: any) =>
+    can(code.staff ? "createStaffCodes" : "createAccessCodes");
   import { copyText, guestToken } from "$lib/browser";
   import DoorManager from "$lib/components/DoorManager.svelte";
   import Tour from "$lib/components/Tour.svelte";
@@ -93,7 +101,7 @@
       document.documentElement.lang = hostLanguage.current;
   });
   import {
-    codeSchema,
+    codeInputSchema,
     defaultTemplates,
     type AccessCodeDraft,
   } from "../../../../shared/schema";
@@ -110,8 +118,56 @@
   let name = $state(""),
     email = $state(""),
     password = $state(""),
+    currentPassword = $state(""),
+    newPassword = $state(""),
+    confirmPassword = $state(""),
     setupToken = $state(""),
     invite = $state("");
+  let managedProperties = $state<any[]>([]);
+  let notesEnabled = $state(false);
+  let deleteTarget = $state<{
+    kind: "properties" | "codes" | "users";
+    id: string;
+    name: string;
+  } | null>(null);
+  let deleteConfirmation = $state("");
+  const requiredDeleteConfirmation = $derived(
+    deleteTarget?.kind === "properties"
+      ? "DELETE STRUCTURE"
+      : deleteTarget?.kind === "users"
+        ? "DELETE ACCOUNT"
+        : "DELETE CODE",
+  );
+  function requestDelete(kind: "properties" | "codes" | "users", value: any) {
+    toast.dismiss();
+    deleteConfirmation = "";
+    deleteTarget = { kind, id: value.id, name: value.name ?? value.label };
+  }
+  async function permanentlyDelete() {
+    if (!deleteTarget || deleteConfirmation !== requiredDeleteConfirmation)
+      return;
+    const deletingUserId = user.id;
+    const self =
+      deleteTarget.kind === "users" && deleteTarget.id === deletingUserId;
+    await api(
+      `${deleteTarget.kind}/${deleteTarget.id}`,
+      { confirmation: deleteConfirmation },
+      "DELETE",
+    );
+    deleteTarget = null;
+    if (self) {
+      localStorage.removeItem("oshost.draft." + deletingUserId);
+      localStorage.removeItem("oshost.draft.lastUser");
+      resetAccountUI();
+      user = null;
+      csrf = "";
+      history.replaceState(null, "", "/host/");
+      return;
+    }
+    detailCodeId = "";
+    await reload();
+    toast.success(t("Permanently deleted"));
+  }
   let properties = $state<any[]>([]),
     doors = $state<any[]>([]),
     codes = $state<any[]>([]),
@@ -120,6 +176,22 @@
     users = $state<any[]>([]),
     propertyId = $state(""),
     search = $state("");
+  let staffCodes = $state(false);
+  function setStaffCodes(value: boolean) {
+    staffCodes = value;
+    codeStatus = value ? "Non revoked" : "all";
+    search = "";
+    filtersOpen = false;
+  }
+  function setStaffCode(value: boolean) {
+    if (!can(value ? "createStaffCodes" : "createAccessCodes")) return;
+    draft.staff = value;
+    if (!value) {
+      const start = new Date().toISOString(),
+        end = new Date(Date.now() + 86400000).toISOString();
+      draft.grants = draft.grants.map((grant) => ({ ...grant, start, end }));
+    }
+  }
   let codeDate = $state(""),
     codeStatus = $state("all"),
     detailCodeId = $state(""),
@@ -223,7 +295,7 @@
     {
       id: "team",
       title: "Team",
-      description: "Invite and manage your staff",
+      description: "Invite and manage collaborators",
       icon: UsersRound,
       group: "Workspace",
       owner: true,
@@ -298,14 +370,28 @@
       .toISOString()
       .slice(0, 10);
   }
-  async function logout() {
-    await api("logout", {});
+  function signedOut() {
     localStorage.removeItem("oshost.draft." + user.id);
     localStorage.removeItem("oshost.draft.lastUser");
     resetAccountUI();
     user = null;
     csrf = "";
     history.replaceState(null, "", "/host/");
+  }
+  async function logout() {
+    await api("logout", {});
+    signedOut();
+  }
+  async function changePassword() {
+    if (newPassword !== confirmPassword)
+      throw Error(t("Passwords do not match"));
+    try {
+      await api("me/password", { currentPassword, newPassword });
+      signedOut();
+      notice = "Password changed. Sign in again on each device.";
+    } finally {
+      currentPassword = newPassword = confirmPassword = "";
+    }
   }
   async function revoke(c: any) {
     if (!confirm(t("Revoke this guest link immediately?"))) return;
@@ -321,6 +407,7 @@
     notice = "Guest link replaced.";
   }
   function codeRange(c: any) {
+    if (c.staff) return t("No time limit");
     if (!c.grants.length) return t("No doors");
     return (
       formatInstant(
@@ -353,6 +440,7 @@
   function codeFingerprint(c: any) {
     return JSON.stringify({
       propertyId: c.propertyId,
+      staff: !!c.staff,
       label: c.label?.trim(),
       notes: c.notes ?? "",
       checkinLink: c.checkinLink ?? "",
@@ -361,34 +449,34 @@
       grants: (c.grants ?? [])
         .map((g: any) => ({
           doorId: g.doorId,
-          start: g.start,
-          end: g.end,
+          start: c.staff ? null : g.start,
+          end: c.staff ? null : g.end,
           singleUse: !!g.singleUse,
           active: g.active !== false,
         }))
         .sort((a: any, b: any) => a.doorId.localeCompare(b.doorId)),
     });
   }
-  function grantStatus(g: any) {
+  function grantStatus(g: any, staff = false) {
     const d = doors.find((d) => d.id === g.doorId);
     if (g.active === false) return "Paused";
     if (d?.enabled === false) return "Door disabled";
     if (g.claim) return "Uncertain";
     if (g.singleUse && g.used) return "Used";
-    if (Date.parse(g.start) > currentTime) return "Upcoming";
-    if (Date.parse(g.end) <= currentTime) return "Expired";
+    if (!staff && Date.parse(g.start) > currentTime) return "Upcoming";
+    if (!staff && Date.parse(g.end) <= currentTime) return "Expired";
     if (d?.integration === "none") return "Not connected yet";
     return "Valid now";
   }
   function statusOf(c: any) {
     if (c.revoked) return "Revoked";
-    if (c.grants.some((g: any) => grantStatus(g) === "Valid now"))
+    if (c.grants.some((g: any) => grantStatus(g, !!c.staff) === "Valid now"))
       return "Valid now";
-    if (c.grants.some((g: any) => grantStatus(g) === "Upcoming"))
+    if (c.grants.some((g: any) => grantStatus(g, !!c.staff) === "Upcoming"))
       return "Upcoming";
     if (
       c.grants.length &&
-      c.grants.every((g: any) => grantStatus(g) === "Expired")
+      c.grants.every((g: any) => grantStatus(g, !!c.staff) === "Expired")
     )
       return "Expired";
     return "No available doors";
@@ -463,6 +551,8 @@
       savedDraft &&
       (id === "new" ? !savedEditId : action === "edit" && savedEditId === id);
     tab = found;
+    if (found === "Codes" && id === "staff" && !staffCodes) setStaffCodes(true);
+    if (found === "Codes" && !id && staffCodes) setStaffCodes(false);
     settingsPage = found === "Settings" ? (id ?? "") : "";
     propertyForm = found === "Settings" && id === "properties" && !!action;
     if (propertyForm) editProperty(properties.find((p) => p.id === action));
@@ -471,6 +561,7 @@
         ? (id as "kross" | "ical" | "gemini")
         : "list";
     editing = false;
+    notesEnabled = false;
     doorEditor = false;
     detailCodeId = "";
     detailDoorId = "";
@@ -478,17 +569,20 @@
     if (found === "Codes" && id === "new") {
       if (canRestore) {
         draft = JSON.parse(savedDraft!);
+        staffCodes = !!draft.staff;
         editId = "";
         editing = true;
         propertyId = draft.propertyId;
       } else newCode();
-    } else if (found === "Codes" && id) {
+    } else if (found === "Codes" && id && id !== "staff") {
       const c = codes.find((c) => c.id === id);
       if (c) {
+        setStaffCodes(!!c.staff);
         propertyId = c.propertyId;
         if (action === "edit") {
           if (canRestore) {
             draft = JSON.parse(savedDraft!);
+            staffCodes = !!draft.staff;
             editId = id;
             editing = true;
           } else edit(c);
@@ -552,7 +646,9 @@
           : "/new"
         : detailCodeId
           ? "/" + detailCodeId
-          : "";
+          : staffCodes
+            ? "/staff"
+            : "";
     if (tab === "Doors")
       route += doorEditor
         ? editingDoor
@@ -670,6 +766,7 @@
     codeDate || dayAt(new Date(currentTime).toISOString(), propertyId),
   );
   function codeOnDate(c: any, day: string) {
+    if (c.staff) return false;
     return (
       c.grants.some(
         (g: any) =>
@@ -690,10 +787,17 @@
     codes.filter(
       (c) =>
         (!propertyId || c.propertyId === propertyId) &&
+        !!c.staff === staffCodes &&
         c.label.toLowerCase().includes(search.toLowerCase()) &&
-        (codeStatus === "all" || statusOf(c) === codeStatus) &&
-        codeOnDate(c, activeCodeDate),
+        (codeStatus === "all" ||
+          (codeStatus === "Non revoked"
+            ? !c.revoked
+            : statusOf(c) === codeStatus)) &&
+        (staffCodes || codeOnDate(c, activeCodeDate)),
     ),
+  );
+  const hasCodeFilters = $derived(
+    !!search || codeStatus !== (staffCodes ? "Non revoked" : "all"),
   );
   const stats = $derived.by(() => {
     const rows: Record<
@@ -718,7 +822,7 @@
       }).format(new Date(r.created));
       const key = r.creator + month;
       const row = (rows[key] ??= {
-        name: r.name ?? "Former staff",
+        name: r.name ?? "Former collaborator",
         month,
         created: 0,
         used: 0,
@@ -770,12 +874,20 @@
   async function reload() {
     [properties, doors, codes, connections, reports] = await Promise.all(
       ["properties", "doors", "codes", "connections", "reports"].map((p) =>
-        api(p),
+        p === "connections" && !can("useBookingConnectors")
+          ? Promise.resolve([])
+          : api(p),
       ),
     );
-    if (!propertyId) propertyId = properties[0]?.id ?? "";
+    if (!properties.some((p) => p.id === propertyId))
+      propertyId = properties[0]?.id ?? "";
+    if (!codes.some((c) => c.id === detailCodeId)) detailCodeId = "";
+    if (!doors.some((d) => d.id === detailDoorId)) detailDoorId = "";
+    managedProperties =
+      user?.role === "owner" ? await api("properties?includeInactive=1") : [];
     await refreshUnread();
     if (user?.role === "owner") users = await api("users");
+    else users = [];
     if (user?.id && pushLoadedFor !== user.id) {
       pushLoadedFor = user.id;
       await restoreDevicePushPreferences();
@@ -814,6 +926,35 @@
     }
     const disconnect = connectLive((message) => {
       if (stopped || user?.id !== account) return;
+      if (message.type === "account.changed" || message.type === "sync") {
+        void api("me")
+          .then(async (result) => {
+            if (user?.id !== account) return;
+            if (
+              JSON.stringify([user.role, user.permissions]) !==
+              JSON.stringify([result.user.role, result.user.permissions])
+            )
+              user = result.user;
+            await reload();
+            liveRevision++;
+          })
+          .catch((e) => {
+            if (e.status === 401) {
+              localStorage.removeItem("oshost.draft.lastUser");
+              resetAccountUI();
+              user = null;
+              csrf = "";
+              history.replaceState(null, "", "/host/");
+            }
+          });
+        return;
+      }
+      if (message.type === "workspace.changed") {
+        void reload()
+          .then(() => liveRevision++)
+          .catch(() => {});
+        return;
+      }
       void refreshLive();
       const event = message.event;
       if (
@@ -910,7 +1051,7 @@
           lastUser && localStorage.getItem("oshost.draft." + lastUser);
         if (!navigator.onLine && saved) {
           draft = JSON.parse(saved);
-          user = { id: lastUser, name: "Offline draft", role: "staff" };
+          user = { id: lastUser, name: "Offline draft", role: "collaborator" };
           applyPreferences();
           editing = true;
           properties = [
@@ -982,12 +1123,16 @@
     shareCodeId = "";
     shareText = "";
     quickCreate = false;
+    currentPassword = newPassword = confirmPassword = "";
     wipeOpen = false;
     wipePassword = "";
     wipeConfirmation = "";
     wipeAcknowledged = false;
     propertyId = "";
     properties = [];
+    managedProperties = [];
+    deleteTarget = null;
+    notesEnabled = false;
     doors = [];
     codes = [];
     connections = [];
@@ -1000,6 +1145,7 @@
     tab = "Codes";
     search = "";
     codeDate = "";
+    staffCodes = false;
     codeStatus = "all";
     error = "";
     notice = "";
@@ -1035,6 +1181,8 @@
     if ((user.preferences?.tour ?? "pending") === "pending") startTour();
   }
   function newCode(value?: any) {
+    if (!can("createAccessCodes") && !can("createStaffCodes")) return;
+    notesEnabled = false;
     quickCreate = false;
     detailCodeId = "";
     if (!value && tourVisible && resumeTourDraft) {
@@ -1065,6 +1213,9 @@
       ) + 59000,
     );
     draft = {
+      staff:
+        !can("createAccessCodes") ||
+        (can("createStaffCodes") && (value ? !!value.staff : staffCodes)),
       propertyId: p?.id ?? "",
       label: "",
       notes: "",
@@ -1141,7 +1292,7 @@
     }
   }
   async function save() {
-    const data = codeSchema.parse(draft);
+    const data = codeInputSchema.parse(draft);
     if (
       duplicateCodes.length &&
       !confirm(
@@ -1164,10 +1315,13 @@
     localStorage.removeItem("oshost.draft." + user.id);
     editing = false;
     search = "";
-    codeDate = data.grants[0]
-      ? dayAt(data.grants[0].start, data.propertyId)
-      : (data.breakfast?.start ?? "");
-    codeStatus = "all";
+    codeDate = data.staff
+      ? ""
+      : data.grants[0]
+        ? dayAt(data.grants[0].start, data.propertyId)
+        : (data.breakfast?.start ?? "");
+    staffCodes = data.staff;
+    codeStatus = data.staff ? "Non revoked" : "all";
     await reload();
     notice = "Access code saved. The guest link is ready to share.";
     if (tourVisible && tourStage === "code" && !editId) {
@@ -1177,9 +1331,11 @@
     }
   }
   function edit(c: any) {
+    notesEnabled = false;
     draft = JSON.parse(
       JSON.stringify({
         propertyId: c.propertyId,
+        staff: !!c.staff,
         label: c.label,
         notes: c.notes,
         checkinLink: c.checkinLink,
@@ -1195,6 +1351,7 @@
       }),
     );
     editId = c.id;
+    staffCodes = !!c.staff;
     tab = "Codes";
     detailCodeId = "";
     editing = true;
@@ -1334,7 +1491,9 @@
             : "Create access code"
           : detailCode
             ? detailCode.label
-            : "Access codes"
+            : staffCodes
+              ? "Staff codes"
+              : "Access codes"
         : tab === "Doors"
           ? doorEditor
             ? editingDoor
@@ -1770,7 +1929,13 @@
             class="quick-create"
             data-tour="new-code"
             aria-label={t("Create access code")}
-            disabled={!propertyId || busy}
+            disabled={!propertyId ||
+              busy ||
+              !(
+                can("createAccessCodes") ||
+                can("createStaffCodes") ||
+                can("createDoors")
+              )}
             onclick={() => {
               if (tourVisible && tourStage === "door") {
                 editingDoor = "";
@@ -1849,7 +2014,11 @@
                   </div>
                   <div class="form-grid">
                     <Label class="field-label"
-                      >{t("Guest name / label")}<Input
+                      >{t(
+                        draft.staff
+                          ? "Staff name / label"
+                          : "Guest name / label",
+                      )}<Input
                         bind:value={draft.label}
                         required
                         placeholder={t("e.g. Maria Rossi")}
@@ -1888,10 +2057,36 @@
                       ></Label
                     >
                   </div>
-                  <Label class="field-label"
-                    >{t("Internal notes")}<Textarea bind:value={draft.notes}
-                    ></Textarea></Label
+                  <div class="stack">
+                    <Label class="inline" for="staff-access-code"
+                      ><Switch
+                        id="staff-access-code"
+                        disabled={!can("createAccessCodes") ||
+                          !can("createStaffCodes")}
+                        checked={!!draft.staff}
+                        onCheckedChange={setStaffCode}
+                      />{t("Staff access code")}</Label
+                    >
+                    <p class="muted">
+                      {t(
+                        "Time-unrestricted access for cleaners, laundry and other staff. Door permissions and revocation still apply.",
+                      )}
+                    </p>
+                  </div>
+                  <Label class="inline" for="internal-notes-enabled"
+                    ><Switch
+                      id="internal-notes-enabled"
+                      bind:checked={notesEnabled}
+                    />{t("Internal notes")}</Label
                   >
+                  {#if notesEnabled}<Label
+                      class="field-label"
+                      for="internal-notes"
+                      >{t("Notes")}<Textarea
+                        id="internal-notes"
+                        bind:value={draft.notes}
+                      /></Label
+                    >{/if}
                   <div class="form-grid">
                     <Label class="field-label"
                       >{t("Online check-in link")}<Input
@@ -1909,9 +2104,11 @@
                 <Card.Root class="workspace-card">
                   <h2>{t("Door permissions")}</h2>
                   <p class="muted">
-                    {t("Times use")}
-                    {properties.find((p) => p.id === draft.propertyId)
-                      ?.timezone}{t(". Each door has its own rules.")}
+                    {#if draft.staff}{t(
+                        "No start or end date. Door permissions and single-use rules still apply.",
+                      )}{:else}{t("Times use")}
+                      {properties.find((p) => p.id === draft.propertyId)
+                        ?.timezone}{t(". Each door has its own rules.")}{/if}
                   </p>
                   {#each doors.filter((d) => d.propertyId === draft.propertyId) as d, index (d.id ?? index)}{@const grant =
                       draft.grants.find((g) => g.doorId === d.id)}
@@ -1927,27 +2124,31 @@
                           class="form-grid"
                           style="margin-top:14px"
                         >
-                          <Label class="field-label"
-                            >{t("Valid from")}<Input
-                              type="datetime-local"
-                              value={dateInput(grant.start)}
-                              onchange={(e) =>
-                                changeDate(
-                                  grant,
-                                  "start",
-                                  e.currentTarget.value,
-                                )}
-                              required
-                            /></Label
-                          ><Label class="field-label"
-                            >{t("Valid until")}<Input
-                              type="datetime-local"
-                              value={dateInput(grant.end)}
-                              onchange={(e) =>
-                                changeDate(grant, "end", e.currentTarget.value)}
-                              required
-                            /></Label
-                          ><Label class="inline"
+                          {#if !draft.staff}<Label class="field-label"
+                              >{t("Valid from")}<Input
+                                type="datetime-local"
+                                value={dateInput(grant.start)}
+                                onchange={(e) =>
+                                  changeDate(
+                                    grant,
+                                    "start",
+                                    e.currentTarget.value,
+                                  )}
+                                required
+                              /></Label
+                            ><Label class="field-label"
+                              >{t("Valid until")}<Input
+                                type="datetime-local"
+                                value={dateInput(grant.end)}
+                                onchange={(e) =>
+                                  changeDate(
+                                    grant,
+                                    "end",
+                                    e.currentTarget.value,
+                                  )}
+                                required
+                              /></Label
+                            >{/if}<Label class="inline"
                             ><Switch bind:checked={grant.singleUse} />{t(
                               "Single use",
                             )}</Label
@@ -2004,7 +2205,7 @@
                   type="submit"
                   variant="default"
                   class="primary"
-                  disabled={busy || !draft.propertyId}
+                  disabled={busy || !draft.propertyId || !canManageCode(draft)}
                   >{t("Save access code")}</Button
                 ><small
                   >{t(
@@ -2024,7 +2225,7 @@
                   >{t("Created by")}
                   {detailCode.creatorName ??
                     users.find((u) => u.id === detailCode.creator)?.name ??
-                    t("Former staff")} · {formatInstant(
+                    t("Former collaborator")} · {formatInstant(
                     detailCode.created,
                     detailCode.propertyId,
                   )}</small
@@ -2040,6 +2241,7 @@
                   ><Button
                     type="button"
                     variant="outline"
+                    disabled={!canManageCode(detailCode)}
                     onclick={() => edit(detailCode)}
                     ><Pencil size={17} />{t("Edit")}</Button
                   ><a
@@ -2091,18 +2293,19 @@
                       <strong
                         >{doors.find((d) => d.id === g.doorId)?.name}</strong
                       ><Badge variant="secondary" class="badge"
-                        >{t(grantStatus(g))}</Badge
+                        >{t(grantStatus(g, !!detailCode.staff))}</Badge
                       >
                     </div>
-                    <p>
-                      {formatInstant(g.start, detailCode.propertyId)} → {formatInstant(
-                        g.end,
-                        detailCode.propertyId,
-                      )}<br /><small
-                        >{properties.find((p) => p.id === detailCode.propertyId)
-                          ?.timezone}</small
-                      >
-                    </p>
+                    {#if detailCode.staff}<p>{t("No time limit")}</p>{:else}<p>
+                        {formatInstant(g.start, detailCode.propertyId)} → {formatInstant(
+                          g.end,
+                          detailCode.propertyId,
+                        )}<br /><small
+                          >{properties.find(
+                            (p) => p.id === detailCode.propertyId,
+                          )?.timezone}</small
+                        >
+                      </p>{/if}
                     <small
                       >{t("Successful requests")}: {g.used} · {t(
                         g.singleUse ? "Single use" : "Multiple uses",
@@ -2111,7 +2314,9 @@
                     <Button
                       type="button"
                       variant="outline"
-                      disabled={busy || !!detailCode.revoked}
+                      disabled={busy ||
+                        !!detailCode.revoked ||
+                        !canManageCode(detailCode)}
                       onclick={() =>
                         act(async () => {
                           await api(
@@ -2177,46 +2382,70 @@
                     <Button
                       type="button"
                       variant="outline"
-                      disabled={!!detailCode.revoked || busy}
+                      disabled={!!detailCode.revoked ||
+                        busy ||
+                        !canManageCode(detailCode)}
                       onclick={() => act(() => replaceLink(detailCode))}
                       >{t("Replace link")}</Button
                     ><Button
                       type="button"
                       variant="destructive"
                       class="danger"
-                      disabled={!!detailCode.revoked || busy}
+                      disabled={!!detailCode.revoked ||
+                        busy ||
+                        !canManageCode(detailCode)}
                       onclick={() => act(() => revoke(detailCode))}
                       >{t("Revoke")}</Button
                     >
                   </div>
+                  {#if user.role === "owner"}<Button
+                      type="button"
+                      variant="destructive"
+                      disabled={busy}
+                      onclick={() => requestDelete("codes", detailCode)}
+                      >{t("Delete permanently")}</Button
+                    >{/if}
                 </details>
               </section>
             {:else}
+              <div class="row spread mb-4">
+                <Label class="inline" for="staff-codes-view"
+                  ><Switch
+                    id="staff-codes-view"
+                    checked={staffCodes}
+                    onCheckedChange={setStaffCodes}
+                  />{t("Staff codes")}</Label
+                >
+              </div>
               <div class="calendar-bar code-toolbar">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t("Previous day")}
-                  onclick={() => shiftDay(-1)}><ChevronLeft size={18} /></Button
-                >
-                <AccessCalendar
-                  value={activeCodeDate}
-                  hasCodes={dateHasCodes}
-                  onchange={(day) => (codeDate = day)}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t("Next day")}
-                  onclick={() => shiftDay(1)}><ChevronRight size={18} /></Button
-                >
-                <Button
-                  variant="ghost"
-                  class="quiet today-button"
-                  onclick={() =>
-                    (codeDate = dayAt(new Date().toISOString(), propertyId))}
-                  >{t("Today")}</Button
-                >
+                {#if !staffCodes}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t("Previous day")}
+                    onclick={() => shiftDay(-1)}
+                    ><ChevronLeft size={18} /></Button
+                  >
+                  <AccessCalendar
+                    value={activeCodeDate}
+                    hasCodes={dateHasCodes}
+                    onchange={(day) => (codeDate = day)}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t("Next day")}
+                    onclick={() => shiftDay(1)}
+                    ><ChevronRight size={18} /></Button
+                  >
+                  <Button
+                    variant="ghost"
+                    class="quiet today-button"
+                    onclick={() =>
+                      (codeDate = dayAt(new Date().toISOString(), propertyId))}
+                    >{t("Today")}</Button
+                  >
+                {/if}
                 <div class="toolbar-spacer"></div>
                 <Popover.Root>
                   <Popover.Trigger
@@ -2231,7 +2460,11 @@
                     <div class="flex gap-2">
                       <Input
                         id="code-search"
-                        placeholder={t("Search guest access…")}
+                        placeholder={t(
+                          staffCodes
+                            ? "Search staff access…"
+                            : "Search guest access…",
+                        )}
                         bind:value={search}
                       /><Button
                         variant="ghost"
@@ -2262,7 +2495,7 @@
                       bind:value={codeStatus}
                       ><NativeSelect.Option value="all"
                         >{t("All codes")}</NativeSelect.Option
-                      >{#each ["Valid now", "Upcoming", "Expired", "Revoked", "No available doors"] as state (state)}<NativeSelect.Option
+                      >{#each staffCodes ? ["Non revoked", "Revoked", "No available doors"] : ["Non revoked", "Valid now", "Upcoming", "Expired", "Revoked", "No available doors"] as state (state)}<NativeSelect.Option
                           value={state}>{t(state)}</NativeSelect.Option
                         >{/each}</NativeSelect.Root
                     ></Label
@@ -2272,7 +2505,7 @@
                     class="quiet"
                     onclick={() => {
                       codeDate = "";
-                      codeStatus = "all";
+                      codeStatus = staffCodes ? "Non revoked" : "all";
                       search = "";
                     }}>{t("Clear filters")}</Button
                   >
@@ -2363,18 +2596,22 @@
                     <KeyRound size={36} />
                     <h2>
                       {t(
-                        search || codeStatus !== "all"
+                        hasCodeFilters
                           ? "No matching codes"
-                          : propertyId
-                            ? "No codes for this date"
-                            : "Your next guest starts here",
+                          : staffCodes
+                            ? "No staff codes yet"
+                            : propertyId
+                              ? "No codes for this date"
+                              : "Your next guest starts here",
                       )}
                     </h2>
                     <p>
                       {t(
-                        propertyId
-                          ? "Choose another date or use + below to create an access code."
-                          : "Create a link with just the doors and breakfast allowance they need.",
+                        staffCodes
+                          ? "Use + below to create a staff access code."
+                          : propertyId
+                            ? "Choose another date or use + below to create an access code."
+                            : "Create a link with just the doors and breakfast allowance they need.",
                       )}
                     </p>
                     {#if !propertyId}{#if user.role === "owner"}<Button
@@ -2386,13 +2623,13 @@
                           {t(
                             "Ask an owner to set up a property and its doors.",
                           )}
-                        </p>{/if}{:else if search || codeStatus !== "all"}<Button
+                        </p>{/if}{:else if hasCodeFilters}<Button
                         type="button"
                         variant="outline"
                         onclick={() => {
                           search = "";
                           codeDate = "";
-                          codeStatus = "all";
+                          codeStatus = staffCodes ? "Non revoked" : "all";
                         }}>{t("Clear filters")}</Button
                       >{/if}
                   </div>{/each}
@@ -2437,7 +2674,7 @@
                 >
               </Table.Root>
             </Card.Root>
-          {:else if tab === "Connectors"}<ConnectorManager
+          {:else if tab === "Connectors" && can("useBookingConnectors")}<ConnectorManager
               {api}
               {reload}
               {connections}
@@ -2535,6 +2772,7 @@
               {propertyId}
               propertyName={property?.name ?? ""}
               owner={user.role === "owner"}
+              canCreate={can("createDoors")}
               {api}
               {reload}
               onSaved={doorSaved}
@@ -2550,7 +2788,57 @@
               ><Label class="field-label"
                 >{t("Email")}<Input readonly value={user.email ?? ""} /></Label
               >
-              <p>{t("Role")}: {t(user.role)}</p>
+              <p>
+                {t("Role")}: {t(
+                  user.role === "owner" ? "Owner / Admin" : "Collaborator",
+                )}
+              </p>
+              <form
+                class="stack"
+                onsubmit={(event) => {
+                  event.preventDefault();
+                  void act(changePassword);
+                }}
+              >
+                <h3>{t("Change password")}</h3>
+                <p>
+                  {t(
+                    "Changing your password signs out every device, including this one.",
+                  )}
+                </p>
+                <Label class="field-label"
+                  >{t("Current password")}<Input
+                    type="password"
+                    autocomplete="current-password"
+                    bind:value={currentPassword}
+                    required
+                    maxlength={200}
+                  /></Label
+                >
+                <Label class="field-label"
+                  >{t("New password")}<Input
+                    type="password"
+                    autocomplete="new-password"
+                    bind:value={newPassword}
+                    required
+                    minlength={12}
+                    maxlength={200}
+                  /></Label
+                >
+                <Label class="field-label"
+                  >{t("Confirm new password")}<Input
+                    type="password"
+                    autocomplete="new-password"
+                    bind:value={confirmPassword}
+                    required
+                    minlength={12}
+                    maxlength={200}
+                  /></Label
+                >
+                <Button type="submit" disabled={busy}
+                  >{t("Change password")}</Button
+                >
+              </form>
               <small>{t("Account ID")}: {user.id}</small><Button
                 type="button"
                 variant="outline"
@@ -2566,7 +2854,9 @@
               {#each ["Preferences", "Workspace", "Administration"] as group (group)}{@const items =
                   settingItems.filter(
                     (i) =>
-                      i.group === group && (!i.owner || user.role === "owner"),
+                      i.group === group &&
+                      (!i.owner || user.role === "owner") &&
+                      (i.id !== "connectors" || can("useBookingConnectors")),
                   )}{#if items.length}<section class="settings-group">
                     <h2>{t(group)}</h2>
                     <Item.Group class="workspace-list">
@@ -2893,20 +3183,70 @@
                     >{/if}
                 </div>
                 <Item.Group class="workspace-list">
-                  {#each properties as p (p.id)}<Button
-                      type="button"
-                      variant="ghost"
-                      class="settings-row"
-                      disabled={user.role !== "owner"}
-                      onclick={() => editProperty(p)}
-                      ><Building2 size={21} /><span
-                        ><strong>{p.name}</strong><small
-                          >{p.timezone} · {p.checkIn} / {p.checkOut}</small
-                        ></span
-                      >{#if user.role === "owner"}<ChevronRight
-                          size={18}
-                        />{/if}</Button
-                    >{:else}<div class="empty-state">
+                  {#each user.role === "owner" ? managedProperties : properties as p (p.id)}<div
+                      class="stack"
+                    >
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        class="settings-row"
+                        disabled={user.role !== "owner" || p.active === false}
+                        onclick={() => editProperty(p)}
+                        ><Building2 size={21} /><span
+                          ><strong>{p.name}</strong><small
+                            >{p.timezone} · {p.checkIn} / {p.checkOut}</small
+                          ></span
+                        >{#if user.role === "owner"}<ChevronRight
+                            size={18}
+                          />{/if}</Button
+                      >
+                      {#if user.role === "owner"}<div class="stack px-4 pb-4">
+                          {#if p.active === false}<p class="muted">
+                              {t("Deactivated")}
+                            </p>{/if}
+                          <div class="row">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              disabled={busy}
+                              onclick={() =>
+                                act(async () => {
+                                  await api(
+                                    `properties/${p.id}/status`,
+                                    { active: p.active === false },
+                                    "PATCH",
+                                  );
+                                  await reload();
+                                  toast.success(
+                                    t(
+                                      p.active === false
+                                        ? "Structure reactivated"
+                                        : "Structure deactivated",
+                                    ),
+                                  );
+                                })}
+                              >{t(
+                                p.active === false
+                                  ? "Reactivate"
+                                  : "Deactivate",
+                              )}</Button
+                            >
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              disabled={busy}
+                              onclick={() => requestDelete("properties", p)}
+                              >{t("Delete permanently")}</Button
+                            >
+                          </div>
+                          <p class="muted">
+                            {t(
+                              "Deactivation hides this structure and disables guest links while preserving its data.",
+                            )}
+                          </p>
+                        </div>{/if}
+                    </div>
+                  {:else}<div class="empty-state">
                       <Building2 size={32} />
                       <h2>{t("Add your property first")}</h2>
                       <p>{t("Then connect the doors guests will access.")}</p>
@@ -2937,26 +3277,14 @@
                   >{t(
                     "Invitations expire after 24 hours and can be used once.",
                   )}</small
-                >{#each users as u, index (u.id ?? index)}<div
-                    class="row spread"
-                  >
-                    <span>{u.name} · {t(u.role)}</span
-                    >{#if u.role === "staff"}<Button
-                        type="button"
-                        variant="outline"
-                        onclick={() =>
-                          act(async () => {
-                            if (
-                              confirm(
-                                "Remove this staff member and revoke their sessions?",
-                              )
-                            ) {
-                              await api("users/" + u.id, undefined, "DELETE");
-                              await reload();
-                            }
-                          })}>{t("Remove")}</Button
-                      >{/if}
-                  </div>{/each}
+                >
+                <CollaboratorManager
+                  {users}
+                  currentUserId={user.id}
+                  {api}
+                  {reload}
+                  onDelete={(account) => requestDelete("users", account)}
+                />
               </Card.Root>
             {:else if settingsPage === "breakfast"}<StructureSettings
                 {property}
@@ -3051,6 +3379,41 @@
         </div>
       {/key}
       <Modal
+        open={!!deleteTarget}
+        title={t("Delete permanently")}
+        onclose={() => {
+          if (!busy) deleteTarget = null;
+        }}
+      >
+        <div class="stack">
+          <p><strong>{deleteTarget?.name}</strong></p>
+          <p>
+            {t(
+              deleteTarget?.kind === "properties"
+                ? "This permanently deletes the structure and all its doors, codes, usage history, notifications and settings. This cannot be undone."
+                : deleteTarget?.kind === "users"
+                  ? "This permanently deletes this account and revokes all its sessions and notification subscriptions. Workspace data and access codes are preserved. This cannot be undone."
+                  : "This permanently deletes this code, its usage history and notifications. Its guest link will stop working. This cannot be undone.",
+            )}
+          </p>
+          <Label class="field-label" for="delete-confirmation"
+            >{t("Type to confirm")}: {requiredDeleteConfirmation}<Input
+              id="delete-confirmation"
+              autocomplete="off"
+              bind:value={deleteConfirmation}
+              disabled={busy}
+            /></Label
+          >
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={busy || deleteConfirmation !== requiredDeleteConfirmation}
+            onclick={() => act(permanentlyDelete)}
+            >{t("Delete permanently")}</Button
+          >
+        </div>
+      </Modal>
+      <Modal
         open={!!shareCodeId}
         title={t("Prepare message")}
         onclose={() => (shareCodeId = "")}
@@ -3117,17 +3480,17 @@
         title={t("Create")}
         onclose={() => (quickCreate = false)}
         ><Item.Group class="quick-create-options">
-          <Button
-            type="button"
-            variant="ghost"
-            class="settings-row"
-            onclick={() => newCode()}
-            ><KeyRound size={22} /><span
-              ><strong>{t("Create access code")}</strong><small
-                >{t("Choose doors and share a guest link")}</small
-              ></span
-            ><ChevronRight size={18} /></Button
-          >{#if user.role === "owner"}<Button
+          {#if can("createAccessCodes") || can("createStaffCodes")}<Button
+              type="button"
+              variant="ghost"
+              class="settings-row"
+              onclick={() => newCode()}
+              ><KeyRound size={22} /><span
+                ><strong>{t("Create access code")}</strong><small
+                  >{t("Choose doors and share a guest link")}</small
+                ></span
+              ><ChevronRight size={18} /></Button
+            >{/if}{#if can("createDoors")}<Button
               type="button"
               variant="ghost"
               class="settings-row"

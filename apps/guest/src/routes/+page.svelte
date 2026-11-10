@@ -94,18 +94,22 @@
   );
   const guestInfo = $derived.by(() => {
     if (!data) return null;
-    const starts = data.doors
+    const starts = (data.staff ? [] : data.doors)
         .map((d: any) => d.start)
         .filter(Boolean)
         .sort(),
-      ends = data.doors
+      ends = (data.staff ? [] : data.doors)
         .map((d: any) => d.end)
         .filter(Boolean)
         .sort();
     return {
       guest_name: data.label,
-      arrival_date: starts[0] ?? data.breakfast?.start,
-      departure_date: ends.at(-1) ?? data.breakfast?.end,
+      arrival_date: data.staff
+        ? undefined
+        : (starts[0] ?? data.breakfast?.start),
+      departure_date: data.staff
+        ? undefined
+        : (ends.at(-1) ?? data.breakfast?.end),
     };
   });
   $effect(() => {
@@ -499,7 +503,7 @@
               <p
                 class="text-slate-600 text-lg max-w-2xl mx-auto leading-relaxed"
               >
-                {t("subtitle")}
+                {data.staff ? guestText("staffIntro") : t("subtitle")}
               </p>
             </div>
             <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">

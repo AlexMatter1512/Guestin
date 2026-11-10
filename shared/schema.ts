@@ -1,4 +1,8 @@
 import { z } from "zod";
+// Compatibility bounds for stored staff grants. Authorization uses the staff
+// flag, so these timestamps never impose a time window on staff access.
+export const STAFF_ACCESS_START = "1970-01-01T00:00:00.000Z";
+export const STAFF_ACCESS_END = "9999-12-31T23:59:59.999Z";
 export const guestLinksSchema = z.object({
   defaultCheckinLink: z
     .union([
@@ -24,6 +28,7 @@ export const guestLinksSchema = z.object({
     .default(""),
 });
 export const propertySchema = z.object({
+  active: z.boolean().default(true),
   ...guestLinksSchema.shape,
   name: z.string().min(1).max(120),
   timezone: z.string().refine((v) => {
@@ -82,6 +87,7 @@ export const grantSchema = z
   })
   .refine((v) => v.start < v.end, "Start must precede end");
 export const codeSchema = z.object({
+  staff: z.boolean().default(false),
   propertyId: z.string(),
   label: z.string().min(1).max(200),
   notes: z.string().max(5000).default(""),
@@ -98,6 +104,28 @@ export const codeSchema = z.object({
     .nullable()
     .default(null),
 });
+// Staff API clients may omit timestamps; dated guest grants still require them.
+export const codeInputSchema = z.union([
+  codeSchema.extend({
+    staff: z.literal(true),
+    grants: z.array(
+      z
+        .object({
+          ...grantSchema.shape,
+          start: z
+            .unknown()
+            .transform(() => STAFF_ACCESS_START)
+            .default(STAFF_ACCESS_START),
+          end: z
+            .unknown()
+            .transform(() => STAFF_ACCESS_END)
+            .default(STAFF_ACCESS_END),
+        })
+        .refine((g) => g.start < g.end, "Start must precede end"),
+    ),
+  }),
+  codeSchema,
+]);
 export type AccessCodeDraft = z.input<typeof codeSchema>;
 export type DeviceResult = {
   status: "accepted" | "failed" | "uncertain";

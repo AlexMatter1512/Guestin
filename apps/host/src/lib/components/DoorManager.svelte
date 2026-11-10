@@ -45,6 +45,7 @@
     propertyId,
     propertyName = "",
     owner,
+    canCreate = false,
     api,
     reload,
     onSaved,
@@ -57,6 +58,7 @@
     propertyId: string;
     propertyName?: string;
     owner: boolean;
+    canCreate?: boolean;
     api: (
       path: string,
       body?: any,
@@ -517,7 +519,7 @@
           </p>{/if}
       </Card.Content>
     </Card.Root>
-  {:else if editor && owner}
+  {:else if editor && (owner || (canCreate && !editId))}
     {#if editId && !localDoors.some((d) => d.id === editId)}
       <Alert.Root
         ><Alert.Description
@@ -1070,7 +1072,7 @@
                     ><ArrowDown size={18} /></Button
                   >
                 </div>
-              {:else if door.integration !== "none"}
+              {:else if owner && door.integration !== "none"}
                 <Button
                   variant="outline"
                   size="icon"
@@ -1121,7 +1123,7 @@
                 "Add an entrance or room, connect its device, and choose its default access rules.",
               )}
             </p>
-            {#if !owner}<p class="text-sm text-muted-foreground">
+            {#if !owner && !canCreate}<p class="text-sm text-muted-foreground">
                 {t("An owner can add doors for your team.")}
               </p>{/if}{/if}</Card.Content
         ></Card.Root
@@ -1132,22 +1134,22 @@
 
 {#snippet doorActions(door: Door)}
   <div class="flex w-full flex-wrap gap-2">
-    {#if door.testAction?.status === "uncertain"}<Button
-        variant="outline"
-        disabled={pending}
-        onclick={() => ask("resolve", door)}
-        >{l("Check uncertain test", "Verifica test incerto")}</Button
-      >
-    {:else}<Button
-        disabled={pending ||
-          door.integration === "none" ||
-          door.enabled === false ||
-          door.testAction?.status === "pending"}
-        onclick={() => ask("test", door)}
-        ><DoorOpen size={16} />{door.testAction?.status === "pending"
-          ? l("Test pending", "Test in corso")
-          : l("Test opening", "Prova apertura")}</Button
-      >{/if}
+    {#if owner}{#if door.testAction?.status === "uncertain"}<Button
+          variant="outline"
+          disabled={pending}
+          onclick={() => ask("resolve", door)}
+          >{l("Check uncertain test", "Verifica test incerto")}</Button
+        >
+      {:else}<Button
+          disabled={pending ||
+            door.integration === "none" ||
+            door.enabled === false ||
+            door.testAction?.status === "pending"}
+          onclick={() => ask("test", door)}
+          ><DoorOpen size={16} />{door.testAction?.status === "pending"
+            ? l("Test pending", "Test in corso")
+            : l("Test opening", "Prova apertura")}</Button
+        >{/if}{/if}
     {#if owner}<Button
         variant="outline"
         disabled={pending}

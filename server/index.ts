@@ -12,7 +12,7 @@ import {
 process.umask(0o077);
 const { secrets } = initializeRuntimeSecrets();
 const db = openDatabase(process.env.DB_PATH ?? "data/oshost.sqlite");
-log("info", "database.ready", { schema: 5 });
+log("info", "database.ready", { schema: 7 });
 const app = createApp(db, {
   key: secrets.APP_KEY,
   setupToken: secrets.SETUP_TOKEN,
@@ -109,7 +109,7 @@ const server = Bun.serve({
   tls,
   maxRequestBodySize: 32 * 1024 * 1024,
 });
-log("info", "server.started", { port: server.port, tls: !!tls, schema: 5 });
+log("info", "server.started", { port: server.port, tls: !!tls, schema: 7 });
 printSetupInstructions(db, secrets.SETUP_TOKEN);
 const stop = () => {
   log("info", "server.stopping");

@@ -22,7 +22,8 @@ One Docker container serves the host app, guest app, and a public breakfast coun
 ## A workspace for you. A simple welcome for guests.
 
 - **Create access codes in seconds.** Give each guest the doors they need, with separate dates and single-use rules for each door. Copy a link or prepare a welcome message in Italian or English.
-- **Manage your places together.** Switch structures from the header, organize doors, invite staff, and test device connections. The bell opens shared notification history; the statistics tab shows usage reports.
+- **Keep staff access separate.** Flag codes for cleaners, laundry and other staff to remove door time windows. Switch to Staff codes for a calendar-free list with usage counts and filters for non-revoked, revoked or all codes. Staff access can still be paused or revoked.
+- **Manage your places together.** Switch structures from the header, organize doors, invite collaborators, and test device connections. The bell opens shared notification history; the statistics tab shows usage reports.
 - **Keep breakfast simple.** Give a code its own allowance. Guests redeem from their page; your breakfast team sees how many breakfasts were actually used, without guest details. Settings lets you open the page or protect it with a password.
 - **Start manually, add helpers later.** KrossBooking, iCal calendars, and optional Gemini screenshot reading can fill in a draft. You review it before creating a code.
 - **Use it like an app.** Install separate host and guest web apps. Choose a light or dark theme and enable host notifications for access and breakfast activity. Browse codes in a calendar with marked dates, and drag doors into order on your phone.
@@ -52,7 +53,11 @@ You need a server with Docker, a persistent data volume, and an HTTPS address. I
 
 The app generates its setup token and encryption keys on first startup. There is no `.env` file to prepare for the stack, and no separate database server to install.
 
-The Compose file publishes **`127.0.0.1:38471`** for a reverse proxy running on the server. A proxy on the same Docker network can instead use **`oshost:3000`**. HTTPS enables web app installation and notifications on phones. See the [reverse proxy examples](docs/REFERENCE.md#docker--portainer) for more detail.
+The Compose file publishes **`127.0.0.1:38471`** for a reverse proxy running on the server. A proxy on the same Docker network can instead use **`oshost:3000`**. **Public deployments require HTTPS.** Set `ORIGIN` to the exact public `https://` address and terminate TLS at the reverse proxy, or configure `TLS_CERT` and `TLS_KEY` for direct TLS. The server otherwise listens on all interfaces over plaintext HTTP; setting `ORIGIN` alone does not enable TLS. HTTP exposes passwords and session cookies to interception, and an HTTP `ORIGIN` omits the cookie’s `Secure` flag. Keep the backend inaccessible from untrusted networks: retain the loopback port binding, or use a private Docker network accessible only to your proxy. Restrict any published direct-TLS port appropriately.
+
+The supplied Compose file sets `TRUST_PROXY=1`. Configure the proxy to **overwrite `X-Real-IP` with the connecting client’s address**, and allow only that proxy to reach the backend. This gives each visitor their own IP rate limit. Use `TRUST_PROXY=0` for direct connections. See the [reverse proxy examples](docs/REFERENCE.md#https) before deploying.
+
+Owners and collaborators can rotate their password under **Your account → Change password** using their current password. A successful change signs out every device. Login and password-change attempts also have persistent per-account backoff, independent of IP address.
 
 ### With Docker Compose
 
@@ -84,6 +89,22 @@ You can keep using the app if you skip installation or notifications. Door openi
 
 All connectors are optional. You can create your first access code without configuring any of them. Set reusable check-in and instructions links under **Settings → Guest links** for each structure. New forms use those defaults; reservation-specific links from a connector take priority. New breakfast allowances start the day after arrival by default, with editable dates.
 
+## Team permissions
+
+**Owner** and **admin** mean the same unrestricted role. Under **Settings → Team**, owners can grant each collaborator permission to create ordinary access codes, add new doors, use booking connectors, and create staff access codes. Code permissions also control managing codes of that type. Staff access codes are separate from collaborator accounts.
+
+New collaborators start with no permissions. Existing staff accounts become collaborators while retaining their previous code creation and connector capabilities. Owners can delete collaborators or promote them to owners. Account management, connector configuration, permanent deletion and database wiping always require an owner role.
+
+Owners can only delete their own accounts; another owner must remain. An owner cannot delete or demote another owner. Deleting an account signs it out everywhere and preserves shared data and access codes.
+
+## Structure and access-code management
+
+Internal notes are hidden in access-code forms until you enable **Internal notes**. Hiding the form preserves existing notes.
+
+Owners can deactivate, reactivate or permanently delete structures under **Settings → Properties**. Deactivated structures disappear from everyday views, and guest links and connector requests stop working. Their data stays in the database and backups; notification retention pauses while they are inactive. Reactivating restores access to the existing codes.
+
+**Delete permanently** removes a structure and all its related doors, access codes, usage history, notifications, connectors and settings from the current database. Owners can also permanently delete individual access codes under **Manage access**, including revoked codes. Both require typing the displayed confirmation; deletion cannot be undone. Existing backup files are separate and retain their contents.
+
 ## Notification history and push
 
 The host bell includes a personal unread badge. Opening history marks its loaded
@@ -102,7 +123,7 @@ Guest links keep their access code in the address, including when guests change 
 
 Owners can download a portable **JSON backup** under **Settings → Data management**, then upload it on another oshost installation. It includes structures, doors, guest tokens, permissions, usage, breakfast redemptions and history. Photos, user accounts and booking connector logins are excluded. Restore adds missing records and preserves the current state of existing ones. **The file contains guest tokens and device credentials: keep it private.**
 
-Docker images are released from version tags. Changes pushed to `main` run checks; they do not update the published image.
+Every pushed Git tag runs CI and publishes a Docker image after successful checks. Arbitrary tags use `tag-<sanitized-tag>-<hash>` image names; SemVer tags (with optional `v` prefix) also create a GitHub release with release notes. Stable version tags update `latest` and the `MAJOR.MINOR` alias; prereleases and build-metadata versions do not. Changes pushed to `main` run checks without publishing an image. Release notes in `docs/releases/<exact-tag>.md` take priority over GitHub-generated notes. See [AGENTS.md](AGENTS.md) for the release preparation process.
 
 In Portainer, update the stack with **Re-pull image** enabled. With Compose:
 

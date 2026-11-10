@@ -288,21 +288,27 @@ test("CSRF, origin, and unauthenticated writes are rejected", async () => {
   expect((await f.req("codes")).r.status).toBe(401);
   f.db.close();
 });
-test("staff can manage codes but cannot manage credentials or properties", async () => {
+test("authorized collaborators can manage codes but cannot manage credentials or properties", async () => {
   const f = await fixture();
   const invite = (await f.req("invites", {})).data.link.split("=")[1];
   const signup = await f.req("auth/accept-invite", {
     invite,
-    name: "Staff",
+    name: "Collaborator",
     email: "staff@example.com",
     password: "another-password!",
   });
+  await f.req(
+    `users/${signup.data.user.id}`,
+    { permissions: { createAccessCodes: true } },
+    { method: "PATCH" },
+  );
   f.setAuth(
     signup.r.headers.get("set-cookie")!.split(";")[0],
     signup.data.csrf,
   );
   expect(
-    (await f.req("codes", { ...f.draft, label: "Staff draft" })).r.status,
+    (await f.req("codes", { ...f.draft, label: "Collaborator draft" })).r
+      .status,
   ).toBe(201);
   expect(
     (
@@ -826,7 +832,7 @@ test("wipe requires owner, exact phrase and password; destroys records and sessi
       ).toBe(0);
     expect(
       (f.db.query("SELECT MAX(version) n FROM migrations").get() as any).n,
-    ).toBe(5);
+    ).toBe(7);
     expect(
       (
         await f.req("auth/setup", {
@@ -927,21 +933,10 @@ test("ordinary edits preserve paused grants, disabled doors, and creator attribu
   }
 });
 
-test("staff tests cannot resolve a request that is still running or dispatch it twice", async () => {
+test("owner door tests cannot resolve a request that is still running or dispatch it twice", async () => {
   let finish!: (value: any) => void;
   const f = await fixture(() => new Promise((resolve) => (finish = resolve)));
   try {
-    const invite = (await f.req("invites", {})).data.link.split("=")[1];
-    const staff = await f.req("auth/accept-invite", {
-      invite,
-      name: "Staff",
-      email: "test@example.com",
-      password: "another-password!",
-    });
-    f.setAuth(
-      staff.r.headers.get("set-cookie")!.split(";")[0],
-      staff.data.csrf,
-    );
     const id = crypto.randomUUID(),
       path = `doors/${f.door.id}/test`;
     const first = f.req(path, { confirm: true }, { id });
