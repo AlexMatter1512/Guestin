@@ -12,6 +12,10 @@ export type NotificationContext = {
   previousVisit?: { label: string; date: string };
 };
 const titles: Record<string, [string, string]> = {
+  "account.reset_requested": [
+    "Password reset requested",
+    "Richiesta di reimpostazione password",
+  ],
   "code.created": ["Access code created", "Codice di accesso creato"],
   "code.updated": ["Access code updated", "Codice di accesso aggiornato"],
   "code.revoked": ["Access code revoked", "Codice di accesso revocato"],

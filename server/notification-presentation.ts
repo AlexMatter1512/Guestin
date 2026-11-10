@@ -18,6 +18,10 @@ export function notificationPresentation(
     href: null,
     thumbnail: null,
   };
+  if (event.type === "account.reset_requested") {
+    result.href = "/host/#/settings/team";
+    return result;
+  }
   if (event.type === "access.invalid") return result;
   if (
     event.type.startsWith("code.") ||

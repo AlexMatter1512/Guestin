@@ -85,6 +85,9 @@
     can(code.staff ? "createStaffCodes" : "createAccessCodes");
   import { copyText, guestToken } from "$lib/browser";
   import DoorManager from "$lib/components/DoorManager.svelte";
+  import SmtpSettings from "$lib/components/SmtpSettings.svelte";
+  import AccountRecovery from "$lib/components/AccountRecovery.svelte";
+  import EmailVerification from "$lib/components/EmailVerification.svelte";
   import Tour from "$lib/components/Tour.svelte";
   import OnboardingDeviceSetup from "$lib/components/OnboardingDeviceSetup.svelte";
   import { appInstallation } from "$lib/app-installation.svelte";
@@ -293,6 +296,14 @@
       description: "Personalize what you share with guests",
       icon: MessageSquare,
       group: "Workspace",
+    },
+    {
+      id: "smtp",
+      title: "Email delivery (SMTP)",
+      description: "Verification and password recovery emails",
+      icon: Plug,
+      group: "Workspace",
+      owner: true,
     },
     {
       id: "team",
@@ -536,6 +547,14 @@
     await preferences({ language: locale });
   }
   function readRoute() {
+    const recovery = location.hash.match(
+      /^#\/(reset-password|verify-email)\/([A-Za-z0-9_-]+)$/,
+    );
+    if (recovery) {
+      recoveryMode = recovery[1];
+      recoveryToken = recovery[2];
+      return;
+    }
     const [destination, id, action] = location.hash
       .replace(/^#\//, "")
       .split("/");
@@ -633,7 +652,7 @@
     }
   });
   $effect(() => {
-    if (!routeReady || !user) return;
+    if (!routeReady || !user || recoveryMode) return;
     let route = "/" + tab.toLowerCase();
     if (tab === "Activity" && propertyId) route += "/" + propertyId;
     if (tab === "Settings" && settingsPage)
@@ -937,6 +956,8 @@
               JSON.stringify([result.user.role, result.user.permissions])
             )
               user = result.user;
+            else if (user.emailVerified !== result.user.emailVerified)
+              user = result.user;
             await reload();
             liveRevision++;
           })
@@ -1084,6 +1105,7 @@
       routeReady = true;
       if (
         user &&
+        !recoveryMode &&
         !editing &&
         navigator.onLine &&
         (user.preferences?.tour ?? "pending") === "pending"
@@ -1468,12 +1490,15 @@
   ];
   let doorEditor = $state(false),
     tourVisible = $state(false);
+  let recoveryMode = $state(""),
+    recoveryToken = $state("");
   let tourStage = $state<
     | "property"
     | "door"
     | "code"
     | "install"
     | "notifications"
+    | "smtp"
     | "done"
     | "blocked"
   >("property");
@@ -1528,114 +1553,124 @@
                   : tab,
   );
   const tourTitle = $derived(
-    tourStage === "property"
-      ? "Create your first property"
-      : tourStage === "door"
-        ? "Add your first door"
-        : tourStage === "code"
-          ? "Create your first access code"
-          : tourStage === "install"
-            ? hostLanguage.current === "it"
-              ? "Installa l’app host"
-              : "Install the host app"
-            : tourStage === "notifications"
+    tourStage === "smtp"
+      ? "Set up email delivery"
+      : tourStage === "property"
+        ? "Create your first property"
+        : tourStage === "door"
+          ? "Add your first door"
+          : tourStage === "code"
+            ? "Create your first access code"
+            : tourStage === "install"
               ? hostLanguage.current === "it"
-                ? "Scegli le notifiche"
-                : "Choose your notifications"
-              : tourStage === "done"
-                ? "Your first access code is ready"
-                : "Your owner sets up the property",
+                ? "Installa l’app host"
+                : "Install the host app"
+              : tourStage === "notifications"
+                ? hostLanguage.current === "it"
+                  ? "Scegli le notifiche"
+                  : "Choose your notifications"
+                : tourStage === "done"
+                  ? "Your first access code is ready"
+                  : "Your owner sets up the property",
   );
   const tourTarget = $derived(
-    tourStage === "property"
-      ? tab !== "Settings"
-        ? '[data-tour="nav-settings"]'
-        : settingsPage !== "properties"
-          ? '[data-tour="nav-properties"]'
-          : propertyForm
-            ? '[data-tour="property-form"]'
-            : '[data-tour="add-property"]'
-      : tourStage === "door"
-        ? tab === "Doors"
-          ? doorEditor
-            ? '[data-tour="door-form"]'
-            : '[data-tour="new-code"]'
-          : '[data-tour="nav-doors"]'
-        : tourStage === "code"
-          ? tab === "Codes" && editing && !editId
-            ? '[data-tour="code-form"]'
-            : '[data-tour="new-code"]'
-          : tourStage === "install"
-            ? '[data-tour="install-app"]'
-            : tourStage === "notifications"
-              ? '[data-tour="enable-notifications"]'
-              : tourStage === "done"
-                ? `[data-code-id="${tourCodeId}"]`
-                : '[data-tour="nav-doors"]',
+    tourStage === "smtp"
+      ? '[data-tour="smtp"]'
+      : tourStage === "property"
+        ? tab !== "Settings"
+          ? '[data-tour="nav-settings"]'
+          : settingsPage !== "properties"
+            ? '[data-tour="nav-properties"]'
+            : propertyForm
+              ? '[data-tour="property-form"]'
+              : '[data-tour="add-property"]'
+        : tourStage === "door"
+          ? tab === "Doors"
+            ? doorEditor
+              ? '[data-tour="door-form"]'
+              : '[data-tour="new-code"]'
+            : '[data-tour="nav-doors"]'
+          : tourStage === "code"
+            ? tab === "Codes" && editing && !editId
+              ? '[data-tour="code-form"]'
+              : '[data-tour="new-code"]'
+            : tourStage === "install"
+              ? '[data-tour="install-app"]'
+              : tourStage === "notifications"
+                ? '[data-tour="enable-notifications"]'
+                : tourStage === "done"
+                  ? `[data-code-id="${tourCodeId}"]`
+                  : '[data-tour="nav-doors"]',
   );
   const tourUnconnected = $derived(
     doors.find((d) => d.id === tourDoorId)?.integration === "none",
   );
   const tourText = $derived(
-    tourStage === "property"
-      ? tab === "Settings" && settingsPage !== "properties"
-        ? t("Open Properties to set up your first structure.")
-        : tab === "Settings" && !propertyForm
-          ? t("Click Add property to give your structure a name and timezone.")
-          : tab === "Settings"
+    tourStage === "smtp"
+      ? t(
+          "Connect email delivery for verification and password recovery, or continue to use owner-generated reset links.",
+        )
+      : tourStage === "property"
+        ? tab === "Settings" && settingsPage !== "properties"
+          ? t("Open Properties to set up your first structure.")
+          : tab === "Settings" && !propertyForm
             ? t(
-                "Give your property a name, confirm its timezone and save it with Add property. The guide continues only after it is saved.",
+                "Click Add property to give your structure a name and timezone.",
               )
-            : t(
-                "Click the highlighted Settings button. We’ll create your property first, then an example door and an access code. You’ll save each item yourself.",
-              )
-      : tourStage === "door"
-        ? tab !== "Doors"
-          ? t(
-              "Your property is ready. Click the highlighted Doors button to add an example door. You will add a device connector later.",
-            )
-          : !doorEditor
+            : tab === "Settings"
+              ? t(
+                  "Give your property a name, confirm its timezone and save it with Add property. The guide continues only after it is saved.",
+                )
+              : t(
+                  "Click the highlighted Settings button. We’ll create your property first, then an example door and an access code. You’ll save each item yourself.",
+                )
+        : tourStage === "door"
+          ? tab !== "Doors"
             ? t(
-                "Click the highlighted + button. Give the door a name such as “Example entrance”. You will add a device connector later, so no device account or credentials are needed now.",
+                "Your property is ready. Click the highlighted Doors button to add an example door. You will add a device connector later.",
               )
-            : t(
-                "Name your example door, leave Integration on Connect later, and click Save door. You will add a device connector later; this door cannot unlock anything yet.",
-              )
-        : tourStage === "code"
-          ? tab === "Codes" && editing && !editId
-            ? t(
-                "Enter a guest name, select your door below, and review its validity times. Breakfast is optional. Click Save access code when you’re ready.",
-              ) +
-              (tourUnconnected
-                ? t(
-                    " The example door stays inactive until you add its connector.",
-                  )
-                : "")
-            : t(
-                "Your example door is ready. Click the highlighted + button to create an access code. Existing properties and doors are reused when you replay this guide.",
-              )
-          : tourStage === "install"
-            ? hostLanguage.current === "it"
-              ? "Il primo codice è pronto. Usa l’area evidenziata per installare l’app o continuare senza installarla."
-              : "Your first code is ready. Use the highlighted area to install the app or continue without installing."
-            : tourStage === "notifications"
+            : !doorEditor
+              ? t(
+                  "Click the highlighted + button. Give the door a name such as “Example entrance”. You will add a device connector later, so no device account or credentials are needed now.",
+                )
+              : t(
+                  "Name your example door, leave Integration on Connect later, and click Save door. You will add a device connector later; this door cannot unlock anything yet.",
+                )
+          : tourStage === "code"
+            ? tab === "Codes" && editing && !editId
+              ? t(
+                  "Enter a guest name, select your door below, and review its validity times. Breakfast is optional. Click Save access code when you’re ready.",
+                ) +
+                (tourUnconnected
+                  ? t(
+                      " The example door stays inactive until you add its connector.",
+                    )
+                  : "")
+              : t(
+                  "Your example door is ready. Click the highlighted + button to create an access code. Existing properties and doors are reused when you replay this guide.",
+                )
+            : tourStage === "install"
               ? hostLanguage.current === "it"
-                ? "Scegli se ricevere notifiche su questo dispositivo. Tocca Attiva le notifiche solo se le desideri, oppure Continua."
-                : "Choose whether this device can notify you. Click Enable notifications only if you want them, or Continue."
-              : tourStage === "done"
-                ? t(
-                    "Your access code is saved. Use Copy link on the highlighted card to share it.",
-                  ) +
-                  (tourUnconnected
-                    ? t(
-                        " You will add a device connector later by editing the door in Doors; until then, guests cannot open the example door.",
-                      )
-                    : t(
-                        " You can manage its permissions and revoke the link from this card.",
-                      ))
-                : t(
-                    "Ask an owner to add a property and a door. You can explore Doors now, or skip this guide and return from App tour in Settings once setup is ready.",
-                  ),
+                ? "Il primo codice è pronto. Usa l’area evidenziata per installare l’app o continuare senza installarla."
+                : "Your first code is ready. Use the highlighted area to install the app or continue without installing."
+              : tourStage === "notifications"
+                ? hostLanguage.current === "it"
+                  ? "Scegli se ricevere notifiche su questo dispositivo. Tocca Attiva le notifiche solo se le desideri, oppure Continua."
+                  : "Choose whether this device can notify you. Click Enable notifications only if you want them, or Continue."
+                : tourStage === "done"
+                  ? t(
+                      "Your access code is saved. Use Copy link on the highlighted card to share it.",
+                    ) +
+                    (tourUnconnected
+                      ? t(
+                          " You will add a device connector later by editing the door in Doors; until then, guests cannot open the example door.",
+                        )
+                      : t(
+                          " You can manage its permissions and revoke the link from this card.",
+                        ))
+                  : t(
+                      "Ask an owner to add a property and a door. You can explore Doors now, or skip this guide and return from App tour in Settings once setup is ready.",
+                    ),
   );
   function navigate(destination: string) {
     tab = destination;
@@ -1702,7 +1737,7 @@
     if (
       !editing &&
       resumeCode &&
-      ["install", "notifications"].includes(resumeStep)
+      ["install", "notifications", "smtp"].includes(resumeStep)
     ) {
       tourCodeId = resumeCode.id;
       tourDoorId = resumeCode.grants[0]?.doorId ?? "";
@@ -1770,7 +1805,10 @@
       await preferences({ tourStep: "notifications", tourCodeId });
       tourStage = "notifications";
     } else if (tourStage === "notifications") {
-      tourStage = "done";
+      if (user.role === "owner") {
+        await preferences({ tourStep: "smtp", tourCodeId });
+        tourStage = "smtp";
+      } else tourStage = "done";
     }
   }
   function doorSaved(id: string) {
@@ -1805,6 +1843,16 @@
 <FeedbackToast message={notice ? t(notice) : ""} />
 <FeedbackToast message={user && error ? t(error) : ""} kind="error" />
 {#if !ready}<div class="auth">{t("Opening your workspace…")}</div>
+{:else if recoveryMode}<AccountRecovery
+    mode={recoveryMode}
+    token={recoveryToken}
+    {api}
+    onclose={() => {
+      recoveryMode = "";
+      recoveryToken = "";
+      location.href = "/host/";
+    }}
+  />
 {:else if !user}<main class="auth">
     <p class="muted">{t("oshost / host workspace")}</p>
     <h1>
@@ -1860,6 +1908,11 @@
         )}</Button
       >
     </form>
+    {#if !needsSetup && !invite}<Button
+        variant="ghost"
+        onclick={() => (recoveryMode = "request")}
+        >{t("Forgot password?")}</Button
+      >{/if}
   </main>
 {:else}<div class="shell">
     <header class="app-header">
@@ -1983,6 +2036,14 @@
         target={tourTarget}
         onfinish={(result) => void endTour(result)}
       />
+      {#if tourVisible && tourStage === "smtp" && user.role === "owner"}
+        <SmtpSettings
+          {api}
+          oncontinue={() => {
+            tourStage = "done";
+          }}
+        />
+      {/if}
       {#if tourVisible && (tourStage === "install" || tourStage === "notifications")}
         {#key tourStage}<OnboardingDeviceSetup
             stage={tourStage}
@@ -2804,6 +2865,7 @@
             />
           {:else if tab === "Profile"}<Card.Root class="workspace-card stack">
               <h2>{t("Your account")}</h2>
+              <EmailVerification {user} {api} />
               <Label class="field-label"
                 >{t("Your name")}<Input readonly value={user.name} /></Label
               ><Label class="field-label"
@@ -2980,6 +3042,8 @@
                       />{/if}</Button
                   >{/each}
               </Item.Group>
+            {:else if settingsPage === "smtp" && user.role === "owner"}
+              <SmtpSettings {api} />
             {:else if settingsPage === "notifications"}
               <StructureSettings
                 {property}

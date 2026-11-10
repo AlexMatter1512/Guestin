@@ -38,6 +38,9 @@ for (const previous of ["collaborators", "password-backoff"] as const)
         0,
         new Date().toISOString(),
       );
+      db.exec(
+        "DROP TABLE smtp_settings; DROP TABLE email_verifications; DROP TABLE account_tokens; DROP TABLE account_mail_attempts; DROP TABLE password_reset_requests;",
+      );
       db.exec("ALTER TABLE property_settings DROP COLUMN notification_limit;");
       if (previous === "collaborators") {
         db.exec(
@@ -62,7 +65,7 @@ for (const previous of ["collaborators", "password-backoff"] as const)
       db = openDatabase(path);
       expect(
         (db.query("SELECT MAX(version) n FROM migrations").get() as any).n,
-      ).toBe(8);
+      ).toBe(9);
       expect(
         (db.query("SELECT role FROM users WHERE id='u'").get() as any).role,
       ).toBe("collaborator");

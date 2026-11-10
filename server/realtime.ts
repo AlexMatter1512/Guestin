@@ -45,9 +45,19 @@ function createHub(db: DB) {
       for (const [ws, session] of clients)
         send(ws, session, { type: "heartbeat" });
     },
-    publish(event: unknown) {
-      for (const [ws, session] of clients)
+    publish(event: any) {
+      for (const [ws, session] of clients) {
+        if (
+          event.type === "account.reset_requested" &&
+          !db
+            .query(
+              "SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.digest=? AND u.role='owner'",
+            )
+            .get(session)
+        )
+          continue;
         send(ws, session, { type: "activity", event });
+      }
     },
     accountChanged(userId: string) {
       for (const [ws, session] of clients) {

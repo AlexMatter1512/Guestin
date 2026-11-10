@@ -25,6 +25,23 @@
   let busy = $state(false),
     error = $state(""),
     promotion = $state<any>(null);
+  let resetLink = $state<{ id: string; url: string; expires: number } | null>(
+    null,
+  );
+  async function generateReset(account: any) {
+    busy = true;
+    error = "";
+    resetLink = null;
+    try {
+      const result = await api(`users/${account.id}/password-reset-link`, {});
+      resetLink = { id: account.id, ...result };
+      await reload();
+    } catch (e: any) {
+      error = e.message;
+    } finally {
+      busy = false;
+    }
+  }
   const keys = Object.keys(permissionLabels) as Permission[];
   async function update(account: any, change: any) {
     busy = true;
@@ -63,6 +80,32 @@
         )}
       </p>
     </div>
+    <p>{t(account.emailVerified ? "Email verified" : "Email not verified")}</p>
+    {#if account.passwordResetRequestedAt}<p role="status">
+        {t("Password reset requested")}: {new Date(
+          account.passwordResetRequestedAt,
+        ).toLocaleString()}
+      </p>{/if}
+    <Button
+      variant="outline"
+      disabled={busy}
+      onclick={() => generateReset(account)}
+      >{t("Generate password reset link")}</Button
+    >
+    {#if resetLink && resetLink.id === account.id}
+      <p>
+        {t(
+          "Share this link privately. It is valid for 10 minutes and can be used once.",
+        )}
+      </p>
+      <input
+        aria-label={t("Password reset link")}
+        readonly
+        value={resetLink.url}
+        onclick={(e) => e.currentTarget.select()}
+      />
+      <p>{t("Expires")}: {new Date(resetLink.expires).toLocaleTimeString()}</p>
+    {/if}
     {#if account.role === "collaborator"}
       {#each keys as key (key)}
         <Label class="inline" for={`permission-${account.id}-${key}`}

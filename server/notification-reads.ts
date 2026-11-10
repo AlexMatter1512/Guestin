@@ -6,10 +6,11 @@ export function notificationReads(db: DB) {
       .query(
         `SELECT e.property_id,COUNT(*) count FROM events e
       WHERE (e.property_id IS NULL OR e.property_id IN (SELECT id FROM properties WHERE json_extract(data,'$.active') IS NOT 0))
+      AND (e.type != 'account.reset_requested' OR EXISTS (SELECT 1 FROM users WHERE id=? AND role='owner'))
       AND NOT EXISTS (SELECT 1 FROM event_reads r WHERE r.event_id=e.id AND r.user_id=?)
       GROUP BY e.property_id`,
       )
-      .all(userId) as { property_id: string | null; count: number }[];
+      .all(userId, userId) as { property_id: string | null; count: number }[];
     let total = 0,
       global = 0;
     const properties: Record<string, number> = {};
@@ -25,10 +26,10 @@ export function notificationReads(db: DB) {
       let changed = 0;
       const insert =
         db.query(`INSERT OR IGNORE INTO event_reads(event_id,user_id,read_at)
-        SELECT id,?,? FROM events WHERE id=?`);
+        SELECT id,?,? FROM events WHERE id=? AND (type != 'account.reset_requested' OR EXISTS (SELECT 1 FROM users WHERE id=? AND role='owner'))`);
       const at = new Date().toISOString();
       for (const id of new Set(eventIds))
-        changed += insert.run(userId, at, id).changes;
+        changed += insert.run(userId, at, id, userId).changes;
       return changed;
     })();
   }
@@ -36,11 +37,12 @@ export function notificationReads(db: DB) {
     return db
       .query(
         `INSERT OR IGNORE INTO event_reads(event_id,user_id,read_at)
-      SELECT id,?,? FROM events${propertyId ? " WHERE property_id=? OR property_id IS NULL" : ""}`,
+      SELECT id,?,? FROM events WHERE (type != 'account.reset_requested' OR EXISTS (SELECT 1 FROM users WHERE id=? AND role='owner'))${propertyId ? " AND (property_id=? OR property_id IS NULL)" : ""}`,
       )
       .run(
         userId,
         new Date().toISOString(),
+        userId,
         ...(propertyId ? [propertyId] : []),
       ).changes;
   }

@@ -27,7 +27,9 @@
           ? 3
           : stage === "install"
             ? 4
-            : 5,
+            : stage === "notifications"
+              ? 5
+              : 6,
   );
   type Spotlight = { left: number; top: number; width: number; height: number };
   let spotlight = $state<Spotlight | null>(null);
@@ -135,13 +137,17 @@
 {/if}
 {#if open}<section class="guided-setup" aria-label={t("Guided setup")}>
     <div class="guide-top">
-      <span>{t("GUIDED SETUP")} · {step} / 5</span><Button
+      <span>{t("GUIDED SETUP")} · {step} / 6</span><Button
         variant="ghost"
         size="sm"
         onclick={() => onfinish("skipped")}>{t("Skip tour")}</Button
       >
     </div>
-    <Progress value={step * 20} aria-label={t("Guided setup")} class="mb-3" />
+    <Progress
+      value={(step / 6) * 100}
+      aria-label={t("Guided setup")}
+      class="mb-3"
+    />
     <div aria-live="polite" aria-atomic="true">
       <h2>{title}</h2>
       <p>{text}</p>
