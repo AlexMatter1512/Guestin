@@ -1,5 +1,8 @@
 # GuestIn
 
+> [!WARNING]
+> GuestIn is currently in beta. Breaking changes may occur in releases before version 1.0.
+
 **Guest access, connected doors, and breakfast coordination—for short-term rentals.**
 
 GuestIn brings three web apps together: a workspace for **hosts**, a simple access page for **guests and staff**, and live breakfast totals for **local partner cafés**. Self-host it in one Docker container and manage your properties remotely.
