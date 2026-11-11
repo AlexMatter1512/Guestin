@@ -164,3 +164,46 @@ jobs:
             args+=(--generate-notes)
           fi
           gh release create "${args[@]}"
+
+  sync-landing:
+    name: Update landing demo revision
+    needs: docker
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      revision: ${{ steps.pin.outputs.revision }}
+    steps:
+      - name: Check out the passing application commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: automation
+          persist-credentials: false
+      - name: Check out the latest landing source
+        uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+          path: landing
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - name: Update the pinned demo commit
+        id: pin
+        working-directory: landing
+        run: bun ../automation/scripts/sync-landing-demo.ts "$GITHUB_SHA"
+
+  landing:
+    name: Check and deploy synchronized landing demos
+    needs: sync-landing
+    if: needs.sync-landing.outputs.revision != ''
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: AlexMatter1512/Guestin/.github/workflows/landing.yml@gh-pages
+    with:
+      application_revision: ${{ needs.sync-landing.outputs.revision }}
