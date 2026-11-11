@@ -5,25 +5,54 @@ import { useGLTF, useTexture, Environment, Bounds, useBounds, Html } from "@reac
 import * as THREE from "three";
 
 function DoorInterior() {
-  // Leave room for the mop on the character's right inside the doorway.
+  const anchor = useRef<THREE.Group>(null);
+  const height = useThree((state) => state.size.height);
+  const scale = (height * 0.3) / 264;
+  const ray = useMemo(() => new THREE.Raycaster(), []);
+  const center = useMemo(() => new THREE.Vector2(0, 0), []);
+  const backdrop = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 0, 1), 0.25), []);
+
+  useFrame(({ camera }) => {
+    if (!anchor.current) return;
+    // Follow the canvas center at a depth behind the door, including after resizing.
+    ray.setFromCamera(center, camera);
+    ray.ray.intersectPlane(backdrop, anchor.current.position);
+    anchor.current.quaternion.copy(camera.quaternion);
+  });
+
   return (
-    <Html
-      position={[0, 0.63, -0.25]}
-      transform
-      prepend
-      occlude="blending"
-      distanceFactor={1.25}
-      zIndexRange={[2, 0]}
-      style={{ width: 400, height: 400, pointerEvents: "none" }}
-    >
-      <img
-        src={sitePath("/animations/fred-mopping.webp")}
-        alt="A cleaner mopping behind the door"
-        width={400}
-        height={400}
-        draggable={false}
-      />
-    </Html>
+    <group ref={anchor}>
+      <Html
+        center
+        prepend
+        occlude="blending"
+        zIndexRange={[2, 0]}
+        className="door-interior-art"
+        style={{
+          width: 264 * scale,
+          height: 234 * scale,
+          overflow: "hidden",
+          pointerEvents: "none",
+        }}
+      >
+        <img
+          src={sitePath("/animations/fred-mopping.webp")}
+          alt="A cleaner mopping behind the door"
+          width={360}
+          height={360}
+          draggable={false}
+          // Exclude the source image's transparent padding from the centered box.
+          style={{
+            position: "absolute",
+            width: 360 * scale,
+            height: 360 * scale,
+            maxWidth: "none",
+            left: -66 * scale,
+            top: -92 * scale,
+          }}
+        />
+      </Html>
+    </group>
   );
 }
 

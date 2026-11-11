@@ -120,6 +120,17 @@ for (const width of [1440, 390]) {
       "aria-pressed",
       "true",
     );
+    await expect(async () => {
+      const canvasBox = await scene.locator("canvas").boundingBox();
+      const artBox = await scene.locator(".door-interior-art").boundingBox();
+      expect(artBox).not.toBeNull();
+      expect(
+        Math.abs(artBox!.x + artBox!.width / 2 - canvasBox!.x - canvasBox!.width / 2),
+      ).toBeLessThan(1);
+      expect(
+        Math.abs(artBox!.y + artBox!.height / 2 - canvasBox!.y - canvasBox!.height / 2),
+      ).toBeLessThan(1);
+    }).toPass({ timeout: 15000 });
     await page.locator("#demo").scrollIntoViewIfNeeded();
     expect(
       await scene.evaluate((element) => element.getBoundingClientRect().bottom),
