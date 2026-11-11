@@ -1,8 +1,30 @@
 import { sitePath } from "@/lib/site-path";
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useGLTF, useTexture, Environment, Bounds, useBounds } from "@react-three/drei";
+import { useGLTF, useTexture, Environment, Bounds, useBounds, Html } from "@react-three/drei";
 import * as THREE from "three";
+
+function DoorInterior() {
+  return (
+    <Html
+      position={[0.2, 0.63, -0.25]}
+      transform
+      prepend
+      occlude="blending"
+      distanceFactor={1.25}
+      zIndexRange={[2, 0]}
+      style={{ width: 400, height: 400, pointerEvents: "none" }}
+    >
+      <img
+        src={sitePath("/animations/fred-mopping.webp")}
+        alt="A cleaner mopping behind the door"
+        width={400}
+        height={400}
+        draggable={false}
+      />
+    </Html>
+  );
+}
 
 function DoorBackdrop() {
   const { scene } = useGLTF(sitePath("/models/door.glb"));
@@ -169,6 +191,7 @@ export function DoorScrollScene({
         <ambientLight intensity={0.6} />
         <directionalLight position={[3, 5, 4]} intensity={1.2} />
         <Suspense fallback={null}>
+          <DoorInterior />
           <DoorBackdrop />
           <Bounds fit clip margin={1.15}>
             <DoorModel progress={progress} manual={manual} />
