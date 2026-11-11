@@ -164,11 +164,25 @@ function Home() {
         <section className="site-section problem-section" id="problem">
           <p className="eyebrow">{t.problem.kicker}</p>
           <h2>{t.problem.title}</h2>
-          <ul className="problem-grid">
-            {t.problem.items.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
+          <div className="problem-layout">
+            <img
+              className="problem-animation"
+              src={sitePath("/animations/door-strike-unlock.gif")}
+              alt={
+                it
+                  ? "Una serratura elettrica sblocca la porta"
+                  : "An electric door strike unlocks the door"
+              }
+              width={508}
+              height={249}
+              loading="lazy"
+            />
+            <ul className="problem-grid">
+              {t.problem.items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
           <p className="problem-footer">{t.problem.footer}</p>
         </section>
         <AskAI />

@@ -705,11 +705,24 @@
 .problem-section h2 {
   max-width: 800px;
 }
-.problem-grid {
+.problem-layout {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  align-items: center;
+  gap: 32px;
   margin-top: 38px;
+}
+.problem-animation {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 18px;
+  border: 1px solid var(--site-divider);
+}
+.problem-grid {
+  display: grid;
+  gap: 16px;
+  margin: 0;
   list-style: none;
   padding: 0;
 }
@@ -740,7 +753,7 @@
   color: var(--foreground);
 }
 @media (max-width: 750px) {
-  .problem-grid {
+  .problem-layout {
     grid-template-columns: 1fr;
   }
 }
@@ -748,4 +761,9 @@
   .rotating-word-current {
     animation: none;
   }
+}
+
+/* Keep scrolled anchors and iframe controls below the sticky navigation. */
+html {
+  scroll-padding-top: 96px;
 }

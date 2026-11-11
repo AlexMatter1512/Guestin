@@ -13,7 +13,9 @@ bun run preview
 
 ## Updating demos
 
-`demo-source.json` pins the application revision. The build workflow checks out that revision from this same repository, exports fresh demos and builds the website. To refresh checked-in demos locally, run in an application checkout at that revision:
+`demo-source.json` pins the application revision. After the application tests, secret scan and container smoke test pass on `main`, application CI updates this pin to the exact passing commit and calls the landing workflow directly. The built-in token's pushes do not trigger another push workflow, so the explicit reusable-workflow call also covers deployment. Superseded main commits are skipped, and concurrent landing edits are preserved when updating the pin.
+
+The landing workflow checks out the pin from this same repository, exports fresh demos and builds the website. Chromium checks exercise code creation/editing, shared guest and café navigation, reset-on-reload behavior, mobile layout and the animation at both `/` and `/Guestin/`. They also check for API requests, WebSockets, missing assets and uncaught page errors. Deployment runs after these checks pass. To refresh checked-in demos locally, run in an application checkout at that revision:
 
 ```sh
 bun install --frozen-lockfile
@@ -27,3 +29,11 @@ MIT licensed; third-party notices are in `docs/licenses`.
 ## GitHub Pages
 
 The workflow deploys the compiled artifact, not the source branch. Set Settings → Pages → Source to **GitHub Actions**. It reads the Pages base path automatically, so the repository URL and a custom domain both work after rebuilding. Every push to `gh-pages` builds the pinned demos and deploys the static website.
+
+Run the browser checks locally after building for the same base path:
+
+```sh
+bunx playwright install chromium
+bun run build
+bun run test:demo
+```

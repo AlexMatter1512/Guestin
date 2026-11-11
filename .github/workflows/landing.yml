@@ -6,6 +6,16 @@ on:
   pull_request:
     branches: [gh-pages]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      application_revision:
+        description: Main commit that passed application CI
+        type: string
+        required: true
+
+concurrency:
+  group: guestin-landing
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -17,6 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'pull_request' && github.sha || 'gh-pages' }}
           path: landing
       - uses: oven-sh/setup-bun@v2
         with:
@@ -24,8 +35,10 @@ jobs:
       - name: Read pinned application revision
         id: source
         working-directory: landing
+        env:
+          EXPECTED_REVISION: ${{ inputs.application_revision }}
         run: |
-          bun -e 'const {revision}=await Bun.file("demo-source.json").json(); if(!/^[0-9a-f]{40}$/.test(revision)) throw Error("Expected a full application commit SHA"); console.log(`revision=${revision}`)' >> "$GITHUB_OUTPUT"
+          bun -e 'const {revision}=await Bun.file("demo-source.json").json(); if(!/^[0-9a-f]{40}$/.test(revision)) throw Error("Expected a full application commit SHA"); if(process.env.EXPECTED_REVISION && revision !== process.env.EXPECTED_REVISION) throw Error("Demo pin changed since application CI passed"); console.log(`revision=${revision}`)' >> "$GITHUB_OUTPUT"
       - name: Check out application source from this repository
         uses: actions/checkout@v4
         with:
@@ -40,6 +53,35 @@ jobs:
       - name: Install landing dependencies
         working-directory: landing
         run: bun install --frozen-lockfile
+      - name: Install browser for demo checks
+        working-directory: landing
+        run: bunx playwright install --with-deps chromium
+      - name: Check types
+        working-directory: landing
+        run: bunx tsc --noEmit
+      - name: Check demos at the domain root
+        working-directory: landing
+        env:
+          LANDING_BASE_PATH: /
+        run: |
+          bun run build
+          bun run test:demo
+      - name: Check demos under the repository path
+        working-directory: landing
+        env:
+          LANDING_BASE_PATH: /Guestin/
+        run: |
+          bun run build
+          bun run test:demo
+      - name: Save browser failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: landing-browser-failures
+          path: |
+            landing/playwright-report
+            landing/test-results
+          if-no-files-found: ignore
       - name: Read GitHub Pages deployment path
         id: pages
         uses: actions/configure-pages@v5
@@ -60,7 +102,7 @@ jobs:
           path: landing/dist
 
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/gh-pages'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/gh-pages' || github.ref == 'refs/heads/main')
     needs: build
     runs-on: ubuntu-latest
     permissions:
