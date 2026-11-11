@@ -5,9 +5,10 @@ import { useGLTF, useTexture, Environment, Bounds, useBounds, Html } from "@reac
 import * as THREE from "three";
 
 function DoorInterior() {
+  // Center the character rather than the padded image or the mop extending to its right.
   return (
     <Html
-      position={[0.2, 0.63, -0.25]}
+      position={[0.35, 0.63, -0.25]}
       transform
       prepend
       occlude="blending"
