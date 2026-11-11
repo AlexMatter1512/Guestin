@@ -27,9 +27,9 @@ keywords = ["/guest/", "code="]
 # The shared Kross mobile client constant was verified in the installed APK.
 # This exception does not cover account bearer tokens or other provider keys.
 [[allowlists]]
-description = "Exact shared Kross app constant in client and protocol test"
+description = "Exact shared Kross app constant in client, protocol test and compiled demo"
 condition = "AND"
-paths = ['''(^|/)(shared/connectors\.ts|tests/connectors\.test\.ts)$''']
+paths = ['''(^|/)(shared/connectors\.ts|tests/connectors\.test\.ts|public/demo/host/_app/immutable/nodes/[^/]+\.js)$''']
 regexTarget = "secret"
 regexes = ['''^apf6phf4eeb70da55fa972e3b7g403d4$''']
 
