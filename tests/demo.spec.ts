@@ -106,3 +106,34 @@ test("mobile demos, animation and documentation work at the configured deploymen
   );
   checkTraffic();
 });
+
+for (const width of [1440, 390]) {
+  test(`manual door control resets after leaving the viewport at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto("./");
+    await expect(page.locator("#demo")).toHaveAttribute("data-ready", "true");
+    const scene = page.locator(".door-render");
+    const card = page.locator(".floating-guest");
+    await scene.scrollIntoViewIfNeeded();
+    await card.getByRole("button", { name: "Open door", exact: true }).click();
+    await expect(card.getByRole("button", { name: "Close door", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await page.locator("#demo").scrollIntoViewIfNeeded();
+    expect(
+      await scene.evaluate((element) => element.getBoundingClientRect().bottom),
+    ).toBeLessThanOrEqual(0);
+    await expect(card.getByRole("button", { name: "Open door", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    await scene.scrollIntoViewIfNeeded();
+    await expect(card.getByRole("button", { name: "Open door", exact: true })).toBeVisible();
+    if (width === 390) {
+      const sceneBox = await scene.boundingBox();
+      const cardBox = await card.boundingBox();
+      expect(cardBox!.y).toBeGreaterThanOrEqual(sceneBox!.y + sceneBox!.height);
+    }
+  });
+}

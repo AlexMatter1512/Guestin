@@ -240,6 +240,22 @@
   height: 530px;
   position: relative;
 }
+.door-render {
+  mask-image:
+    linear-gradient(
+      to right,
+      transparent,
+      rgb(0 0 0 / 20%) 4%,
+      rgb(0 0 0 / 70%) 10%,
+      black 18%,
+      black 82%,
+      rgb(0 0 0 / 70%) 90%,
+      rgb(0 0 0 / 20%) 96%,
+      transparent
+    ),
+    linear-gradient(to bottom, transparent, black 5%, black 95%, transparent);
+  mask-composite: intersect;
+}
 .lead {
   font-size: 21px;
 }
@@ -349,7 +365,44 @@
     grid-template-columns: 1fr;
   }
   .door-scene {
+    height: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .door-scene .door-render {
     height: 350px;
+    flex: none;
+  }
+  .door-scene .floating-guest {
+    position: relative;
+    bottom: auto;
+    left: auto;
+    align-self: center;
+    width: 100%;
+    max-width: 340px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 12px;
+    padding: 12px;
+    transform: none;
+  }
+  .door-scene .floating-guest p {
+    grid-column: 1;
+    grid-row: 2;
+    font-size: 11px;
+    margin: 2px 0 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .door-scene .floating-guest .cta {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    padding: 10px 14px;
+    font-size: 12px;
+    white-space: nowrap;
   }
   .feature-grid,
   .shot-grid {

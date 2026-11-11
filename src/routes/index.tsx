@@ -147,7 +147,7 @@ function Home() {
             </p>
           </div>
           <div className="door-scene">
-            <DoorScrollScene manualOpen={doorOpen} />
+            <DoorScrollScene manualOpen={doorOpen} onManualReset={() => setDoorOpen(null)} />
             <div className="floating-guest">
               <small>{it ? "Link ospite" : "Guest link"}</small>
               <p>Villa Olive · Main entrance</p>
