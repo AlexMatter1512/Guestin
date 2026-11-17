@@ -60,12 +60,19 @@ test("host edits are shared with guest and café views and reset on reload", asy
   await revealDemo(page);
   await frame.getByRole("button", { name: "Settings", exact: true }).click();
   await frame.getByRole("button", { name: /Breakfast.*Breakfast page/ }).click();
-  await frame.getByRole("link", { name: "Open breakfast page", exact: true }).click();
-  await expect(page.getByRole("button", { name: /^Café partner view/ })).toHaveAttribute(
+  const [breakfast] = await Promise.all([
+    page.context().waitForEvent("page"),
+    frame.getByRole("link", { name: "Open breakfast page", exact: true }).click(),
+  ]);
+  const checkBreakfastTraffic = watchDemoTraffic(breakfast);
+  await expect(breakfast.getByText("Breakfasts used", { exact: true })).toBeVisible();
+  expect(new URL(breakfast.url()).origin).toBe(new URL(page.url()).origin);
+  await expect(page.getByRole("button", { name: /^Host view Create/ })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  await expect(frame.getByText("Breakfasts used", { exact: true })).toBeVisible();
+  checkBreakfastTraffic();
+  await breakfast.close();
   await page.reload();
   await revealDemo(page);
   await expect(frame.getByRole("heading", { name: "Access codes", exact: true })).toBeVisible();
