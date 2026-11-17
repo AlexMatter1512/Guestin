@@ -229,7 +229,8 @@ try {
     animations: "disabled",
   });
   await toast.getByRole("button").first().click();
-  await expect(page).toHaveURL(origin + "/host/#/doors/" + door.id);
+  await expect(toast).toHaveCount(0);
+  await expect(page).toHaveURL(origin + "/host/#/codes/" + code.id);
   await api(`codes/${code.id}/revoke`, {});
   const revoked = (await api("events")).events.find(
     (e: any) => e.type === "code.revoked",
@@ -237,6 +238,7 @@ try {
   const revokedToast = page.locator(`[data-activity-toast="${revoked.id}"]`);
   await expect(revokedToast.locator('[data-icon="key"]')).toBeVisible();
   await revokedToast.getByRole("button").first().click();
+  await expect(revokedToast).toHaveCount(0);
   await expect(page).toHaveURL(origin + "/host/#/codes/" + code.id);
   await page.goto(origin + "/host/#/activity/" + property.id);
   await expect(cards).toHaveCount(20);

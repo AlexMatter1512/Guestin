@@ -194,6 +194,7 @@
       hostStorage.removeItem("guestin.draft.editId." + user.id);
     }
     detailCodeId = "";
+    codeActivity = false;
     await reload();
     toast.success(t("Permanently deleted"));
   }
@@ -224,6 +225,7 @@
   let codeDate = $state(""),
     codeStatus = $state("all"),
     detailCodeId = $state(""),
+    codeActivity = $state(false),
     detailDoorId = $state(""),
     quickCreate = $state(false),
     theme = $state("system"),
@@ -380,6 +382,10 @@
     settingsPage = id;
   }
   function back() {
+    if (tab === "Codes" && detailCodeId && codeActivity) {
+      codeActivity = false;
+      return;
+    }
     if (tab === "Settings" && propertyForm) {
       propertyForm = false;
       pEditing = "";
@@ -617,6 +623,7 @@
     notesEnabled = false;
     doorEditor = false;
     detailCodeId = "";
+    codeActivity = false;
     detailDoorId = "";
     quickCreate = false;
     if (found === "Codes" && id === "new") {
@@ -639,7 +646,10 @@
             editId = id;
             editing = true;
           } else edit(c);
-        } else detailCodeId = id;
+        } else {
+          detailCodeId = id;
+          codeActivity = action === "activity";
+        }
       }
     }
     if (found === "Activity" && id && properties.some((p) => p.id === id))
@@ -698,7 +708,7 @@
           ? "/" + editId + "/edit"
           : "/new"
         : detailCodeId
-          ? "/" + detailCodeId
+          ? "/" + detailCodeId + (codeActivity ? "/activity" : "")
           : staffCodes
             ? "/staff"
             : "";
@@ -815,9 +825,10 @@
     };
   });
   const property = $derived(properties.find((p) => p.id === propertyId));
-  const activeCodeDate = $derived(
-    codeDate || dayAt(new Date(currentTime).toISOString(), propertyId),
+  const todayCodeDate = $derived(
+    dayAt(new Date(currentTime).toISOString(), propertyId),
   );
+  const activeCodeDate = $derived(codeDate || todayCodeDate);
   function codeOnDate(c: any, day: string) {
     if (c.staff) return false;
     return (
@@ -1255,6 +1266,7 @@
     editing = false;
     editId = "";
     detailCodeId = "";
+    codeActivity = false;
     doorEditor = false;
     editingDoor = "";
     detailDoorId = "";
@@ -1323,6 +1335,7 @@
     notesEnabled = false;
     quickCreate = false;
     detailCodeId = "";
+    codeActivity = false;
     if (!value && tourVisible && resumeTourDraft) {
       editing = true;
       tab = "Codes";
@@ -1499,6 +1512,7 @@
     staffCodes = !!c.staff;
     tab = "Codes";
     detailCodeId = "";
+    codeActivity = false;
     editing = true;
   }
   async function copy(text: string) {
@@ -1642,7 +1656,9 @@
             ? "Edit access code"
             : "Create access code"
           : detailCode
-            ? detailCode.label
+            ? codeActivity
+              ? "Activity"
+              : detailCode.label
             : staffCodes
               ? "Staff codes"
               : "Access codes"
@@ -1794,6 +1810,7 @@
     propertyForm = false;
     connectorView = "list";
     detailCodeId = "";
+    codeActivity = false;
     detailDoorId = "";
     quickCreate = false;
     editing = false;
@@ -2484,6 +2501,22 @@
                   >
                 </div>
               </form>
+            {:else if detailCode && codeActivity}
+              <section class="code-activity stack" data-code-id={detailCode.id}>
+                <p>{detailCode.label}</p>
+                {#key detailCode.id}
+                  <CodeTimeline
+                    codeId={detailCode.id}
+                    propertyId={detailCode.propertyId}
+                    timezone={properties.find(
+                      (p) => p.id === detailCode.propertyId,
+                    )?.timezone ?? "UTC"}
+                    refreshToken={liveRevision}
+                    fullHistory
+                    {api}
+                  />
+                {/key}
+              </section>
             {:else if detailCode}
               <section class="code-detail stack" data-code-id={detailCode.id}>
                 <div class="row spread">
@@ -2720,13 +2753,13 @@
                     onclick={() => shiftDay(1)}
                     ><ChevronRight size={18} /></Button
                   >
-                  <Button
-                    variant="ghost"
-                    class="quiet today-button"
-                    onclick={() =>
-                      (codeDate = dayAt(new Date().toISOString(), propertyId))}
-                    >{t("Today")}</Button
-                  >
+                  {#if activeCodeDate !== todayCodeDate}
+                    <Button
+                      variant="ghost"
+                      class="quiet today-button"
+                      onclick={() => (codeDate = "")}>{t("Go to today")}</Button
+                    >
+                  {/if}
                 </div>{/if}
               {#if filtersOpen}<div class="filter-panel">
                   <Label class="field-label"

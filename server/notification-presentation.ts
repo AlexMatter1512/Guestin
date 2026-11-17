@@ -23,18 +23,19 @@ export function notificationPresentation(
     return result;
   }
   if (event.type === "access.invalid") return result;
+  const codeHref =
+    event.code_id &&
+    db
+      .query("SELECT 1 FROM codes WHERE id=? AND property_id=?")
+      .get(event.code_id, event.property_id ?? null)
+      ? "/host/#/codes/" + encodeURIComponent(event.code_id)
+      : null;
   if (
     event.type.startsWith("code.") ||
     event.type.startsWith("breakfast.") ||
     event.type === "device.resolved"
   ) {
-    if (
-      event.code_id &&
-      db
-        .query("SELECT 1 FROM codes WHERE id=? AND property_id=?")
-        .get(event.code_id, event.property_id ?? null)
-    )
-      result.href = "/host/#/codes/" + encodeURIComponent(event.code_id);
+    result.href = codeHref;
     return result;
   }
   const id = event.context?.doorId;
@@ -45,18 +46,14 @@ export function notificationPresentation(
       .get(id, event.property_id ?? null) as
       { id: string; data: string } | undefined);
   if (door) {
-    result.href = "/host/#/doors/" + encodeURIComponent(door.id);
+    result.href =
+      event.type === "access.accepted" && codeHref
+        ? codeHref
+        : "/host/#/doors/" + encodeURIComponent(door.id);
     const data = JSON.parse(door.data);
     if (event.type === "access.accepted" && data.photos?.length)
       result.thumbnail =
         "/api/v1/doors/" + encodeURIComponent(door.id) + "/thumbnail";
-  } else if (
-    event.code_id &&
-    db
-      .query("SELECT 1 FROM codes WHERE id=? AND property_id=?")
-      .get(event.code_id, event.property_id ?? null)
-  ) {
-    result.href = "/host/#/codes/" + encodeURIComponent(event.code_id);
-  }
+  } else result.href = codeHref;
   return result;
 }

@@ -25,12 +25,14 @@
     propertyId,
     timezone = "UTC",
     refreshToken = 0,
+    fullHistory = false,
     api,
   }: {
     codeId: string;
     propertyId: string;
     timezone?: string;
     refreshToken?: number;
+    fullHistory?: boolean;
     api: (path: string, body?: any, method?: string) => Promise<any>;
   } = $props();
   type CodeEvent = {
@@ -41,6 +43,7 @@
     context?: NotificationContext;
   };
   let events = $state<CodeEvent[]>([]);
+  const visibleEvents = $derived(fullHistory ? events : events.slice(0, 10));
   let nextCursor = $state<string | null>(null);
   let loading = $state(true);
   let error = $state("");
@@ -52,7 +55,11 @@
     const ticket = ++requestId;
     const id = codeId;
     const property = propertyId;
-    const desired = mode === "refresh" ? Math.max(20, events.length) : 20;
+    const pageSize = fullHistory ? 20 : 10;
+    const desired =
+      mode === "refresh" && fullHistory
+        ? Math.max(pageSize, events.length)
+        : pageSize;
     let cursor = mode === "more" ? nextCursor : null;
     loading = true;
     error = "";
@@ -62,7 +69,7 @@
         const query = new URLSearchParams({
           codeId: id,
           propertyId: property,
-          pageSize: "20",
+          pageSize: String(pageSize),
         });
         if (cursor) query.set("cursor", cursor);
         const data = await api("events?" + query);
@@ -89,6 +96,7 @@
     codeId;
     propertyId;
     refreshToken;
+    fullHistory;
     untrack(() => void load());
     return () => {
       requestId++;
@@ -106,7 +114,7 @@
     <small>{l("Newest first", "Più recenti prima")}</small>
   </div>
   <ol class="timeline-events">
-    {#each events as event (event.id)}
+    {#each visibleEvents as event (event.id)}
       {@const text = notificationText(
         { ...event, context: { ...event.context, codeLabel: undefined } },
         hostLanguage.current,
@@ -152,6 +160,12 @@
       variant="outline"
       disabled={loading}
       onclick={() => load()}>{l("Try again", "Riprova")}</Button
+    >
+  {:else if !fullHistory && (nextCursor || events.length > 10)}
+    <Button
+      variant="outline"
+      href={`#/codes/${encodeURIComponent(codeId)}/activity`}
+      >{l("View all", "Vedi tutto")}</Button
     >
   {:else if nextCursor}
     <Button

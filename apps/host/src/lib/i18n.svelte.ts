@@ -550,6 +550,7 @@ const redesignedItalian: Record<string, string> = {
   "Previous day": "Giorno precedente",
   "Next day": "Giorno successivo",
   Today: "Oggi",
+  "Go to today": "Vai a oggi",
   "Arriving today": "In arrivo oggi",
   Staying: "In soggiorno",
   "Leaving today": "In partenza oggi",

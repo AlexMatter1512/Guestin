@@ -174,7 +174,7 @@ try {
     page.getByRole("button", { name: "Previous day", exact: true }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Today", exact: true }),
+    page.getByRole("button", { name: "Go to today", exact: true }),
   ).toHaveCount(0);
   await page.reload();
   await expect(
@@ -209,6 +209,9 @@ try {
   const recap = page.locator(".code-detail");
   const timeline = recap.getByRole("region", { name: "Access code activity" });
   await expect(timeline.locator(".timeline-event")).toHaveCount(2);
+  await expect(
+    timeline.getByRole("link", { name: "View all", exact: true }),
+  ).toHaveCount(0);
   await expect(timeline).toContainText("Request accepted · Entrance");
   await expect(timeline).toContainText("Access code created");
   await expect(recap.getByText("Manage access", { exact: true })).toHaveCount(
@@ -248,6 +251,64 @@ try {
     path: join(directory, "code-timeline-mobile.png"),
     fullPage: true,
   });
+
+  // The preview stays capped at ten; the dedicated page owns older-event pagination.
+  const insertActivity = (count: number) => {
+    for (let i = 0; i < count; i++)
+      db.query("INSERT INTO events VALUES(?,?,?,?,?,?)").run(
+        crypto.randomUUID(),
+        property.id,
+        cleaner.id,
+        "code.updated",
+        "Fixture update",
+        new Date(Date.now() - i * 1000).toISOString(),
+      );
+  };
+  const viewAll = timeline.getByRole("link", { name: "View all", exact: true });
+  insertActivity(7);
+  await page.reload();
+  await expect(timeline.locator(".timeline-event")).toHaveCount(10);
+  await expect(viewAll).toHaveCount(0);
+  insertActivity(1);
+  await page.reload();
+  await expect(timeline.locator(".timeline-event")).toHaveCount(10);
+  await expect(viewAll).toBeVisible();
+  insertActivity(15);
+  await page.reload();
+  await expect(timeline.locator(".timeline-event")).toHaveCount(10);
+  await viewAll.click();
+  const activityURL = origin + `/host/#/codes/${cleaner.id}/activity`;
+  await expect(page).toHaveURL(activityURL);
+  const fullActivity = page.locator(".code-activity");
+  await expect(fullActivity).toContainText("Cleaner");
+  await expect(fullActivity.locator(".timeline-event")).toHaveCount(20);
+  await page.reload();
+  await expect(page).toHaveURL(activityURL);
+  await expect(fullActivity.locator(".timeline-event")).toHaveCount(20);
+  await fullActivity
+    .getByRole("button", { name: "Load older events", exact: true })
+    .click();
+  await expect(fullActivity.locator(".timeline-event")).toHaveCount(26);
+  await expect(
+    fullActivity.getByRole("button", {
+      name: "Load older events",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  const expectedActivity = await api(
+    `events?codeId=${cleaner.id}&propertyId=${property.id}&pageSize=50`,
+  );
+  expect(
+    await fullActivity
+      .locator(".timeline-event")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getAttribute("data-event-id")),
+      ),
+  ).toEqual(expectedActivity.events.map((event: any) => event.id));
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(page).toHaveURL(origin + `/host/#/codes/${cleaner.id}`);
+  await expect(timeline.locator(".timeline-event")).toHaveCount(10);
+  await expect(viewAll).toBeVisible();
 
   // The edit toggle is the sole permission control and must retain usage.
   await page.getByRole("button", { name: "Edit", exact: true }).click();

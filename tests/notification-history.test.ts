@@ -204,7 +204,7 @@ test("code activity filters before pagination and includes guest and staff event
   }
 });
 
-test("code notices link to their code; successful door usage has the exact protected photo and door link; invalid attempts have no destination", async () => {
+test("code notices link to their code; successful door usage has the exact protected photo and code link; invalid attempts have no destination", async () => {
   const f = await fixture();
   try {
     const created = (await f.req("events")).data.events[0];
@@ -231,7 +231,7 @@ test("code notices link to their code; successful door usage has the exact prote
     );
     expect(accepted).toMatchObject({
       icon: "door",
-      href: `/host/#/doors/${f.door.id}`,
+      href: `/host/#/codes/${f.code.id}`,
       thumbnail: `/api/v1/doors/${f.door.id}/thumbnail`,
       context: { doorId: f.door.id, doorName: "Front door" },
     });

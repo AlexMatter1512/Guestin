@@ -5,6 +5,7 @@ import { resolve, join, extname } from "node:path";
 import { createApp } from "../server/app";
 import { openDatabase } from "../server/db";
 import { localDate } from "../shared/schema";
+import { websocket } from "../server/realtime";
 
 // Isolated SQLite, fake device acceptance and no push delivery.
 const directory = mkdtempSync(join(tmpdir(), "guestin-mobile-polish-"));
@@ -40,7 +41,9 @@ app.get("*", async (c) => {
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port: 3110,
-  fetch: app.fetch,
+  websocket,
+  fetch: (request, server) =>
+    app.fetch(request, { server, clientIP: "127.0.0.1" }),
 });
 let browser;
 try {
@@ -130,6 +133,15 @@ try {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(origin + "/host/");
   await expect(page.locator(".code-row")).toHaveCount(2);
+  const goToToday = page.getByRole("button", {
+    name: "Go to today",
+    exact: true,
+  });
+  await expect(goToToday).toHaveCount(0);
+  await page.getByRole("button", { name: "Next day", exact: true }).click();
+  await expect(goToToday).toBeVisible();
+  await page.getByRole("button", { name: "Previous day", exact: true }).click();
+  await expect(goToToday).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "New code", exact: true }),
   ).toHaveCount(0);
@@ -149,6 +161,14 @@ try {
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBe(true);
+    await page.getByRole("button", { name: "Next day", exact: true }).click();
+    await expect(goToToday).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await goToToday.click();
     await page.locator(".date-picker-trigger").click();
     const calendar = page.locator('[data-slot="popover-content"]');
     await expect(calendar).toBeVisible();
@@ -162,8 +182,14 @@ try {
   await expect(
     firstRow.getByLabel("Successful requests: 0", { exact: true }),
   ).toBeVisible();
+  await firstRow
+    .getByRole("button", { name: "More actions for Elena Rossi", exact: true })
+    .click();
   const popupEvent = page.waitForEvent("popup");
-  await firstRow.getByRole("link", { name: "Open link", exact: true }).click();
+  await page
+    .locator(".code-actions-menu")
+    .getByRole("link", { name: "Open link", exact: true })
+    .click();
   const popup = await popupEvent;
   await expect(popup).toHaveURL(first.link);
   await popup.close();
@@ -195,7 +221,9 @@ try {
   await day(future).click();
   await expect(page.locator(".code-row")).toHaveCount(1);
   await expect(page.locator(".code-row")).toContainText("Future guest");
-  await page.getByRole("button", { name: "Today", exact: true }).click();
+  await expect(goToToday).toBeVisible();
+  await goToToday.click();
+  await expect(goToToday).toHaveCount(0);
   await expect(page.locator(".code-row")).toHaveCount(2);
   await page.evaluate(() =>
     Promise.all(
@@ -328,6 +356,7 @@ try {
   await expect(page.locator(".notification-history")).not.toContainText(
     "Access code created",
   );
+  await page.getByRole("tab", { name: "Staff", exact: true }).click();
   await expect(page.locator(".notification-history")).toContainText(
     "Elena Rossi · Codice di accesso creato",
   );
