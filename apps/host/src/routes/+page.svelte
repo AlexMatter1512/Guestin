@@ -83,6 +83,7 @@
     Pencil,
   } from "@lucide/svelte";
   import StructureSettings from "$lib/components/StructureSettings.svelte";
+  import CodeTimeline from "$lib/components/CodeTimeline.svelte";
   import NotificationHistory from "$lib/components/NotificationHistory.svelte";
   import ConnectorManager from "$lib/components/ConnectorManager.svelte";
   import Modal from "$lib/components/Modal.svelte";
@@ -98,7 +99,7 @@
   const can = (key: Permission) => hasPermission(user, key);
   const canManageCode = (code: any) =>
     can(code.staff ? "createStaffCodes" : "createAccessCodes");
-  import { copyText, guestToken } from "$lib/browser";
+  import { copyText } from "$lib/browser";
   import DoorManager from "$lib/components/DoorManager.svelte";
   import SmtpSettings from "$lib/components/SmtpSettings.svelte";
   import ServerSettings from "$lib/components/ServerSettings.svelte";
@@ -168,6 +169,7 @@
     if (!deleteTarget || deleteConfirmation !== requiredDeleteConfirmation)
       return;
     const deletingUserId = user.id;
+    const deleteKind = deleteTarget.kind;
     const self =
       deleteTarget.kind === "users" && deleteTarget.id === deletingUserId;
     await api(
@@ -184,6 +186,12 @@
       csrf = "";
       history.replaceState(null, "", "/host/");
       return;
+    }
+    if (deleteKind === "codes") {
+      editing = false;
+      editId = "";
+      hostStorage.removeItem("guestin.draft." + user.id);
+      hostStorage.removeItem("guestin.draft.editId." + user.id);
     }
     detailCodeId = "";
     await reload();
@@ -466,6 +474,7 @@
   }
   let templateInput = $state<HTMLTextAreaElement | null>(null);
   const detailCode = $derived(codes.find((c) => c.id === detailCodeId));
+  const managedCode = $derived(codes.find((c) => c.id === editId));
   const duplicateCodes = $derived(
     codes.filter(
       (c) =>
@@ -496,7 +505,7 @@
   }
   function grantStatus(g: any, staff = false) {
     const d = doors.find((d) => d.id === g.doorId);
-    if (g.active === false) return "Paused";
+    if (g.active === false) return "Door disabled";
     if (d?.enabled === false) return "Door disabled";
     if (g.claim) return "Uncertain";
     if (g.singleUse && g.used) return "Used";
@@ -1339,6 +1348,11 @@
     tab = "Codes";
   }
   function selectDoor(d: any, selected: boolean) {
+    const existing = draft.grants.find((g) => g.doorId === d.id);
+    if (existing) {
+      existing.active = selected;
+      return;
+    }
     if (selected) {
       const now = new Date(),
         end = new Date();
@@ -1364,9 +1378,10 @@
           start: now.toISOString(),
           end: end.toISOString(),
           singleUse: d.singleUse,
+          active: true,
         },
       ];
-    } else draft.grants = draft.grants.filter((g) => g.doorId !== d.id);
+    }
   }
   function dateInput(iso: string) {
     if (!iso) return "";
@@ -2247,12 +2262,12 @@
                     <div class="door">
                       <Label class="inline"
                         ><Switch
-                          checked={!!grant}
+                          checked={!!grant && grant.active !== false}
                           onCheckedChange={(checked) => selectDoor(d, checked)}
                         />{d.name}{d.common
                           ? " · " + t("Common door")
                           : ""}</Label
-                      >{#if grant}<div
+                      >{#if grant && grant.active !== false}<div
                           class="form-grid"
                           style="margin-top:14px"
                         >
@@ -2362,6 +2377,43 @@
                     </div>
                   </div>
                 </details>
+                {#if managedCode}
+                  <details class="manage-access">
+                    <summary>{t("Manage access")}</summary>
+                    <p class="muted">
+                      {t(
+                        "Replacing or revoking a link takes effect immediately.",
+                      )}
+                    </p>
+                    <div class="row">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={!!managedCode.revoked ||
+                          busy ||
+                          !canManageCode(managedCode)}
+                        onclick={() => act(() => replaceLink(managedCode))}
+                        >{t("Replace link")}</Button
+                      ><Button
+                        type="button"
+                        variant="destructive"
+                        class="danger"
+                        disabled={!!managedCode.revoked ||
+                          busy ||
+                          !canManageCode(managedCode)}
+                        onclick={() => act(() => revoke(managedCode))}
+                        >{t("Revoke")}</Button
+                      >
+                    </div>
+                    {#if user.role === "owner"}<Button
+                        type="button"
+                        variant="destructive"
+                        disabled={busy}
+                        onclick={() => requestDelete("codes", managedCode)}
+                        >{t("Delete permanently")}</Button
+                      >{/if}
+                  </details>
+                {/if}
                 {#if duplicateCodes.length}<p class="notice" role="status">
                     {t(
                       "An identical access code already exists. Saving requires confirmation.",
@@ -2453,21 +2505,6 @@
                 </div>
                 <section class="copy-fields">
                   <Label class="field-label"
-                    >{t("Access code")}
-                    <div class="input-action">
-                      <Input
-                        readonly
-                        value={guestToken(detailCode.link)}
-                        aria-label={t("Access code value")}
-                      /><Button
-                        type="button"
-                        variant="outline"
-                        disabled={!!detailCode.revoked}
-                        onclick={() => void copy(guestToken(detailCode.link))}
-                        ><Copy size={16} />{t("Copy code")}</Button
-                      >
-                    </div></Label
-                  ><Label class="field-label"
                     >{t("Guest link")}
                     <div class="input-action">
                       <Input
@@ -2484,85 +2521,80 @@
                     </div></Label
                   >
                 </section>
-                <h3>{t("Door permissions")}</h3>
-                {#each detailCode.grants as g (g.doorId)}<section
-                    class="permission-row stack"
-                  >
-                    <div class="row spread">
-                      <strong
-                        >{doors.find((d) => d.id === g.doorId)?.name}</strong
-                      ><Badge variant="secondary" class="badge"
-                        >{t(grantStatus(g, !!detailCode.staff))}</Badge
-                      >
-                    </div>
-                    {#if detailCode.staff}<p>{t("No time limit")}</p>{:else}<p>
-                        {formatInstant(g.start, detailCode.propertyId)} → {formatInstant(
-                          g.end,
-                          detailCode.propertyId,
-                        )}<br /><small
-                          >{properties.find(
-                            (p) => p.id === detailCode.propertyId,
-                          )?.timezone}</small
+                {#key detailCode.id}
+                  <CodeTimeline
+                    codeId={detailCode.id}
+                    propertyId={detailCode.propertyId}
+                    timezone={properties.find(
+                      (p) => p.id === detailCode.propertyId,
+                    )?.timezone ?? "UTC"}
+                    refreshToken={liveRevision}
+                    {api}
+                  />
+                {/key}
+                <details class="code-doors">
+                  <summary>{t("Doors")}</summary>
+                  {#each detailCode.grants as g (g.doorId)}<section
+                      class="permission-row stack"
+                    >
+                      <div class="row spread">
+                        <strong
+                          >{doors.find((d) => d.id === g.doorId)?.name}</strong
+                        ><Badge variant="secondary" class="badge"
+                          >{t(grantStatus(g, !!detailCode.staff))}</Badge
                         >
-                      </p>{/if}
-                    <small
-                      >{t("Successful requests")}: {g.used} · {t(
-                        g.singleUse ? "Single use" : "Multiple uses",
-                      )}</small
-                    >
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={busy ||
-                        !!detailCode.revoked ||
-                        !canManageCode(detailCode)}
-                      onclick={() =>
-                        act(async () => {
-                          await api(
-                            `codes/${detailCode.id}/grants/${g.doorId}`,
-                            { active: g.active === false },
-                            "PATCH",
-                          );
-                          await reload();
-                        })}
-                      >{t(
-                        g.active === false
-                          ? "Resume permission"
-                          : "Pause permission",
-                      )}</Button
-                    >
-                    {#if g.claim}<div class="error">
-                        <p>
-                          {t("Uncertain device request:")}
-                          {t("Check the door before allowing another request.")}
-                        </p>
-                        <div class="row">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onclick={() =>
-                              act(async () => {
-                                await api(`codes/${detailCode.id}/resolve`, {
-                                  doorId: g.doorId,
-                                  consumed: true,
-                                });
-                                await reload();
-                              })}>{t("Mark consumed")}</Button
-                          ><Button
-                            type="button"
-                            variant="outline"
-                            onclick={() =>
-                              act(async () => {
-                                await api(`codes/${detailCode.id}/resolve`, {
-                                  doorId: g.doorId,
-                                  consumed: false,
-                                });
-                                await reload();
-                              })}>{t("Permit retry")}</Button
+                      </div>
+                      {#if detailCode.staff}<p>{t("No time limit")}</p>{:else}<p
+                        >
+                          {formatInstant(g.start, detailCode.propertyId)} → {formatInstant(
+                            g.end,
+                            detailCode.propertyId,
+                          )}<br /><small
+                            >{properties.find(
+                              (p) => p.id === detailCode.propertyId,
+                            )?.timezone}</small
                           >
-                        </div>
-                      </div>{/if}
-                  </section>{/each}
+                        </p>{/if}
+                      <small
+                        >{t("Successful requests")}: {g.used} · {t(
+                          g.singleUse ? "Single use" : "Multiple uses",
+                        )}</small
+                      >
+                      {#if g.claim}<div class="error">
+                          <p>
+                            {t("Uncertain device request:")}
+                            {t(
+                              "Check the door before allowing another request.",
+                            )}
+                          </p>
+                          <div class="row">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onclick={() =>
+                                act(async () => {
+                                  await api(`codes/${detailCode.id}/resolve`, {
+                                    doorId: g.doorId,
+                                    consumed: true,
+                                  });
+                                  await reload();
+                                })}>{t("Mark consumed")}</Button
+                            ><Button
+                              type="button"
+                              variant="outline"
+                              onclick={() =>
+                                act(async () => {
+                                  await api(`codes/${detailCode.id}/resolve`, {
+                                    doorId: g.doorId,
+                                    consumed: false,
+                                  });
+                                  await reload();
+                                })}>{t("Permit retry")}</Button
+                            >
+                          </div>
+                        </div>{/if}
+                    </section>{/each}
+                </details>
                 {#if detailCode.breakfast}<section>
                     <h3>{t("Breakfast")}</h3>
                     <p>
@@ -2572,41 +2604,6 @@
                       )}
                     </p>
                   </section>{/if}
-                <details class="manage-access">
-                  <summary>{t("Manage access")}</summary>
-                  <p class="muted">
-                    {t(
-                      "Replacing or revoking a link takes effect immediately.",
-                    )}
-                  </p>
-                  <div class="row">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={!!detailCode.revoked ||
-                        busy ||
-                        !canManageCode(detailCode)}
-                      onclick={() => act(() => replaceLink(detailCode))}
-                      >{t("Replace link")}</Button
-                    ><Button
-                      type="button"
-                      variant="destructive"
-                      class="danger"
-                      disabled={!!detailCode.revoked ||
-                        busy ||
-                        !canManageCode(detailCode)}
-                      onclick={() => act(() => revoke(detailCode))}
-                      >{t("Revoke")}</Button
-                    >
-                  </div>
-                  {#if user.role === "owner"}<Button
-                      type="button"
-                      variant="destructive"
-                      disabled={busy}
-                      onclick={() => requestDelete("codes", detailCode)}
-                      >{t("Delete permanently")}</Button
-                    >{/if}
-                </details>
               </section>
             {:else}
               <div class="code-list-controls">

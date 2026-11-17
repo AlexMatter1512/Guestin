@@ -206,15 +206,95 @@ try {
   expect(calls).toBe(1);
   await page.screenshot({ path: join(directory, "staff-list-mobile.png") });
   await page.locator(`[data-code-id="${cleaner.id}"] .code-summary`).click();
+  const recap = page.locator(".code-detail");
+  const timeline = recap.getByRole("region", { name: "Access code activity" });
+  await expect(timeline.locator(".timeline-event")).toHaveCount(2);
+  await expect(timeline).toContainText("Request accepted · Entrance");
+  await expect(timeline).toContainText("Access code created");
+  await expect(recap.getByText("Manage access", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(recap.locator(".permission-row")).not.toBeVisible();
+  expect(
+    await recap.evaluate((element) => {
+      const activity = element.querySelector(".code-timeline")!;
+      const doors = element.querySelector(".code-doors")!;
+      return !!(
+        activity.compareDocumentPosition(doors) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+      );
+    }),
+  ).toBe(true);
+  await expect(
+    recap.getByLabel("Guest link value", { exact: true }),
+  ).toHaveValue(cleaner.link);
+  await expect(
+    recap.getByRole("button", { name: "Copy link", exact: true }),
+  ).toBeVisible();
+  await expect(
+    recap.getByLabel("Access code value", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    recap.getByRole("button", { name: "Copy code", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    recap.getByRole("button", { name: /Pause permission|Resume permission/ }),
+  ).toHaveCount(0);
+
+  await guest.getByRole("button", { name: /Click here to open/ }).click();
+  await expect(timeline.locator(".timeline-event")).toHaveCount(3);
+  expect(calls).toBe(2);
+  await page.screenshot({
+    path: join(directory, "code-timeline-mobile.png"),
+    fullPage: true,
+  });
+
+  // The edit toggle is the sole permission control and must retain usage.
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(page.getByText("Manage access", { exact: true })).toBeVisible();
+  await page.getByRole("switch", { name: /Entrance/ }).click();
+  await saveForm();
+  await page.locator(`[data-code-id="${cleaner.id}"] .code-summary`).click();
+  await recap.locator(".code-doors > summary").click();
+  await expect(recap.locator(".permission-row")).toContainText("Entrance");
+  await expect(recap.locator(".permission-row")).toContainText("Door disabled");
+  await expect(recap.locator(".permission-row")).toContainText(
+    "Successful requests: 2",
+  );
+  await page.reload();
+  await recap.locator(".code-doors > summary").click();
+  await expect(recap.locator(".permission-row")).toContainText(
+    "Successful requests: 2",
+  );
+  await page.screenshot({
+    path: join(directory, "disabled-door-recap-mobile.png"),
+  });
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(
+    page.getByRole("switch", { name: /Entrance/ }),
+  ).not.toBeChecked();
+  await page.getByRole("switch", { name: /Entrance/ }).click();
+  await saveForm();
+  await page.locator(`[data-code-id="${cleaner.id}"] .code-summary`).click();
+  await recap.locator(".code-doors > summary").click();
+  await expect(recap.locator(".permission-row")).toContainText(
+    "Successful requests: 2",
+  );
+  await expect(recap.locator(".permission-row")).not.toContainText(
+    "Door disabled",
+  );
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await expect(
     page.getByRole("switch", { name: "Staff access code", exact: true }),
   ).toBeChecked();
-  await expect(page.locator('input[type="datetime-local"]')).toHaveCount(0);
+  const validityFields = page.getByRole("textbox", {
+    name: /^Valid (from|until)$/,
+  });
+  await expect(validityFields).toHaveCount(0);
   await page
     .getByRole("switch", { name: "Staff access code", exact: true })
     .click();
-  await expect(page.locator('input[type="datetime-local"]')).toHaveCount(2);
+  await expect(validityFields).toHaveCount(2);
   await page
     .getByRole("switch", { name: "Staff access code", exact: true })
     .click();
@@ -234,7 +314,7 @@ try {
   await page
     .getByLabel("Staff name / label", { exact: true })
     .fill("New cleaner");
-  await expect(page.locator('input[type="datetime-local"]')).toHaveCount(0);
+  await expect(validityFields).toHaveCount(0);
   await expect(page.getByLabel("Notes", { exact: true })).toHaveCount(0);
   await dismissToasts();
   const additionalDetails = page.getByText("Additional details", {
@@ -284,6 +364,7 @@ try {
     (await api("codes")).find((c: any) => c.id === newCleaner.id).notes,
   ).toBe("Laundry arrives at noon");
   await page.locator(`[data-code-id="${newCleaner.id}"]`).click();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
   await page.getByText("Manage access", { exact: true }).click();
   await page
     .getByRole("button", { name: "Delete permanently", exact: true })

@@ -1447,10 +1447,11 @@ export function createApp(
           id,
         );
       const prior = all("SELECT * FROM grants WHERE code_id=?", id);
-      run("DELETE FROM grants WHERE code_id=?", id);
+      // Omitted doors are disabled, retaining their usage and single-use state.
+      run("UPDATE grants SET active=0 WHERE code_id=?", id);
       for (const g of grants)
         run(
-          "INSERT INTO grants(code_id,door_id,start,end,single_use,used,active) VALUES(?,?,?,?,?,?,?)",
+          "INSERT INTO grants(code_id,door_id,start,end,single_use,used,active) VALUES(?,?,?,?,?,?,?) ON CONFLICT(code_id,door_id) DO UPDATE SET start=excluded.start,end=excluded.end,single_use=excluded.single_use,active=excluded.active",
           id,
           g.doorId,
           g.start,
@@ -1658,6 +1659,12 @@ export function createApp(
       z.string().uuid().parse(propertyId);
       clauses.push("(property_id=? OR property_id IS NULL)");
       args.push(propertyId);
+    }
+    const codeId = c.req.query("codeId");
+    if (codeId) {
+      z.string().uuid().parse(codeId);
+      clauses.push("code_id=?");
+      args.push(codeId);
     }
     if (c.req.query("cursor")) {
       let cursor: { created: string; id: string };
