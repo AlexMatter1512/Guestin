@@ -58,15 +58,19 @@ try {
   await frame
     .getByRole("button", { name: /Breakfast.*Breakfast page/ })
     .click();
-  await frame
-    .getByRole("link", { name: "Open breakfast page", exact: true })
-    .click();
+  const [breakfast] = await Promise.all([
+    page.context().waitForEvent("page"),
+    frame
+      .getByRole("link", { name: "Open breakfast page", exact: true })
+      .click(),
+  ]);
   await expect(
-    page.getByRole("button", { name: /Café partner view/ }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await expect(
-    frame.getByText("Breakfasts used", { exact: true }),
+    breakfast.getByText("Breakfasts used", { exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Host view Create/ }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await breakfast.close();
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 },
   });

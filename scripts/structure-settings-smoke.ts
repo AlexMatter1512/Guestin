@@ -260,6 +260,65 @@ try {
   await expect(
     page.getByRole("link", { name: "Open breakfast page", exact: true }),
   ).toHaveAttribute("href", "/breakfast/" + one.id);
+  await expect(
+    page.getByRole("link", { name: "Open breakfast page", exact: true }),
+  ).toHaveAttribute("target", "_blank");
+  await expect(
+    page.getByRole("link", { name: "Open breakfast page", exact: true }),
+  ).toHaveAttribute("rel", /external/);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: async (data: ShareData) => {
+        (window as any).__sharedBreakfast = data;
+      },
+    });
+  });
+  await page
+    .getByRole("button", { name: "Share breakfast page link", exact: true })
+    .click();
+  expect(await page.evaluate(() => (window as any).__sharedBreakfast.url)).toBe(
+    origin + "/breakfast/" + one.id,
+  );
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: undefined,
+    });
+    document.execCommand = () => false;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          (window as any).__copiedBreakfast = text;
+        },
+      },
+    });
+  });
+  await page
+    .getByRole("button", { name: "Share breakfast page link", exact: true })
+    .click();
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__copiedBreakfast))
+    .toBe(origin + "/breakfast/" + one.id);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async () => {
+          throw new Error("Clipboard unavailable");
+        },
+      },
+    });
+  });
+  await page
+    .getByRole("button", { name: "Share breakfast page link", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("Copy this breakfast page link to share it", {
+      exact: true,
+    }),
+  ).toHaveValue(origin + "/breakfast/" + one.id);
   await page
     .getByRole("switch", { name: "Require a password", exact: true })
     .check();
