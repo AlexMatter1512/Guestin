@@ -1,4 +1,6 @@
 import type { DB } from "./db";
+import type { NotificationCategory } from "../shared/notifications";
+import { notificationCategorySQL } from "./notifications";
 
 export function notificationReads(db: DB) {
   function unread(userId: string) {
@@ -33,17 +35,22 @@ export function notificationReads(db: DB) {
       return changed;
     })();
   }
-  function markAll(userId: string, propertyId?: string) {
+  function markAll(
+    userId: string,
+    propertyId?: string,
+    category?: NotificationCategory,
+  ) {
     return db
       .query(
         `INSERT OR IGNORE INTO event_reads(event_id,user_id,read_at)
-      SELECT id,?,? FROM events WHERE (type != 'account.reset_requested' OR EXISTS (SELECT 1 FROM users WHERE id=? AND role='owner'))${propertyId ? " AND (property_id=? OR property_id IS NULL)" : ""}`,
+      SELECT id,?,? FROM events WHERE (type != 'account.reset_requested' OR EXISTS (SELECT 1 FROM users WHERE id=? AND role='owner'))${propertyId ? " AND (property_id=? OR property_id IS NULL)" : ""}${category ? ` AND ${notificationCategorySQL()}=?` : ""}`,
       )
       .run(
         userId,
         new Date().toISOString(),
         userId,
         ...(propertyId ? [propertyId] : []),
+        ...(category ? [category] : []),
       ).changes;
   }
   return { unread, mark, markAll };

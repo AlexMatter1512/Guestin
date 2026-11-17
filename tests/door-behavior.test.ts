@@ -268,9 +268,10 @@ test("guest openings attribute valid owner and collaborator sessions and keep id
         codeLabel: "Guest",
         detail: "Fixture accepted",
       });
-      expect(notificationText(event).body).toBe(
-        `${name} · Entrance: Fixture accepted`,
+      expect(notificationText(event).title).toBe(
+        "Guest · Request accepted · Entrance",
       );
+      expect(notificationText(event).body).toBe(name);
       expect(notificationText(event, "it").body).toContain(name);
     }
     expect(f.calls()).toBe(2);

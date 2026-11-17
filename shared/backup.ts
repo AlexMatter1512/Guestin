@@ -156,6 +156,7 @@ export const backupSchema = z
           created: z.iso.datetime(),
           context: z
             .object({
+              category: z.enum(["guest", "staff"]).optional(),
               codeLabel: z.string().max(200).optional(),
               validFrom: z.iso.datetime().optional(),
               validTo: z.iso.datetime().optional(),

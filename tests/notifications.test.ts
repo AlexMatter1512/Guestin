@@ -10,6 +10,27 @@ import { deliverPush } from "../server/push";
 import { pruneNotifications } from "../server/notifications";
 import webpush from "web-push";
 
+test("accepted door notifications name the door and omit provider explanations", () => {
+  for (const type of ["access.accepted", "device.test.accepted"]) {
+    const event = {
+      type,
+      message:
+        "Provider accepted the unlock request; physical state is not confirmed",
+      context: { doorName: "Front door", codeLabel: "Suite Aurora" },
+    };
+    expect(notificationText(event).title).toContain("Front door");
+    expect(notificationText(event, "it").title).toContain("Front door");
+    expect(notificationText(event).body).toBe("");
+    expect(notificationText(event, "it").body).toBe("");
+    expect(
+      notificationText({
+        ...event,
+        context: { ...event.context, actor: "Alex" },
+      }).body,
+    ).toBe("Alex");
+  }
+});
+
 test("notification titles and explanations translate in both languages and include code names", () => {
   const event = {
     type: "access.denied",

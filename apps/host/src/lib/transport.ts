@@ -1,4 +1,5 @@
 import { demoUnreadCounts } from "../../../../shared/demo-notifications";
+import { notificationCategory } from "../../../../shared/notifications";
 import {
   demoWorkspace,
   seedDemoWorkspace,
@@ -275,7 +276,8 @@ const requestDemo: Transport = async (
         if (
           route === "events/read"
             ? body.eventIds.includes(event.id)
-            : !body.propertyId || event.propertyId === body.propertyId
+            : (!body.propertyId || event.propertyId === body.propertyId) &&
+              (!body.category || notificationCategory(event) === body.category)
         ) {
           event.read = true;
           event.readBy = ["demo-user"];
@@ -283,12 +285,16 @@ const requestDemo: Transport = async (
       }
       return { ok: true };
     }
-    const propertyId = new URLSearchParams(path.split("?")[1]).get(
-      "propertyId",
-    );
+    const query = new URLSearchParams(path.split("?")[1]);
+    const propertyId = query.get("propertyId"),
+      category = query.get("category");
     return {
       events: structuredClone(
-        state.events.filter((e) => !propertyId || e.propertyId === propertyId),
+        state.events.filter(
+          (e) =>
+            (!propertyId || e.propertyId === propertyId) &&
+            (!category || notificationCategory(e) === category),
+        ),
       ),
       nextCursor: null,
     };

@@ -56,7 +56,7 @@ import {
 } from "../shared/schema";
 import { connectorRoutes } from "./connectors";
 import { databaseLifecycle } from "./lifecycle";
-import { pruneNotifications } from "./notifications";
+import { notificationCategorySQL, pruneNotifications } from "./notifications";
 import { breakfastAccessRoutes, mayReadBreakfast } from "./breakfast-access";
 type Env = {
   Bindings: { clientIP?: string; server?: Bun.Server<any> };
@@ -170,6 +170,7 @@ export function createApp(
       ? get("SELECT data FROM codes WHERE id=?", codeId)
       : null;
     const details = {
+      category: "staff" as const,
       ...context,
       ...(code ? { codeLabel: JSON.parse(code.data).label } : {}),
     };
@@ -1619,11 +1620,14 @@ export function createApp(
   });
   app.post("/api/v1/events/read-all", async (c) => {
     const input = z
-      .object({ propertyId: z.uuid().optional() })
+      .object({
+        propertyId: z.uuid().optional(),
+        category: z.enum(["guest", "staff"]).optional(),
+      })
       .strict()
       .parse(await c.req.json());
     const id = c.get("user").id;
-    const changed = reads.markAll(id, input.propertyId);
+    const changed = reads.markAll(id, input.propertyId, input.category);
     if (changed) realtime(db).notificationReads(id);
     return c.json({ changed, unread: reads.unread(id) });
   });
@@ -1636,10 +1640,18 @@ export function createApp(
       .max(100)
       .parse(c.req.query("pageSize") ?? 20);
     const propertyId = c.req.query("propertyId");
+    const category = z
+      .enum(["guest", "staff"])
+      .optional()
+      .parse(c.req.query("category"));
     const clauses: string[] = [
         "(property_id IS NULL OR property_id IN (SELECT id FROM properties WHERE json_extract(data,'$.active') IS NOT 0))",
       ],
       args: any[] = [];
+    if (category) {
+      clauses.push(`${notificationCategorySQL()}=?`);
+      args.push(category);
+    }
     if (c.get("user").role !== "owner")
       clauses.push("type != 'account.reset_requested'");
     if (propertyId) {
@@ -1731,11 +1743,31 @@ export function createApp(
       ),
     ),
   );
+  function guestAttribution(c: any, code?: any): NotificationContext {
+    // Guest credentials authorize the action; only a valid session attributes it.
+    const cookie = sessionCookie(c.req.header("cookie"));
+    const host = cookie
+      ? get(
+          "SELECT u.id,u.name,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.digest=? AND s.expires>? AND u.role IN ('owner','collaborator')",
+          digest(cookie),
+          Date.now(),
+        )
+      : null;
+    if (host) setLogActor(host);
+    return {
+      category:
+        host || (code && JSON.parse(code.data).staff === true)
+          ? "staff"
+          : "guest",
+      ...(host ? { actor: host.name } : {}),
+    };
+  }
   function guest(c: any) {
     const raw = c.req.header("authorization")?.replace(/^Bearer /, "") ?? "";
     const r = get("SELECT * FROM codes WHERE digest=?", digest(raw));
     if (r) requireActiveProperty(r.property_id);
     if (!r || r.revoked) {
+      const attribution = guestAttribution(c, r);
       const budget = invalidAlerts.take(
         digest(c.env?.clientIP ?? "unknown"),
         r?.id,
@@ -1746,7 +1778,7 @@ export function createApp(
           `${budget.summary} invalid-link attempts suppressed`,
           null,
           null,
-          { suppressedAttempts: budget.summary },
+          { ...attribution, suppressedAttempts: budget.summary },
         );
       if (budget.allowed) {
         let previousVisit: NotificationContext["previousVisit"];
@@ -1775,6 +1807,7 @@ export function createApp(
           r?.property_id ?? null,
           r?.id ?? null,
           {
+            ...attribution,
             action: c.req.path.endsWith("/open")
               ? "door"
               : c.req.path.endsWith("/breakfast")
@@ -1855,18 +1888,7 @@ export function createApp(
         fail("Idempotency key conflict", 409);
       return c.json(JSON.parse(previous.result));
     }
-    // The guest token remains the sole authority. A valid host session only
-    // attributes this action; stale cookies never prevent ordinary guest access.
-    const cookie = sessionCookie(c.req.header("cookie"));
-    const host = cookie
-      ? get(
-          "SELECT u.id,u.name,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.digest=? AND s.expires>? AND u.role IN ('owner','collaborator')",
-          digest(cookie),
-          Date.now(),
-        )
-      : null;
-    const attribution = host ? { actor: host.name } : {};
-    if (host) setLogActor(host);
+    const attribution = guestAttribution(c, r);
     const d = get("SELECT * FROM doors WHERE id=?", doorId);
     try {
       db.transaction(() => {
@@ -1954,6 +1976,7 @@ export function createApp(
       .parse(await c.req.json());
     const r = guest(c),
       id = actionId(c);
+    const attribution = guestAttribution(c, r);
     let error: string | undefined;
     const result = db.transaction(() => {
       const prior = get("SELECT * FROM actions WHERE id=?", id);
@@ -1982,7 +2005,7 @@ export function createApp(
         used + quantity > d.breakfast.total
       ) {
         error = "Breakfast unavailable for this date or quantity";
-        event("breakfast.denied", error, r.property_id, r.id);
+        event("breakfast.denied", error, r.property_id, r.id, attribution);
         return null;
       }
       run(
@@ -2007,6 +2030,7 @@ export function createApp(
         `${quantity} breakfast(s) redeemed`,
         r.property_id,
         r.id,
+        attribution,
       );
       return result;
     })();

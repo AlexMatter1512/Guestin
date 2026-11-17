@@ -1,5 +1,16 @@
 import type { DB } from "./db";
 
+// Preserve historical classification when an event predates explicit categories.
+// Filter in SQL so pagination and bulk read receipts use the same event set.
+export function notificationCategorySQL(table = "events") {
+  return `COALESCE(
+    (SELECT json_extract(data,'$.category') FROM event_context WHERE event_id=${table}.id),
+    CASE WHEN (${table}.type LIKE 'access.%' OR ${table}.type LIKE 'breakfast.%')
+      AND COALESCE((SELECT json_extract(data,'$.actor') FROM event_context WHERE event_id=${table}.id),'')=''
+      AND NOT EXISTS (SELECT 1 FROM codes WHERE id=${table}.code_id AND json_extract(data,'$.staff')=1)
+      THEN 'guest' ELSE 'staff' END)`;
+}
+
 export function retentionCutoff(months: number, now = new Date()) {
   const cutoff = new Date(now);
   const day = cutoff.getUTCDate();

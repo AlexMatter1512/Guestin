@@ -161,7 +161,7 @@ test("random invalid tokens cannot flood history or push jobs, including across 
         contexts
           .map((row) => JSON.parse(row.data))
           .find((c) => c.suppressedAttempts),
-      ).toEqual({ suppressedAttempts: 60 });
+      ).toEqual({ category: "guest", suppressedAttempts: 60 });
     } finally {
       clock.mockRestore();
     }
