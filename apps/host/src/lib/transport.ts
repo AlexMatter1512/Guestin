@@ -287,12 +287,14 @@ const requestDemo: Transport = async (
     }
     const query = new URLSearchParams(path.split("?")[1]);
     const propertyId = query.get("propertyId"),
+      codeId = query.get("codeId"),
       category = query.get("category");
     return {
       events: structuredClone(
         state.events.filter(
           (e) =>
             (!propertyId || e.propertyId === propertyId) &&
+            (!codeId || (e.code_id ?? e.codeId) === codeId) &&
             (!category || notificationCategory(e) === category),
         ),
       ),
@@ -330,7 +332,27 @@ const requestDemo: Transport = async (
     if (match[2] === "revoke") code.revoked = true;
     else if (match[2] === "regenerate")
       code.token = "demo-" + crypto.randomUUID();
-    else Object.assign(code, body);
+    else if (body?.grants) {
+      const prior = code.grants;
+      Object.assign(code, body, {
+        grants: [
+          ...body.grants.map((g: any) => {
+            const old = prior.find((p: any) => p.doorId === g.doorId);
+            return {
+              ...g,
+              active: g.active ?? old?.active ?? true,
+              used: old?.used ?? 0,
+              claim: old?.claim ?? null,
+            };
+          }),
+          ...prior
+            .filter(
+              (g: any) => !body.grants.some((p: any) => p.doorId === g.doorId),
+            )
+            .map((g: any) => ({ ...g, active: false })),
+        ],
+      });
+    } else Object.assign(code, body);
     return exposeCode(code);
   }
   if (route.includes("open"))

@@ -136,6 +136,74 @@ test("history defaults to 20 with stable cursor pagination; loading never create
   }
 });
 
+test("code activity filters before pagination and includes guest and staff events only for that code", async () => {
+  const f = await fixture();
+  try {
+    f.db.query("DELETE FROM events").run();
+    const another = (
+      await f.req("codes", {
+        propertyId: f.property.id,
+        label: "Another code",
+        grants: [],
+      })
+    ).data;
+    const stamp = new Date().toISOString();
+    for (let i = 0; i < 45; i++) {
+      const id = crypto.randomUUID();
+      f.db
+        .query("INSERT INTO events VALUES(?,?,?,?,?,?)")
+        .run(
+          id,
+          f.property.id,
+          i % 3 === 0 ? another.id : f.code.id,
+          i % 2 ? "access.accepted" : "code.updated",
+          "Fixture activity",
+          stamp,
+        );
+    }
+    f.db
+      .query("INSERT INTO events VALUES(?,?,?,?,?,?)")
+      .run(
+        crypto.randomUUID(),
+        null,
+        null,
+        "access.invalid",
+        "Unrelated global event",
+        stamp,
+      );
+    const query = `events?propertyId=${f.property.id}&codeId=${f.code.id}`;
+    const first = (await f.req(query)).data;
+    expect(first.events).toHaveLength(20);
+    const second = (await f.req(`${query}&cursor=${first.nextCursor}`)).data;
+    expect(second.events).toHaveLength(10);
+    expect(second.nextCursor).toBeNull();
+    const events = [...first.events, ...second.events];
+    expect(new Set(events.map((e: any) => e.id)).size).toBe(30);
+    expect(events.every((e: any) => e.code_id === f.code.id)).toBe(true);
+    expect(new Set(events.map((e: any) => e.type)).size).toBe(2);
+    expect(events.map((e: any) => e.id)).toEqual(
+      f.db
+        .query(
+          "SELECT id FROM events WHERE code_id=? ORDER BY created DESC,id DESC",
+        )
+        .all(f.code.id)
+        .map((e: any) => e.id),
+    );
+    expect(
+      (await f.req(`events?codeId=${f.code.id}&propertyId=${f.other.id}`)).data
+        .events,
+    ).toEqual([]);
+    expect(
+      (await f.req(`events?codeId=${crypto.randomUUID()}`)).data.events,
+    ).toEqual([]);
+    expect((await f.req("events?codeId=invalid")).status).toBe(400);
+    expect((await f.req(query, undefined, "GET", false)).status).toBe(401);
+    expect(f.db.query("SELECT * FROM event_reads").all()).toEqual([]);
+  } finally {
+    f.db.close();
+  }
+});
+
 test("code notices link to their code; successful door usage has the exact protected photo and door link; invalid attempts have no destination", async () => {
   const f = await fixture();
   try {

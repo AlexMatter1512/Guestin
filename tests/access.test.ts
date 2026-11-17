@@ -674,6 +674,72 @@ test("disabled doors and paused permissions retain credentials and enforce acces
   }
 });
 
+for (const staff of [false, true]) {
+  for (const singleUse of [false, true]) {
+    test(`${staff ? "staff" : "guest"} ${singleUse ? "single-use" : "reusable"} doors retain usage through disabling, edits and re-enabling`, async () => {
+      const f = await fixture();
+      try {
+        const draft = {
+          ...f.draft,
+          staff,
+          grants: [{ ...f.draft.grants[0]!, singleUse }],
+        };
+        const save = (data: any) =>
+          f.req(`codes/${f.code.id}`, data, { method: "PUT" });
+        const open = () =>
+          f.req(
+            `guest/doors/${f.door.id}/open`,
+            {},
+            {
+              guest: f.guest,
+              id: crypto.randomUUID(),
+            },
+          );
+        const grant = async () => (await f.req("codes")).data[0].grants[0];
+
+        expect((await save(draft)).r.ok).toBe(true);
+        expect((await open()).data.status).toBe("accepted");
+        expect((await grant()).used).toBe(1);
+
+        // Old clients omit disabled doors; keep their history too.
+        expect((await save({ ...draft, grants: [] })).r.ok).toBe(true);
+        expect(await grant()).toMatchObject({
+          doorId: f.door.id,
+          active: false,
+          used: 1,
+          singleUse,
+        });
+        expect((await open()).r.status).toBe(403);
+        expect(f.calls()).toBe(1);
+
+        const disabled = { ...draft.grants[0]!, active: false };
+        expect(
+          (await save({ ...draft, label: "Edited", grants: [disabled] })).r.ok,
+        ).toBe(true);
+        expect(await grant()).toMatchObject({ active: false, used: 1 });
+        expect((await open()).r.status).toBe(403);
+        expect(f.calls()).toBe(1);
+
+        expect(
+          (await save({ ...draft, grants: [{ ...disabled, active: true }] })).r
+            .ok,
+        ).toBe(true);
+        expect(await grant()).toMatchObject({ active: true, used: 1 });
+        const reopened = await open();
+        if (singleUse) {
+          expect(reopened.r.status).toBe(403);
+          expect(f.calls()).toBe(1);
+        } else {
+          expect(reopened.data.status).toBe("accepted");
+          expect((await grant()).used).toBe(2);
+        }
+      } finally {
+        f.db.close();
+      }
+    });
+  }
+}
+
 test("door photos, translations and explicit order are durable and validated", async () => {
   const f = await fixture();
   try {

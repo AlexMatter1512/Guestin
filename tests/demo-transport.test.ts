@@ -98,11 +98,52 @@ test("host and guest share saved edits, revocation and breakfast accounting", as
   );
 });
 
+test("demo door toggles and omitted grants preserve usage through edits", async () => {
+  const { demoGuestRequest } = await import("../shared/demo-guest");
+  const grant = {
+    doorId: "demo-0-0",
+    start: new Date(Date.now() - 60000).toISOString(),
+    end: new Date(Date.now() + 86400000).toISOString(),
+    singleUse: false,
+    active: true,
+  };
+  const code = await demoTransport("codes", {
+    propertyId: "demo-0",
+    label: "Toggle history",
+    grants: [grant],
+  });
+  await demoGuestRequest(`/doors/${grant.doorId}/open`, {}, code.token);
+  const save = (grants: any[]) =>
+    demoTransport(`codes/${code.id}`, { grants }, "PUT");
+  expect((await save([])).grants[0]).toMatchObject({ active: false, used: 1 });
+  await expect(
+    demoGuestRequest(`/doors/${grant.doorId}/open`, {}, code.token),
+  ).rejects.toThrow("Access unavailable");
+  expect((await save([{ ...grant, active: false }])).grants[0]).toMatchObject({
+    active: false,
+    used: 1,
+  });
+  expect((await save([grant])).grants[0]).toMatchObject({
+    active: true,
+    used: 1,
+  });
+  await demoGuestRequest(`/doors/${grant.doorId}/open`, {}, code.token);
+  expect((await save([grant])).grants[0].used).toBe(2);
+});
+
 test("simulated notifications populate unread counts and can be marked read", async () => {
   const { appendDemoNotification } =
     await import("../shared/demo-notifications");
   const before = (await demoTransport("events/unread")).total;
   const event = appendDemoNotification("demo-0", () => 0)!;
+  const activity = await demoTransport(`events?codeId=${event.codeId}`);
+  expect(activity.events.some((e: any) => e.id === event.id)).toBe(true);
+  expect(activity.events.every((e: any) => e.codeId === event.codeId)).toBe(
+    true,
+  );
+  expect((await demoTransport("events?codeId=missing-code")).events).toEqual(
+    [],
+  );
   expect((await demoTransport("events/unread")).total).toBe(before + 1);
   expect(
     (await demoTransport("events?propertyId=demo-0")).events.some(

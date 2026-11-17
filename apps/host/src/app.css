@@ -1510,6 +1510,13 @@ main {
   padding-block: 18px;
   border-bottom: 1px solid var(--border);
 }
+.code-doors {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.code-doors .permission-row:last-child {
+  border-bottom: 0;
+}
 .code-summary .badges .muted {
   display: inline-flex;
   align-items: center;
