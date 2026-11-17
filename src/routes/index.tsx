@@ -281,7 +281,7 @@ function Home() {
               src={demoSrc}
               loading="lazy"
               className="host-demo"
-              sandbox="allow-scripts allow-same-origin allow-modals allow-downloads allow-forms"
+              sandbox="allow-scripts allow-same-origin allow-modals allow-downloads allow-forms allow-popups"
               allow="clipboard-write"
             />
           </div>
