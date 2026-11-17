@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "channel": "edge",
+  "publishedAt": "2026-11-17T22:30:05.510Z",
+  "build": {
+    "id": "44189882366-1",
+    "version": "build-20261117-server-updates",
+    "commit": "ffa8ab28af275bdda78a1d77f8102de9c2fd40ad",
+    "builtAt": "2026-11-17T22:28:08.811Z",
+    "image": "alexmatter/guestin",
+    "repository": "AlexMatter1512/Guestin"
+  },
+  "digest": "sha256:751182f6dba778fad94e7229ea06458934a3ab49395d6aefd7d9fe64f03dba26"
+}
