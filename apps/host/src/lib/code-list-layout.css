@@ -9,6 +9,28 @@
   display: flex;
   flex-shrink: 0;
 }
+.code-list {
+  gap: 0;
+}
+.code-list-group + .code-list-group {
+  margin-top: 24px;
+}
+.code-group-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 0 0 12px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+.code-group-heading::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
 .code-list-tools > button {
   width: 44px;
   min-width: 44px;

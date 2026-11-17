@@ -849,6 +849,31 @@
         (staffCodes || codeOnDate(c, activeCodeDate)),
     ),
   );
+  const codeGroups = $derived.by(() => {
+    if (staffCodes) return [{ label: "", codes: filtered }];
+    const groups = [
+      { label: "Arriving today", codes: [] as any[] },
+      { label: "Staying", codes: [] as any[] },
+      { label: "Leaving today", codes: [] as any[] },
+    ];
+    for (const code of filtered) {
+      const starts = code.grants.map((g: any) =>
+        dayAt(g.start, code.propertyId),
+      );
+      const ends = code.grants.map((g: any) =>
+        dayAt(new Date(Date.parse(g.end) - 1).toISOString(), code.propertyId),
+      );
+      const start =
+        starts.sort()[0] ??
+        code.breakfast?.start ??
+        dayAt(code.created, code.propertyId);
+      const end = ends.sort().at(-1) ?? code.breakfast?.end ?? start;
+      const group =
+        start === activeCodeDate ? 0 : end === activeCodeDate ? 2 : 1;
+      groups[group].codes.push(code);
+    }
+    return groups.filter((group) => group.codes.length);
+  });
   const hasCodeFilters = $derived(
     !!search || codeStatus !== (staffCodes ? "Non revoked" : "all"),
   );
@@ -2726,63 +2751,87 @@
                     }}>{t("Clear filters")}</Button
                   >
                 </div>{/if}
-              <Item.Group class="code-list workspace-list">
-                {#each filtered as c (c.id)}<article
-                    animate:flip={{ duration: reducedMotion.current ? 0 : 220 }}
-                    transition:fly={{
-                      y: 8,
-                      duration: reducedMotion.current ? 0 : 180,
-                      easing: cubicOut,
-                    }}
-                    class="code-row"
-                    data-code-id={c.id}
-                  >
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      class="code-summary"
-                      onclick={() =>
-                        demoMode ? edit(c) : (detailCodeId = c.id)}
-                      ><span class="row"
-                        ><strong>{c.label}</strong>{#if c.revoked}<Badge
-                            variant="secondary"
-                            class="badge">{t("Revoked")}</Badge
-                          >{:else if c.grants.some((g: any) => g.claim)}<Badge
-                            variant="secondary"
-                            class="badge attention">{t("Needs review")}</Badge
-                          >{/if}</span
-                      ><span class="muted validity">{codeRange(c)}</span><span
-                        class="row badges"
-                        >{#each c.grants.slice(0, 3) as g (g.doorId)}<Badge
-                            variant="secondary"
-                            class="badge"
-                            >{doors.find((d) => d.id === g.doorId)?.name}</Badge
-                          >{/each}{#if c.grants.length > 3}<Badge
-                            variant="secondary"
-                            class="badge">+{c.grants.length - 3}</Badge
-                          >{/if}{#if c.breakfast}<span class="muted"
-                            ><Coffee size={13} />
-                            {c.breakfastUsed}/{c.breakfast.total}</span
-                          >{/if}<span
-                          class="muted"
-                          title={t("Successful requests")}
-                          aria-label={t("Successful requests") +
-                            ": " +
-                            (reports.find((r) => r.id === c.id)?.accepted ?? 0)}
-                          ><ChartNoAxesColumn size={13} />{reports.find(
-                            (r) => r.id === c.id,
-                          )?.accepted ?? 0}</span
-                        ></span
-                      ></Button
+              <Item.Group
+                class={cn(
+                  "code-list",
+                  (staffCodes || !filtered.length) && "workspace-list",
+                )}
+              >
+                {#if filtered.length}
+                  {#each codeGroups as group (group.label)}
+                    <section
+                      class="code-list-group"
+                      aria-label={t(group.label || "Staff access")}
                     >
-                    <CodeRowActions
-                      label={c.label}
-                      link={c.link}
-                      revoked={!!c.revoked}
-                      oncopy={() => void copy(c.link)}
-                      onshare={() => act(() => prepareShare(c))}
-                    />
-                  </article>{:else}<div class="empty-state">
+                      {#if group.label}<h2 class="code-group-heading">
+                          {t(group.label)}
+                        </h2>{/if}
+                      <div class:workspace-list={!!group.label}>
+                        {#each group.codes as c (c.id)}<article
+                            animate:flip={{
+                              duration: reducedMotion.current ? 0 : 220,
+                            }}
+                            transition:fly={{
+                              y: 8,
+                              duration: reducedMotion.current ? 0 : 180,
+                              easing: cubicOut,
+                            }}
+                            class="code-row"
+                            data-code-id={c.id}
+                          >
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              class="code-summary"
+                              onclick={() =>
+                                demoMode ? edit(c) : (detailCodeId = c.id)}
+                              ><span class="row"
+                                ><strong>{c.label}</strong>{#if c.revoked}<Badge
+                                    variant="secondary"
+                                    class="badge">{t("Revoked")}</Badge
+                                  >{:else if c.grants.some((g: any) => g.claim)}<Badge
+                                    variant="secondary"
+                                    class="badge attention"
+                                    >{t("Needs review")}</Badge
+                                  >{/if}</span
+                              ><span class="muted validity">{codeRange(c)}</span
+                              ><span class="row badges"
+                                >{#each c.grants.slice(0, 3) as g (g.doorId)}<Badge
+                                    variant="secondary"
+                                    class="badge"
+                                    >{doors.find((d) => d.id === g.doorId)
+                                      ?.name}</Badge
+                                  >{/each}{#if c.grants.length > 3}<Badge
+                                    variant="secondary"
+                                    class="badge">+{c.grants.length - 3}</Badge
+                                  >{/if}{#if c.breakfast}<span class="muted"
+                                    ><Coffee size={13} />
+                                    {c.breakfastUsed}/{c.breakfast.total}</span
+                                  >{/if}<span
+                                  class="muted"
+                                  title={t("Successful requests")}
+                                  aria-label={t("Successful requests") +
+                                    ": " +
+                                    (reports.find((r) => r.id === c.id)
+                                      ?.accepted ?? 0)}
+                                  ><ChartNoAxesColumn size={13} />{reports.find(
+                                    (r) => r.id === c.id,
+                                  )?.accepted ?? 0}</span
+                                ></span
+                              ></Button
+                            >
+                            <CodeRowActions
+                              label={c.label}
+                              link={c.link}
+                              revoked={!!c.revoked}
+                              oncopy={() => void copy(c.link)}
+                              onshare={() => act(() => prepareShare(c))}
+                            />
+                          </article>{/each}
+                      </div>
+                    </section>
+                  {/each}
+                {:else}<div class="empty-state">
                     <KeyRound size={36} />
                     <h2>
                       {t(
@@ -2822,7 +2871,7 @@
                           codeStatus = staffCodes ? "Non revoked" : "all";
                         }}>{t("Clear filters")}</Button
                       >{/if}
-                  </div>{/each}
+                  </div>{/if}
               </Item.Group>{/if}
           {:else if tab === "Activity"}<NotificationHistory
               userId={user.id}
