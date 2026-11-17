@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "channel": "edge",
-  "publishedAt": "2026-11-17T22:30:05.510Z",
+  "publishedAt": "2026-11-17T22:36:12.111Z",
   "build": {
-    "id": "44189882366-1",
-    "version": "build-20261117-server-updates",
-    "commit": "ffa8ab28af275bdda78a1d77f8102de9c2fd40ad",
-    "builtAt": "2026-11-17T22:28:08.811Z",
+    "id": "44190917556-1",
+    "version": "build-20261117-server-updates-2",
+    "commit": "8bc565dc5c5fd579b6aa67bf8c4e96e244c82ba8",
+    "builtAt": "2026-11-17T22:34:25.812Z",
     "image": "alexmatter/guestin",
     "repository": "AlexMatter1512/Guestin"
   },
-  "digest": "sha256:751182f6dba778fad94e7229ea06458934a3ab49395d6aefd7d9fe64f03dba26"
+  "digest": "sha256:ffe5b4486cf07dedf5c370776634bc09ab7ee3f249327bac9ac782910fbf0421"
 }
