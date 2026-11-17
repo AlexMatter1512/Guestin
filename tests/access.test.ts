@@ -1072,6 +1072,7 @@ test("invalid guest page loads notify with safe unverified prior-visit context, 
       ).data,
     );
     expect(context).toEqual({
+      category: "guest",
       action: "page",
       previousVisit: {
         label: "Previous stay",

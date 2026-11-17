@@ -133,6 +133,7 @@ try {
   await page
     .getByRole("button", { name: "Notifications", exact: true })
     .click();
+  await page.getByRole("tab", { name: "Staff", exact: true }).click();
   await expect(
     page.getByText("Owner updated door Updated entrance.", { exact: true }),
   ).toBeVisible();
@@ -174,10 +175,14 @@ try {
   expect(opened.context.actor).toBe("Owner");
   expect(calls).toBe(2);
   await page.reload();
+  await page.getByRole("tab", { name: "Staff", exact: true }).click();
   await expect(
-    page.getByText("Owner · Updated entrance: Fixture accepted", {
-      exact: true,
-    }),
+    page.getByText(
+      "Door browser fixture · Request accepted · Updated entrance",
+      {
+        exact: true,
+      },
+    ),
   ).toBeVisible();
   await page.screenshot({
     path: join(directory, "door-notifications-mobile.png"),

@@ -3,7 +3,9 @@ import {
   DEFAULT_DATE_FORMAT,
   type DateFormat,
 } from "./date-format";
+export type NotificationCategory = "guest" | "staff";
 export type NotificationContext = {
+  category?: NotificationCategory;
   codeLabel?: string;
   doorName?: string;
   doorId?: string;
@@ -35,7 +37,7 @@ const titles: Record<string, [string, string]> = {
     "Device request resolved",
     "Richiesta dispositivo risolta",
   ],
-  "access.accepted": ["Access accepted", "Richiesta di accesso accettata"],
+  "access.accepted": ["Request accepted", "Richiesta accettata"],
   "access.denied": ["Access denied", "Accesso negato"],
   "access.failed": [
     "Device request failed",
@@ -53,6 +55,17 @@ const titles: Record<string, [string, string]> = {
   "breakfast.denied": ["Breakfast rejected", "Colazione rifiutata"],
 };
 export const notificationTypes = Object.keys(titles);
+export function notificationCategory(event: {
+  type: string;
+  context?: NotificationContext;
+}): NotificationCategory {
+  return (
+    event.context?.category ??
+    (event.context?.actor || !/^(access|breakfast)\./.test(event.type)
+      ? "staff"
+      : "guest")
+  );
+}
 const reasons: Record<string, string> = {
   "Access expired": "Il codice è scaduto.",
   "Access is not yet valid": "Il codice non è ancora valido.",
@@ -101,12 +114,18 @@ export function notificationText(
 ) {
   const it = language === "it",
     context = event.context ?? {};
-  const title =
+  let title =
     titles[event.type]?.[it ? 1 : 0] ??
     (it ? "Aggiornamento attività" : "Activity update");
   const label = context.codeLabel || fallbackLabel;
   let body = event.message;
-  if (event.type === "access.invalid") {
+  if (
+    event.type === "access.accepted" ||
+    event.type === "device.test.accepted"
+  ) {
+    if (context.doorName) title += ` · ${context.doorName}`;
+    body = context.actor ?? "";
+  } else if (event.type === "access.invalid") {
     body =
       context.action === "door"
         ? it

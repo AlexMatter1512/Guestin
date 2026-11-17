@@ -1,4 +1,5 @@
 import { demoWorkspace, seedDemoWorkspace } from "./demo-workspace";
+import type { NotificationCategory } from "./notifications";
 export function appendDemoNotification(
   propertyId: string,
   random = Math.random,
@@ -34,7 +35,10 @@ export function appendDemoNotification(
     context: {
       codeLabel: code.label,
       doorName: door?.name,
-      actor: "Demo host",
+      category: (type === "code.created" || code.staff
+        ? "staff"
+        : "guest") as NotificationCategory,
+      ...(type === "code.created" ? { actor: "Demo host" } : {}),
       timezone: "Europe/Rome",
     },
     icon: type === "access.accepted" ? "door" : "key",

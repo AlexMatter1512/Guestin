@@ -344,7 +344,9 @@ test("new events obey the count cap at insertion and portable backups preserve b
 });
 
 test("schema 7 upgrades preserve existing retention settings and default the count to 1000", () => {
-  const directory = mkdtempSync(join(tmpdir(), "guestin-notification-upgrade-")),
+  const directory = mkdtempSync(
+      join(tmpdir(), "guestin-notification-upgrade-"),
+    ),
     path = join(directory, "db.sqlite");
   let db = openDatabase(path);
   try {
@@ -375,5 +377,170 @@ test("schema 7 upgrades preserve existing retention settings and default the cou
   } finally {
     db.close();
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("guest and staff histories classify actual initiators, paginate independently, and mark only the selected category", async () => {
+  const f = await fixture();
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const guestCode = (
+      await f.req("codes", {
+        propertyId: f.property.id,
+        label: "Guest",
+        breakfast: { total: 4, start: today, end: today },
+        grants: [
+          {
+            doorId: f.door.id,
+            start: `${today}T00:00:00.000Z`,
+            end: `${today}T23:59:59.999Z`,
+            singleUse: false,
+          },
+        ],
+      })
+    ).data;
+    async function interact(
+      code: any,
+      staff: boolean,
+      action: "door" | "breakfast",
+      cookie?: string,
+    ) {
+      const token = new URLSearchParams(new URL(code.link).hash.slice(1)).get(
+        "code",
+      )!;
+      const response = await f.app.request(
+        `/api/v1/guest/${action === "door" ? `doors/${f.door.id}/open` : "breakfast"}`,
+        {
+          method: "POST",
+          headers: {
+            Origin: origin,
+            Authorization: `Bearer ${token}`,
+            "Idempotency-Key": crypto.randomUUID(),
+            "Content-Type": "application/json",
+            ...(staff
+              ? { Cookie: "guestin_session=owner" }
+              : cookie
+                ? { Cookie: cookie }
+                : {}),
+          },
+          ...(action === "breakfast"
+            ? { body: JSON.stringify({ quantity: 1 }) }
+            : {}),
+        },
+      );
+      expect(response.status).toBe(200);
+    }
+    await interact(guestCode, false, "door");
+    await interact(guestCode, true, "door");
+    await interact(f.code, false, "door");
+    await interact(guestCode, false, "breakfast");
+    await interact(guestCode, true, "breakfast");
+    await interact(guestCode, false, "door", "guestin_session=forged");
+    const guestHistory = (
+      await f.req(`events?propertyId=${f.property.id}&category=guest`)
+    ).data;
+    expect(guestHistory.events).toHaveLength(3);
+    expect(guestHistory.events.map((e: any) => e.type).sort()).toEqual([
+      "access.accepted",
+      "access.accepted",
+      "breakfast.redeemed",
+    ]);
+    expect(
+      guestHistory.events.every(
+        (e: any) => e.context.category === "guest" && !e.context.actor,
+      ),
+    ).toBe(true);
+    const staffHistory = (
+      await f.req(`events?propertyId=${f.property.id}&category=staff`)
+    ).data;
+    expect(staffHistory.events).toHaveLength(5);
+    expect(
+      staffHistory.events.filter((e: any) => e.context.actor === "Owner"),
+    ).toHaveLength(4);
+    expect(
+      staffHistory.events.some(
+        (e: any) => e.type === "access.accepted" && e.code_id === f.code.id,
+      ),
+    ).toBe(true);
+    const pages: any[] = [];
+    let cursor: string | null = null;
+    do {
+      const page: any = (
+        await f.req(
+          `events?category=guest&pageSize=1${cursor ? `&cursor=${cursor}` : ""}`,
+        )
+      ).data;
+      pages.push(...page.events);
+      cursor = page.nextCursor;
+    } while (cursor);
+    expect(pages.map((e) => e.id)).toEqual(
+      guestHistory.events.map((e: any) => e.id),
+    );
+    await f.req("events/read-all", {
+      propertyId: f.property.id,
+      category: "guest",
+    });
+    expect(
+      (await f.req("events?category=guest")).data.events.every(
+        (e: any) => e.read,
+      ),
+    ).toBe(true);
+    expect(
+      (await f.req("events?category=staff")).data.events.every(
+        (e: any) => !e.read,
+      ),
+    ).toBe(true);
+    expect((await f.req("events?category=other")).status).toBe(400);
+    expect((await f.req("events/read-all", { category: "other" })).status).toBe(
+      400,
+    );
+    const restored = openDatabase(":memory:");
+    try {
+      restoreRecords(restored, key, exportRecords(f.db, key), () => {});
+      const contexts = (database: typeof f.db) =>
+        (
+          database
+            .query("SELECT data FROM event_context ORDER BY event_id")
+            .all() as { data: string }[]
+        ).map((row) => JSON.parse(row.data));
+      expect(contexts(restored)).toEqual(contexts(f.db));
+    } finally {
+      restored.close();
+    }
+  } finally {
+    f.db.close();
+  }
+});
+
+test("legacy guest interactions and staff actions remain in separate histories", async () => {
+  const f = await fixture();
+  try {
+    f.db.query("DELETE FROM events").run();
+    const records: [string, string | null, any, string][] = [
+      ["access.accepted", null, {}, "guest"],
+      ["access.invalid", null, {}, "guest"],
+      ["breakfast.denied", null, {}, "guest"],
+      ["access.accepted", null, { actor: "Owner" }, "staff"],
+      ["access.accepted", f.code.id, {}, "staff"],
+      ["code.created", null, {}, "staff"],
+      ["device.test.accepted", null, {}, "staff"],
+    ];
+    for (const [type, code, context] of records) {
+      const id = crypto.randomUUID();
+      f.db
+        .query("INSERT INTO events VALUES(?,?,?,?,?,?)")
+        .run(id, f.property.id, code, type, "Legacy", new Date().toISOString());
+      f.db
+        .query("INSERT INTO event_context VALUES(?,?)")
+        .run(id, JSON.stringify(context));
+    }
+    for (const category of ["guest", "staff"]) {
+      const history = (await f.req(`events?category=${category}`)).data;
+      expect(history.events).toHaveLength(
+        records.filter((r) => r[3] === category).length,
+      );
+    }
+  } finally {
+    f.db.close();
   }
 });

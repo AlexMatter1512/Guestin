@@ -153,6 +153,14 @@ try {
   await page.goto(origin + "/host/#/activity/" + property.id);
   const cards = page.locator("[data-notification-id]");
   await expect(cards).toHaveCount(20);
+  const selector = await page.getByRole("tablist").boundingBox();
+  const firstCard = await cards.first().boundingBox();
+  expect(selector!.y + selector!.height).toBeLessThan(firstCard!.y);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
   expect(readRequests).toHaveLength(0);
   await expect(page.getByTestId("notification-badge")).toHaveText("46");
   expect(
@@ -176,7 +184,7 @@ try {
   await page.locator("[data-notification-sentinel]").scrollIntoViewIfNeeded();
   await expect(cards).toHaveCount(40);
   await page.locator("[data-notification-sentinel]").scrollIntoViewIfNeeded();
-  await expect(cards).toHaveCount(46);
+  await expect(cards).toHaveCount(43);
   expect(readRequests).toHaveLength(1);
   expect(
     new Set(
@@ -184,7 +192,9 @@ try {
         nodes.map((n) => n.getAttribute("data-notification-id")),
       ),
     ).size,
-  ).toBe(46);
+  ).toBe(43);
+  await page.getByRole("tab", { name: "Staff", exact: true }).click();
+  await expect(cards).toHaveCount(3);
   await page
     .locator(`a[href="/host/#/codes/${code.id}"][data-notification-id]`)
     .first()
@@ -230,6 +240,8 @@ try {
   await expect(page).toHaveURL(origin + "/host/#/codes/" + code.id);
   await page.goto(origin + "/host/#/activity/" + property.id);
   await expect(cards).toHaveCount(20);
+  await page.getByRole("tab", { name: "Staff", exact: true }).click();
+  await expect(cards).toHaveCount(5);
   const accepted = (await api("events")).events.find(
     (e: any) => e.type === "access.accepted",
   );
@@ -239,10 +251,22 @@ try {
   await expect(
     page.locator(`[data-notification-id="${accepted.id}"]`),
   ).toHaveAttribute("data-unread", "false");
+  await expect(
+    page.locator(`[data-notification-id="${accepted.id}"]`),
+  ).toContainText("Request accepted · Front door");
+  await expect(
+    page.locator(`[data-notification-id="${accepted.id}"]`),
+  ).not.toContainText("Fixture accepted");
   await page.screenshot({
     path: join(directory, "door-history-mobile.png"),
     animations: "disabled",
   });
+  await page
+    .getByRole("button", { name: "Mark all as read", exact: true })
+    .click();
+  await expect(peer.getByTestId("notification-badge")).toHaveText("42");
+  await page.getByRole("tab", { name: "Guest", exact: true }).click();
+  await expect(cards).toHaveCount(20);
   await page
     .getByRole("button", { name: "Mark all as read", exact: true })
     .click();
@@ -272,7 +296,7 @@ try {
     }),
   ).toBeVisible();
   await page.locator("[data-notification-sentinel]").scrollIntoViewIfNeeded();
-  await expect(cards).toHaveCount(30);
+  await expect(cards).toHaveCount(25);
   expect(errors).toEqual([]);
   console.log(
     `Notification history UI checks passed. Screenshots: ${directory}`,
