@@ -60,9 +60,12 @@ Under **Settings → Appearance**, owners can choose a workspace-wide date forma
 
 The breakfast totals page supports English and Italian, a shadcn date-range picker and live WebSocket updates. The original `/breakfast/<structure>` links redirect to the new page. Optional notifications are disabled by default and work while the page is open; browser notification permission is requested only when the user enables them. No guest names, codes or activity details are sent to breakfast viewers. Password protection also applies to live connections, which close if their access expires or is revoked.
 
+Under **Settings → Breakfast**, **Open breakfast page** opens a separate tab, including in the embedded demo. **Share breakfast page link** uses the device share sheet when available, then clipboard copying or a selectable link as fallbacks.
+
 ## Notification history and push
 
 The host bell includes a personal unread badge. Clicking a notification marks it read across your devices and opens its related code or door when available; teammates keep their own read status. Opening or scrolling through history does not mark anything read. Read entries are grayed out.
+History has **Guest** and **Staff** tabs and opens on Guest. Staff-code interactions, authenticated host actions and workspace administration appear under Staff. **Mark all as read** applies to the selected tab and structure. Successful access requests show the door in the title and the initiating team member when known.
 You can also mark the selected structure's history as read at once. History loads 20 entries at a time and automatically appends older entries as you scroll. Door usage can show the door's primary photo; code changes use a key icon and errors use a warning icon.
 
 The bell shows the selected structure’s history for everyone on your team. Notifications are kept for **three months** by default. Change that period and the maximum number of notifications under **Settings → Notifications**. The default count limit is **1,000 per structure**; the oldest entries are deleted when either limit is reached. Statistics are preserved independently.

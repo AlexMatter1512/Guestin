@@ -14,6 +14,10 @@ try {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(base + "/");
   await expect(page.locator("#demo")).toHaveAttribute("data-ready", "true");
+  await expect(page.locator("iframe")).toHaveAttribute(
+    "sandbox",
+    /allow-popups/,
+  );
   await page.locator("iframe").scrollIntoViewIfNeeded();
   await page.waitForTimeout(1500);
   const frame = page.frameLocator("iframe");
@@ -32,6 +36,9 @@ try {
   await expect(
     frame.getByRole("link", { name: "Visit guest page", exact: true }),
   ).toBeVisible();
+  await page
+    .locator("iframe")
+    .evaluate((element) => element.scrollIntoView({ block: "start" }));
   await frame.getByRole("button", { name: "Codes", exact: true }).click();
   await frame.getByRole("button", { name: /^Shared memory guest/ }).click();
   await expect(frame.getByLabel("Guest name / label")).toHaveValue(
@@ -54,19 +61,26 @@ try {
     frame.getByText("Main entrance door", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: /Host view Create/ }).click();
+  await page
+    .locator("iframe")
+    .evaluate((element) => element.scrollIntoView({ block: "start" }));
   await frame.getByRole("button", { name: "Settings", exact: true }).click();
   await frame
     .getByRole("button", { name: /Breakfast.*Breakfast page/ })
     .click();
-  await frame
-    .getByRole("link", { name: "Open breakfast page", exact: true })
-    .click();
+  const [breakfast] = await Promise.all([
+    page.context().waitForEvent("page"),
+    frame
+      .getByRole("link", { name: "Open breakfast page", exact: true })
+      .click(),
+  ]);
   await expect(
-    page.getByRole("button", { name: /Café partner view/ }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await expect(
-    frame.getByText("Breakfasts used", { exact: true }),
+    breakfast.getByText("Breakfasts used", { exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Host view Create/ }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await breakfast.close();
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 },
   });

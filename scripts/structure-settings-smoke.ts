@@ -104,8 +104,9 @@ try {
       "Shared fixture history " + i,
       new Date(Date.now() - i * 1000).toISOString(),
     );
+  const gardenEventId = crypto.randomUUID();
   db.query("INSERT INTO events VALUES(?,?,?,?,?,?)").run(
-    crypto.randomUUID(),
+    gardenEventId,
     two.id,
     null,
     "access.accepted",
@@ -117,6 +118,17 @@ try {
     errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.addInitScript(() => {
+    // This check uses the explicit paging button. Keep infinite scrolling
+    // from consuming its next page while Playwright scrolls to that button.
+    // notification-history-smoke.ts exercises the real observer behavior.
+    Object.defineProperty(window, "IntersectionObserver", {
+      configurable: true,
+      value: class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    });
     const subscription = {
       endpoint: "https://fcm.googleapis.com/fcm/send/browser-fixture",
       toJSON() {
@@ -193,13 +205,13 @@ try {
     .click();
   await expect(
     page.locator(".notification-history .notification-card"),
-  ).toHaveCount(56);
+  ).toHaveCount(55); // The code-created event is now in the Staff tab.
   await structure.selectOption(two.id);
   await expect(
     page.locator(".notification-history .notification-card"),
   ).toHaveCount(1);
   await expect(
-    page.getByText("Garden-only history", { exact: true }),
+    page.locator(`[data-notification-id="${gardenEventId}"]`),
   ).toBeVisible();
   await structure.selectOption(one.id);
   await page.locator('[data-tour="nav-reports"]').click();
@@ -231,7 +243,7 @@ try {
     .getByRole("switch", { name: "All activity types", exact: true })
     .uncheck();
   await page
-    .getByRole("switch", { name: "Request accepted", exact: true })
+    .getByRole("switch", { name: "Access accepted", exact: true })
     .check();
   await page
     .getByRole("button", { name: "Enable / update notifications", exact: true })
@@ -247,7 +259,7 @@ try {
     page.getByRole("switch", { name: "Garden House", exact: true }),
   ).toBeChecked();
   await expect(
-    page.getByRole("switch", { name: "Request accepted", exact: true }),
+    page.getByRole("switch", { name: "Access accepted", exact: true }),
   ).toBeChecked();
   await page
     .getByRole("button", { name: "Disable notifications", exact: true })
@@ -260,6 +272,65 @@ try {
   await expect(
     page.getByRole("link", { name: "Open breakfast page", exact: true }),
   ).toHaveAttribute("href", "/breakfast/" + one.id);
+  await expect(
+    page.getByRole("link", { name: "Open breakfast page", exact: true }),
+  ).toHaveAttribute("target", "_blank");
+  await expect(
+    page.getByRole("link", { name: "Open breakfast page", exact: true }),
+  ).toHaveAttribute("rel", /external/);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: async (data: ShareData) => {
+        (window as any).__sharedBreakfast = data;
+      },
+    });
+  });
+  await page
+    .getByRole("button", { name: "Share breakfast page link", exact: true })
+    .click();
+  expect(await page.evaluate(() => (window as any).__sharedBreakfast.url)).toBe(
+    origin + "/breakfast/" + one.id,
+  );
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: undefined,
+    });
+    document.execCommand = () => false;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          (window as any).__copiedBreakfast = text;
+        },
+      },
+    });
+  });
+  await page
+    .getByRole("button", { name: "Share breakfast page link", exact: true })
+    .click();
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__copiedBreakfast))
+    .toBe(origin + "/breakfast/" + one.id);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async () => {
+          throw new Error("Clipboard unavailable");
+        },
+      },
+    });
+  });
+  await page
+    .getByRole("button", { name: "Share breakfast page link", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("Copy this breakfast page link to share it", {
+      exact: true,
+    }),
+  ).toHaveValue(origin + "/breakfast/" + one.id);
   await page
     .getByRole("switch", { name: "Require a password", exact: true })
     .check();

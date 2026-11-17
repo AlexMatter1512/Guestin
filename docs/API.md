@@ -103,10 +103,16 @@ History entries include `readBy` (reader user IDs) and `read` for the authentica
 user. `GET /events/unread` returns `{total,global,properties}`; property counts
 exclude the unattributed events counted in `global`.
 
+`GET /events` accepts an optional `category=guest|staff` filter. Categories are
+filtered before pagination. Anonymous guest-link actions belong to guest history;
+staff access codes and actions attributed to a valid host session belong to staff
+history. Attribution never replaces guest-token authorization. Older events use
+their recorded actor and staff-code context when no category was saved.
+
 `POST /events/read` accepts `{eventIds:[...]}` with 1–100 UUIDs and marks only
 those existing events read by the signed-in user. Duplicate reads are idempotent.
-`POST /events/read-all` accepts `{propertyId}` to mark that structure and global
-events, or `{}` for all structures. Both require the normal session, Origin,
+`POST /events/read-all` accepts `{propertyId,category?}` to mark that structure and global
+events, optionally restricted to the selected guest/staff category, or `{}` for all structures. Both require the normal session, Origin,
 and CSRF checks; clients cannot nominate another reader. Receipts cascade when
 events expire or users are deleted. Portable JSON backups omit receipts because
 they do not transfer user accounts; full database backups preserve them.

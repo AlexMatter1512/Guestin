@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { demoNavigate } from "../../../../../shared/demo-workspace";
+  import { copyText } from "$lib/browser";
   import { demoMode } from "$lib/transport";
   import FeedbackToast from "$lib/components/FeedbackToast.svelte";
   import { untrack } from "svelte";
@@ -8,7 +8,7 @@
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import { Switch } from "$lib/components/ui/switch";
-  import { ExternalLink, LockKeyhole } from "@lucide/svelte";
+  import { ExternalLink, LockKeyhole, Share2 } from "@lucide/svelte";
   import { hostLanguage } from "$lib/i18n.svelte";
   let {
     property,
@@ -33,6 +33,38 @@
     busy = $state(false),
     error = $state(""),
     notice = $state("");
+  const breakfastPath = $derived(
+    (demoMode ? "/demo/host/breakfast/" : "/breakfast/") +
+      encodeURIComponent(property?.id ?? "") +
+      (demoMode ? "/" : ""),
+  );
+  let manualShareUrl = $state("");
+  async function shareBreakfast() {
+    const id = property.id;
+    const url = new URL(breakfastPath, window.location.origin).href;
+    error = "";
+    notice = "";
+    manualShareUrl = "";
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share({
+          title: l("Breakfast page", "Pagina colazioni"),
+          url,
+        });
+        return;
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return;
+      }
+    }
+    const copied = await copyText(url);
+    if (property?.id !== id) return;
+    if (copied)
+      notice = l(
+        "Breakfast page link copied.",
+        "Link della pagina colazioni copiato.",
+      );
+    else manualShareUrl = url;
+  }
   let loadedId = "",
     loadedRetention = 3,
     loadedProtected = false,
@@ -44,6 +76,7 @@
       protectedPage = property?.breakfastProtected ?? false;
     untrack(() => {
       if (loadedId !== id) {
+        manualShareUrl = "";
         operation++;
         busy = false;
         months = retention;
@@ -168,22 +201,41 @@
             "Visualizza quante colazioni hanno utilizzato gli ospiti. Nomi e codici di accesso non compaiono qui.",
           )}
         </p>
-        <Button
-          onclick={(event) => {
-            if (demoMode && demoNavigate("cafe", property.id))
-              event.preventDefault();
-          }}
-          href={(demoMode ? "/demo/host/breakfast/" : "/breakfast/") +
-            property.id +
-            (demoMode ? "/" : "")}
-          target="_blank"
-          rel="noreferrer"
-          variant="outline"
-          ><ExternalLink />{l(
-            "Open breakfast page",
-            "Apri pagina colazioni",
-          )}</Button
-        >
+        <div class="flex flex-wrap gap-2">
+          <Button
+            href={breakfastPath}
+            target="_blank"
+            rel="external noopener noreferrer"
+            data-sveltekit-reload
+            variant="outline"
+            ><ExternalLink />{l(
+              "Open breakfast page",
+              "Apri pagina colazioni",
+            )}</Button
+          >
+          <Button variant="outline" onclick={() => void shareBreakfast()}
+            ><Share2 />{l(
+              "Share breakfast page link",
+              "Condividi link pagina colazioni",
+            )}</Button
+          >
+        </div>
+        {#if manualShareUrl}
+          <div class="grid gap-2">
+            <Label for="breakfast-share-url"
+              >{l(
+                "Copy this breakfast page link to share it",
+                "Copia questo link della pagina colazioni per condividerlo",
+              )}</Label
+            >
+            <Input
+              id="breakfast-share-url"
+              value={manualShareUrl}
+              readonly
+              onclick={(event) => event.currentTarget.select()}
+            />
+          </div>
+        {/if}
         <form
           class="stack"
           onsubmit={(event) => {
