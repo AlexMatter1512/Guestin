@@ -145,7 +145,7 @@ jobs:
             GUESTIN_BUILD_ID=${{ github.run_id }}-${{ github.run_attempt }}
             GUESTIN_VERSION=${{ github.ref_name }}
             GUESTIN_COMMIT=${{ github.sha }}
-            GUESTIN_BUILT_AT=${{ fromJSON(steps.metadata.outputs.json).labels['org.opencontainers.image.created'] }}
+            GUESTIN_BUILT_AT=${{ fromJSON(steps.metadata.outputs.json || '{"labels":{}}').labels['org.opencontainers.image.created'] }}
             GUESTIN_IMAGE=${{ steps.image.outputs.name }}
             GUESTIN_REPOSITORY=${{ github.repository }}
           cache-from: type=gha
@@ -158,7 +158,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PUBLISHED_DIGEST: ${{ steps.publish_image.outputs.digest }}
-          GUESTIN_BUILT_AT: ${{ fromJSON(steps.metadata.outputs.json).labels['org.opencontainers.image.created'] }}
+          GUESTIN_BUILT_AT: ${{ fromJSON(steps.metadata.outputs.json || '{"labels":{}}').labels['org.opencontainers.image.created'] }}
         run: |
           docker run --rm \
             --env GITHUB_TOKEN --env GITHUB_REPOSITORY \
