@@ -4,10 +4,15 @@ const source = await Bun.file(
   new URL("../apps/host/src/service-worker.ts", import.meta.url),
 ).text();
 const script = new Bun.Transpiler({ loader: "ts" }).transformSync(
-  source.replace(
-    /import \{ build, files, version \} from "\$service-worker";/,
-    'const build=[],files=[],version="test";',
-  ),
+  source
+    .replace(
+      /import \{ build, files, version \} from "\$service-worker";/,
+      'const build=[],files=[],version="test";',
+    )
+    .replace(
+      /import buildInfo from "[^"]+";/,
+      'const buildInfo={id:"fixture-build"};',
+    ),
 );
 function fixture(href: string | null, authenticated = true) {
   const handlers: Record<string, (event: any) => void> = {},
@@ -15,10 +20,14 @@ function fixture(href: string | null, authenticated = true) {
     navigations: string[] = [],
     opened: string[] = [],
     notifications: any[] = [];
-  let focused = 0;
+  let focused = 0,
+    activated = 0;
   const worker = {
     location: { origin: "https://host.example" },
     addEventListener: (type: string, fn: any) => (handlers[type] = fn),
+    skipWaiting: async () => {
+      activated++;
+    },
     registration: {
       showNotification: async (title: string, options: any) =>
         notifications.push({ title, ...options }),
@@ -26,6 +35,7 @@ function fixture(href: string | null, authenticated = true) {
     clients: {
       matchAll: async () => [
         {
+          id: "this-client",
           url: "https://host.example/host/#/codes/existing",
           navigate: async (url: string) => navigations.push(url),
           focus: async () => focused++,
@@ -55,8 +65,32 @@ function fixture(href: string | null, authenticated = true) {
     opened,
     notifications,
     focused: () => focused,
+    activated: () => activated,
   };
 }
+test("app refresh requires the expected build and refuses to interrupt other host windows", async () => {
+  const f = fixture(null);
+  const messages: unknown[] = [];
+  async function activate(expectedId: string, clientId: string) {
+    let done: Promise<any> | undefined;
+    f.handlers.message({
+      data: { type: "GUESTIN_ACTIVATE", expectedId },
+      source: { id: clientId },
+      ports: [{ postMessage: (message: unknown) => messages.push(message) }],
+      waitUntil: (promise: Promise<any>) => {
+        done = promise;
+      },
+    });
+    await done;
+  }
+  await activate("wrong-build", "this-client");
+  expect(messages.pop()).toEqual({ error: "wrong-build" });
+  await activate("fixture-build", "another-client");
+  expect(messages.pop()).toEqual({ error: "other-windows" });
+  expect(f.activated()).toBe(0);
+  await activate("fixture-build", "this-client");
+  expect(f.activated()).toBe(1);
+});
 async function click(f: ReturnType<typeof fixture>, url: string | null) {
   let done: Promise<any> | undefined;
   const id = "12345678-1234-4123-8123-123456789abc";

@@ -167,3 +167,13 @@ Existing `ewelink` and `shelly` records are converted transactionally to encrypt
 Shelly Cloud can also use a generic webhook: POST `https://<HOST>/v2/devices/api/set/switch?auth_key=<AUTH_KEY>`, headers `{"Content-Type":"application/json"}`, body `{"id":"<DEVICE_ID>","on":true}`, HTTP response mode. The dedicated Shelly adapter and integration option have been removed. Its preset fills the same generic webhook fields.
 
 The host webhook editor separates headers and query parameters into key/value rows, with another row available only after previous rows are complete. Duplicate header names are rejected case-insensitively; repeated query keys and URL encoding are preserved. API/storage configuration remains unchanged: `config.url` contains the complete URL, and `config.headers` is a JSON object encoded as a string.
+
+## Server updates (owners only)
+
+- `GET /admin/server` returns `{channel,current,published,status,checkedAt,nextCheckAt,error}`. `current` contains the installed `{id,version,commit,builtAt,image}`; `published` adds the Docker image digest recorded in the GitHub update manifest, or is null. `status` is `current`, `available`, `ahead` (avoids suggesting a version downgrade), or `unknown`. Manifest fetch or validation failures retain any last-known image alongside an error and unknown status. `?refresh=1` bypasses the six-hour success / ten-minute failure cache, at most once per 30 seconds per channel. Concurrent checks are coalesced.
+- `PUT /admin/server` accepts only `{channel:"latest"|"edge"}`, persists the installation-wide choice (default `latest`), and requires owner authorization, Origin and CSRF. Neither endpoint creates activity or push jobs.
+- `GET /public/build` returns only the running `{id,version}`, without credentials or an external update check. Its uncached response can identify stale browser builds.
+
+Schema migration 11 adds the server update-channel setting. Full database backups retain it; portable record backups do not transfer installation settings.
+
+The update check makes one unauthenticated request to the selected JSON file on the stamped GitHub repository’s `update-manifests` branch. Manifest schema version 1 contains `{schemaVersion,channel,publishedAt,build,digest}`. The channel, image repository, source repository, full commit SHA and image digest are validated before comparison. A missing, oversized or invalid manifest is an unknown update state.

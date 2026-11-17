@@ -1,22 +1,59 @@
 /// <reference lib="webworker" />
 import { build, files, version } from "$service-worker";
+import buildInfo from "../../../shared/build.json";
 const worker = self as unknown as ServiceWorkerGlobalScope;
 const CACHE = "guestin-host-" + version;
 const ASSETS = [...build, ...files, "/host/200.html"];
+// Only an explicit refresh from Server settings may replace an open app.
+// Other host windows must close first, so their forms/actions are not interrupted.
+worker.addEventListener("message", (event) => {
+  if (event.data?.type !== "GUESTIN_ACTIVATE") return;
+  event.waitUntil(
+    (async () => {
+      if (event.data.expectedId && event.data.expectedId !== buildInfo.id) {
+        event.ports[0]?.postMessage({ error: "wrong-build" });
+        return;
+      }
+      const windows = await worker.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      if (
+        windows.some(
+          (client) =>
+            new URL(client.url).pathname.startsWith("/host/") &&
+            client.id !== (event.source as Client | null)?.id,
+        )
+      ) {
+        event.ports[0]?.postMessage({ error: "other-windows" });
+        return;
+      }
+      await worker.skipWaiting();
+    })(),
+  );
+});
 worker.addEventListener("install", (event) =>
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS))),
 );
 worker.addEventListener("activate", (event) =>
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(
-          keys
-            .filter((key) => (key.startsWith("guestin-host-") || key.startsWith("oshost-host-")) && key !== CACHE)
-            .map((key) => caches.delete(key)),
-        ),
-      ),
+    (async () => {
+      await caches
+        .keys()
+        .then((keys) =>
+          Promise.all(
+            keys
+              .filter(
+                (key) =>
+                  (key.startsWith("guestin-host-") ||
+                    key.startsWith("oshost-host-")) &&
+                  key !== CACHE,
+              )
+              .map((key) => caches.delete(key)),
+          ),
+        );
+      await worker.clients.claim();
+    })(),
   ),
 );
 worker.addEventListener("fetch", (event) => {

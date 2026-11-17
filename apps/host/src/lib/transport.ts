@@ -4,6 +4,7 @@ import {
   seedDemoWorkspace,
 } from "../../../../shared/demo-workspace";
 import { backupSchema } from "../../../../shared/backup";
+import buildInfo from "../../../../shared/build.json";
 import {
   propertySchema,
   doorSchema,
@@ -45,6 +46,7 @@ const users: any[] = [
 ];
 const connections: any[] = [];
 const settings: any = { dateFormat: "dd/mm/yyyy" };
+let updateChannel = "latest";
 let smtp: any = {
   host: "smtp.example.invalid",
   port: 587,
@@ -62,6 +64,21 @@ const requestDemo: Transport = async (
   method = body === undefined ? "GET" : "POST",
 ) => {
   const route = path.split("?")[0];
+  if (route === "admin/server") {
+    if (body) {
+      updateChannel = body.channel;
+      return { channel: updateChannel };
+    }
+    return {
+      channel: updateChannel,
+      current: buildInfo,
+      published: null,
+      status: "unknown",
+      checkedAt: date(0),
+      nextCheckAt: date(1),
+      error: "Update checks are unavailable in the interactive demo.",
+    };
+  }
   if (route === "me") return { user: structuredClone(user), csrf: "" };
   if (route === "me/preferences") {
     user.preferences = { ...user.preferences, ...body };

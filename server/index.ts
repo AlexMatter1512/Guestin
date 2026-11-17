@@ -1,6 +1,6 @@
 import { databasePath } from "./branding";
 import { log, logError } from "./log";
-import { openDatabase } from "./db";
+import { openDatabase, SCHEMA_VERSION } from "./db";
 import { createApp } from "./app";
 import { deliverPush } from "./push";
 import { realtime, websocket } from "./realtime";
@@ -13,7 +13,7 @@ import {
 process.umask(0o077);
 const { secrets } = initializeRuntimeSecrets();
 const db = openDatabase(databasePath());
-log("info", "database.ready", { schema: 10 });
+log("info", "database.ready", { schema: SCHEMA_VERSION });
 const app = createApp(db, {
   key: secrets.APP_KEY,
   setupToken: secrets.SETUP_TOKEN,
@@ -114,7 +114,11 @@ const server = Bun.serve({
   tls,
   maxRequestBodySize: 32 * 1024 * 1024,
 });
-log("info", "server.started", { port: server.port, tls: !!tls, schema: 10 });
+log("info", "server.started", {
+  port: server.port,
+  tls: !!tls,
+  schema: SCHEMA_VERSION,
+});
 printSetupInstructions(db, secrets.SETUP_TOKEN);
 const stop = () => {
   log("info", "server.stopping");

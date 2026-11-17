@@ -101,6 +101,7 @@
   import { copyText, guestToken } from "$lib/browser";
   import DoorManager from "$lib/components/DoorManager.svelte";
   import SmtpSettings from "$lib/components/SmtpSettings.svelte";
+  import ServerSettings from "$lib/components/ServerSettings.svelte";
   import AccountRecovery from "$lib/components/AccountRecovery.svelte";
   import EmailVerification from "$lib/components/EmailVerification.svelte";
   import Tour from "$lib/components/Tour.svelte";
@@ -256,6 +257,14 @@
   }
   let copyInput = $state<HTMLTextAreaElement | null>(null);
   const settingItems = [
+    {
+      id: "server",
+      title: "Server",
+      description: "Installed version and update channel",
+      icon: Database,
+      group: "Administration",
+      owner: true,
+    },
     {
       id: "install",
       title: "Install app",
@@ -3357,6 +3366,9 @@
                   >
                 </div>
               </Card.Root>
+            {:else if settingsPage === "server"}
+              {#if user.role === "owner"}<ServerSettings {api} />
+              {:else}<p role="alert">{t("Owner permission required")}</p>{/if}
             {:else if settingsPage === "install"}<InstallAppInfo />
             {:else if settingsPage === "guest-links"}<GuestLinksSettings
                 {property}

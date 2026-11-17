@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+export const SCHEMA_VERSION = 11;
 export function openDatabase(path: string) {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path, { create: true });
@@ -128,6 +129,11 @@ export function openDatabase(path: string) {
       db.exec(`CREATE TABLE display_settings(id INTEGER PRIMARY KEY CHECK(id=1),date_format TEXT NOT NULL CHECK(date_format IN ('dd/mm/yyyy','mm/dd/yyyy','yyyy-mm-dd')));
         INSERT INTO display_settings VALUES(1,'dd/mm/yyyy');
         INSERT INTO migrations VALUES(10);`);
+    })();
+  if (!db.query("SELECT 1 FROM migrations WHERE version=11").get())
+    db.transaction(() => {
+      db.exec(`CREATE TABLE server_settings(id INTEGER PRIMARY KEY CHECK(id=1),update_channel TEXT NOT NULL CHECK(update_channel IN ('latest','edge')));
+        INSERT INTO migrations VALUES(11);`);
     })();
   return db;
 }

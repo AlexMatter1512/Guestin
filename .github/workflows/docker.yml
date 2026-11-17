@@ -42,6 +42,13 @@ jobs:
     needs: [test, secrets]
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    permissions:
+      contents: write
+    # Keep each alias push and its manifest commit together across tag builds.
+    concurrency:
+      group: guestin-images-${{ github.ref_type == 'tag' && 'publication' || github.ref }}
+      cancel-in-progress: false
+      queue: max
     outputs:
       is_version: ${{ steps.release.outputs.is_version }}
       prerelease: ${{ steps.release.outputs.prerelease }}
@@ -69,6 +76,13 @@ jobs:
           push: false
           platforms: linux/amd64
           tags: guestin:ci
+          build-args: |
+            GUESTIN_BUILD_ID=${{ github.run_id }}-${{ github.run_attempt }}
+            GUESTIN_VERSION=${{ github.ref_type == 'tag' && github.ref_name || 'development' }}
+            GUESTIN_COMMIT=${{ github.sha }}
+            GUESTIN_BUILT_AT=${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
+            GUESTIN_IMAGE=${{ vars.DOCKERHUB_IMAGE || format('{0}/guestin', vars.DOCKERHUB_USERNAME || 'alexmatter') }}
+            GUESTIN_REPOSITORY=${{ github.repository }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Test container startup and restart persistence
@@ -110,13 +124,16 @@ jobs:
           images: ${{ steps.image.outputs.name }}
           tags: |
             type=raw,value=latest,enable=${{ steps.release.outputs.stable == 'true' }}
-            type=raw,value=edge,enable=${{ steps.release.outputs.is_version == 'false' }}
+            type=raw,value=edge
             type=sha,prefix=sha-,format=long
             type=raw,value=${{ steps.release.outputs.image_tag }}
             type=raw,value=${{ steps.release.outputs.minor }},enable=${{ steps.release.outputs.stable == 'true' }}
           flavor: latest=false
+          labels: |
+            org.opencontainers.image.version=${{ github.ref_name }}
       - name: Publish amd64 and arm64 image
         if: env.PUBLISH == 'true'
+        id: publish_image
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -124,10 +141,29 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
+          build-args: |
+            GUESTIN_BUILD_ID=${{ github.run_id }}-${{ github.run_attempt }}
+            GUESTIN_VERSION=${{ github.ref_name }}
+            GUESTIN_COMMIT=${{ github.sha }}
+            GUESTIN_BUILT_AT=${{ fromJSON(steps.metadata.outputs.json).labels['org.opencontainers.image.created'] }}
+            GUESTIN_IMAGE=${{ steps.image.outputs.name }}
+            GUESTIN_REPOSITORY=${{ github.repository }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: mode=min
           sbom: true
+      - name: Publish GitHub update manifests after the image push
+        if: success() && env.PUBLISH == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PUBLISHED_DIGEST: ${{ steps.publish_image.outputs.digest }}
+          GUESTIN_BUILT_AT: ${{ fromJSON(steps.metadata.outputs.json).labels['org.opencontainers.image.created'] }}
+        run: |
+          docker run --rm \
+            --env GITHUB_TOKEN --env GITHUB_REPOSITORY \
+            --env PUBLISHED_DIGEST --env GUESTIN_BUILT_AT \
+            guestin:ci bun scripts/publish-update-manifests.ts
 
   release:
     name: Publish version release notes

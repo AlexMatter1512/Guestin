@@ -415,7 +415,7 @@ test("v2 migration backfills statistics before retention can delete old events",
       "2000-01-01T00:00:00.000Z",
     );
     db.exec(
-      "DROP TABLE display_settings; DROP TABLE smtp_settings; DROP TABLE email_verifications; DROP TABLE account_tokens; DROP TABLE account_mail_attempts; DROP TABLE password_reset_requests; DROP TABLE user_permissions; DROP TABLE account_backoff; DROP TABLE event_reads; DROP TABLE event_context; DROP TABLE breakfast_sessions; DROP TABLE property_settings; DROP TABLE code_metrics; DROP INDEX events_property_created; DELETE FROM migrations WHERE version>=3;",
+      "DROP TABLE server_settings; DROP TABLE display_settings; DROP TABLE smtp_settings; DROP TABLE email_verifications; DROP TABLE account_tokens; DROP TABLE account_mail_attempts; DROP TABLE password_reset_requests; DROP TABLE user_permissions; DROP TABLE account_backoff; DROP TABLE event_reads; DROP TABLE event_context; DROP TABLE breakfast_sessions; DROP TABLE property_settings; DROP TABLE code_metrics; DROP INDEX events_property_created; DELETE FROM migrations WHERE version>=3;",
     );
     db.query("VACUUM INTO ?").run(path);
     const upgraded = openDatabase(path);
@@ -426,7 +426,7 @@ test("v2 migration backfills statistics before retention can delete old events",
             .query("SELECT MAX(version) version FROM migrations")
             .get() as any
         ).version,
-      ).toBe(10);
+      ).toBe(11);
       pruneNotifications(upgraded);
       expect(
         upgraded

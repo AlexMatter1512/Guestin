@@ -72,3 +72,9 @@ While the host app is open, notifications, access-code lists, and usage counts u
 Push notifications are optional. Each device chooses the structures and event types it receives. History and push messages support Italian and English and include the access-code name when available. You can also receive alerts for invalid guest links, including attempts to load the guest page. Invalid-link alerts are grouped per client and bounded globally; suppressed attempts are summarized on the next invalid request after each one-minute window. Changing push filters does not hide or delete the shared history.
 
 Guest links keep their access code in the address, including when guests change pages or language. The token is never saved in browser storage. For visit history, the browser remembers just the last code’s name and visit date to help explain later invalid-link attempts; this history is an unverified hint, never proof of access.
+
+## Server updates
+
+Owners have a **Settings → Server** subpage showing the installed server build, published image, last check, and update channel. **latest** checks release images by default; **edge** checks every tag build. The choice is shared across owners. An available image opens a popup only while this subpage is open; it does not appear in notifications. Changing the channel does not install anything. Use the same tag in Docker Compose or Portainer and recreate the container to update.
+
+If the browser is still running the previous app after a server update, use **Refresh app** on this page. Close other GuestIn host windows before activating the update. A persistent old build displays recovery and shortcut reinstallation instructions. See [upgrades and backups](UPGRADING.md#server-update-checks).

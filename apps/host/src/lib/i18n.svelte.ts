@@ -70,6 +70,8 @@ const italian: Record<string, string> = {
   "Wait a minute before requesting another email":
     "Attendi un minuto prima di richiedere un’altra email",
 
+  Server: "Server",
+  "Installed version and update channel": "Versione installata e canale aggiornamenti",
   Collaborator: "Collaboratore",
   collaborator: "collaboratore",
   "Owner / Admin": "Proprietario / Admin",

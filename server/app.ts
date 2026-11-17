@@ -32,6 +32,13 @@ import {
   logRoute,
 } from "./log";
 import { Hono } from "hono";
+import { SCHEMA_VERSION } from "./db";
+import {
+  createUpdateChecker,
+  installedBuild,
+  type UpdateFetcher,
+} from "./server-updates";
+import { updateChannelSchema, type BuildInfo } from "../shared/server-updates";
 import { realtime, upgradeWebSocket } from "./realtime";
 import { z } from "zod";
 import type { DB } from "./db";
@@ -63,10 +70,16 @@ export function createApp(
     origin: string;
     device?: DeviceAdapter;
     mail?: MailSender;
+    updates?: {
+      current?: BuildInfo;
+      fetcher?: UpdateFetcher;
+      now?: () => number;
+    };
   },
 ) {
   const app = new Hono<Env>(),
     crypto = vault(config.key);
+  const checkUpdates = createUpdateChecker(config.updates);
   migrateWebhookDoors(db, config.key);
   const passwordWork = passwordWorkLimiter();
   const accountAttempts = accountBackoff(db);
@@ -375,7 +388,13 @@ export function createApp(
     );
   });
   app.get("/api/v1/public/settings", (c) => c.json(displaySettings(db)));
-  app.get("/api/v1/health", (c) => c.json({ status: "ok", schema: 10 }));
+  app.get("/api/v1/health", (c) =>
+    c.json({ status: "ok", schema: SCHEMA_VERSION }),
+  );
+  app.get("/api/v1/public/build", (c) => {
+    const build = config.updates?.current ?? installedBuild;
+    return c.json({ id: build.id, version: build.version });
+  });
   app.get("/api/v1/auth/status", (c) =>
     c.json({
       needsSetup: !get("SELECT 1 FROM users LIMIT 1"),
@@ -677,6 +696,29 @@ export function createApp(
     return c.json(displaySettings(db));
   });
 
+  const updateChannel = () =>
+    updateChannelSchema.parse(
+      get("SELECT update_channel FROM server_settings WHERE id=1")
+        ?.update_channel ?? "latest",
+    );
+  app.get("/api/v1/admin/server", async (c) => {
+    owner(c);
+    return c.json(
+      await checkUpdates(updateChannel(), c.req.query("refresh") === "1"),
+    );
+  });
+  app.put("/api/v1/admin/server", async (c) => {
+    owner(c);
+    const { channel } = z
+      .object({ channel: updateChannelSchema })
+      .strict()
+      .parse(await c.req.json());
+    run(
+      "INSERT INTO server_settings VALUES(1,?) ON CONFLICT(id) DO UPDATE SET update_channel=excluded.update_channel",
+      channel,
+    );
+    return c.json({ channel });
+  });
   app.get("/api/v1/me", (c) =>
     c.json({ user: c.get("user"), csrf: c.get("csrf") }),
   );
@@ -795,6 +837,7 @@ export function createApp(
           "sessions",
           "invites",
           "user_preferences",
+          "server_settings",
           "user_permissions",
           "users",
           "account_backoff",

@@ -6,8 +6,23 @@ COPY apps/host/package.json apps/host/package.json
 COPY apps/guest/package.json apps/guest/package.json
 RUN bun install --frozen-lockfile
 COPY . .
+ARG GUESTIN_BUILD_ID=""
+ARG GUESTIN_VERSION="development"
+ARG GUESTIN_COMMIT=""
+ARG GUESTIN_BUILT_AT=""
+ARG GUESTIN_IMAGE="alexmatter/guestin"
+ARG GUESTIN_REPOSITORY="AlexMatter1512/guestin"
+RUN GUESTIN_BUILD_ID="$GUESTIN_BUILD_ID" GUESTIN_VERSION="$GUESTIN_VERSION" GUESTIN_COMMIT="$GUESTIN_COMMIT" GUESTIN_BUILT_AT="$GUESTIN_BUILT_AT" GUESTIN_IMAGE="$GUESTIN_IMAGE" GUESTIN_REPOSITORY="$GUESTIN_REPOSITORY" bun scripts/stamp-build.ts
 RUN bun run check && bun run build
 FROM oven/bun:1.4.0 AS runtime
+ARG GUESTIN_BUILD_ID=""
+ARG GUESTIN_VERSION="development"
+ARG GUESTIN_COMMIT=""
+ARG GUESTIN_BUILT_AT=""
+LABEL app.guestin.build-id="$GUESTIN_BUILD_ID" \
+      org.opencontainers.image.version="$GUESTIN_VERSION" \
+      org.opencontainers.image.revision="$GUESTIN_COMMIT" \
+      org.opencontainers.image.created="$GUESTIN_BUILT_AT"
 WORKDIR /app
 COPY --from=build /app/package.json /app/bun.lock /app/LICENSE ./
 COPY --from=build /app/apps/host/package.json apps/host/package.json
