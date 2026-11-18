@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "channel": "edge",
-  "publishedAt": "2026-11-18T10:53:53.568Z",
+  "publishedAt": "2026-11-18T13:02:41.410Z",
   "build": {
-    "id": "44289249984-1",
-    "version": "build-20261118-guest-page",
-    "commit": "bd2c4a59dbb87d346101dcc8159731f065fc9474",
-    "builtAt": "2026-11-18T10:52:04Z",
+    "id": "44309217799-1",
+    "version": "v0.5.0",
+    "commit": "ee392fc2d3a85bc0c4655d23e4926e6e533cef45",
+    "builtAt": "2026-11-18T13:00:25Z",
     "image": "alexmatter/guestin",
     "repository": "AlexMatter1512/Guestin"
   },
-  "digest": "sha256:62be7a592256df2f3a353f42d3bd895dd22fc777c2bc685cd601521c22178998"
+  "digest": "sha256:a43b02ff59aa0c6a57f06988f9e9389d6118dd7a4ada7276981e1a2956efcdac"
 }
