@@ -1,3 +1,13 @@
+import {
+  krossPlanner,
+  plannerRoomKey,
+  type KrossPlanner,
+} from "./kross-planner";
+export type {
+  KrossPlanner,
+  KrossPlannerRoom,
+  KrossPlannerReservation,
+} from "./kross-planner";
 import ICAL from "ical.js";
 import { z } from "zod";
 import type { AccessCodeDraft } from "./schema";
@@ -154,6 +164,80 @@ export class KrossClient {
   arrivals(id_property: number, date: string, page = 0) {
     return this.dashboard("arrivals", id_property, date, page);
   }
+  async planner(id_property: number, month: string, lang = "en") {
+    if (
+      !Number.isSafeInteger(id_property) ||
+      id_property <= 0 ||
+      !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)
+    )
+      throw Error("Choose a valid KrossBooking property and month.");
+    const date_start = `${month}-01`;
+    const lastDay = new Date(date_start);
+    lastDay.setUTCMonth(lastDay.getUTCMonth() + 1, 0);
+    return this.plannerRange(
+      id_property,
+      date_start,
+      lastDay.toISOString().slice(0, 10),
+      lang,
+    );
+  }
+  async plannerRange(
+    id_property: number,
+    start: string,
+    end: string,
+    lang = "en",
+  ) {
+    if (
+      !Number.isSafeInteger(id_property) ||
+      id_property <= 0 ||
+      reservationDate(start) !== start ||
+      reservationDate(end) !== end ||
+      start > end
+    )
+      throw Error("Choose a valid planner date range.");
+    const dayMs = 86400000;
+    const rooms = new Map<string, KrossPlanner["rooms"][number]>();
+    const reservations: KrossPlanner["reservations"] = [];
+    const tails = new Map<string, KrossPlanner["reservations"][number]>();
+    for (
+      let cursor = Date.parse(start);
+      cursor <= Date.parse(end);
+      cursor += 31 * dayMs
+    ) {
+      const date_start = new Date(cursor).toISOString().slice(0, 10);
+      const days = Math.min(31, (Date.parse(end) - cursor) / dayMs + 1);
+      const response = await this.request(
+        `/app/get-planner?id_property=${id_property}&days=${days}&date_start=${date_start}`,
+        { id_property, date_start, days, lang, groups: [], checkout: false },
+      );
+      const page = krossPlanner(
+        providerError(response),
+        date_start.slice(0, 7),
+      );
+      for (const room of page.rooms) rooms.set(room.id, room);
+      for (const stay of page.reservations) {
+        const key = JSON.stringify([
+          stay.roomId,
+          stay.row,
+          stay.id_reservation,
+          stay.blockId,
+        ]);
+        const previous = tails.get(key);
+        if (
+          previous &&
+          previous.arrival <= stay.arrival &&
+          previous.departure >= stay.arrival
+        ) {
+          if (previous.departure < stay.departure)
+            previous.departure = stay.departure;
+        } else {
+          tails.set(key, stay);
+          reservations.push(stay);
+        }
+      }
+    }
+    return { rooms: [...rooms.values()], reservations };
+  }
   async reservation(id_reservation: number, lang = "en") {
     return providerError(
       await this.request("/app/get-reservation", { id_reservation, lang }),
@@ -195,7 +279,7 @@ export function krossReservations(response: any): {
     hasNextPage: hasNext === true || hasNext === 1 || hasNext === "1",
   };
 }
-function reservationDate(value: unknown): string | null {
+export function reservationDate(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[ T].*)?$/.exec(value);
   const local = /^(\d{2})[/-](\d{2})[/-](\d{4})$/.exec(value);
@@ -210,6 +294,52 @@ function reservationDate(value: unknown): string | null {
     ? date
     : null;
 }
+export function krossSourceRooms(detail: any, summary: any = {}): string[] {
+  let rooms: string[] = Array.isArray(detail.rooms)
+    ? detail.rooms.flatMap((room: any) => {
+        const names =
+          typeof room === "object"
+            ? [room?.number, room?.name_room_type, room?.name]
+            : [room];
+        const value = names.find(
+          (name) =>
+            (typeof name === "string" || typeof name === "number") &&
+            String(name).trim(),
+        );
+        return value === undefined ? [] : [String(value).trim()];
+      })
+    : [];
+  if (!rooms.length) {
+    let source = summary.name_room_type ?? detail.name_room_type ?? [];
+    if (typeof source === "string") {
+      try {
+        source = JSON.parse(source);
+      } catch {
+        source = source.split(",");
+      }
+    }
+    rooms = (Array.isArray(source) ? source : [source]).map(String);
+  }
+  return rooms.map((name) => name.trim()).filter(Boolean);
+}
+
+function matchRoomDoor(
+  room: string,
+  doors: { id: string; name: string; common?: boolean }[],
+) {
+  for (const key of [
+    (name: string) => name.trim().toLowerCase(),
+    plannerRoomKey,
+  ]) {
+    const name = key(room);
+    if (!name) continue;
+    const matches = doors.filter(
+      (door) => !door.common && key(door.name) === name,
+    );
+    if (matches.length === 1) return matches[0].id;
+  }
+}
+
 export function krossReservationDraft(
   response: any,
   options: {
@@ -227,38 +357,18 @@ export function krossReservationDraft(
     throw Error("KrossBooking returned unreadable reservation details.");
   const start = reservationDate(detail.arrival ?? summary.arrival),
     end = reservationDate(detail.departure ?? summary.departure);
-  let rooms: string[] = Array.isArray(detail.rooms)
-    ? detail.rooms.flatMap((room: any) => {
-        const value =
-          typeof room === "string"
-            ? room
-            : (room?.number ?? room?.name_room_type ?? room?.name);
-        return value === undefined || value === null ? [] : [String(value)];
-      })
-    : [];
-  if (!rooms.length) {
-    let source = summary.name_room_type ?? detail.name_room_type ?? [];
-    if (typeof source === "string") {
-      try {
-        source = JSON.parse(source);
-      } catch {
-        source = source.split(",");
-      }
-    }
-    rooms = (Array.isArray(source) ? source : [source]).map(String);
-  }
-  const names = rooms.map((name) => name.trim().toLocaleLowerCase());
+  const rooms = krossSourceRooms(detail, summary);
+  const localDoors = options.doors.filter(
+    (door) => door.propertyId === options.propertyId && door.enabled !== false,
+  );
+  const matchedDoors = new Set(
+    rooms.map((room) => matchRoomDoor(room, localDoors)),
+  );
   const missingDates = !start || !end || end <= start;
   const grants = missingDates
     ? []
-    : options.doors
-        .filter(
-          (d) =>
-            d.propertyId === options.propertyId &&
-            d.enabled !== false &&
-            (d.common ||
-              names.includes(String(d.name).trim().toLocaleLowerCase())),
-        )
+    : localDoors
+        .filter((door) => door.common || matchedDoors.has(door.id))
         .map((d) => ({
           doorId: d.id,
           start: wallTime(start!, options.checkIn, options.timezone),

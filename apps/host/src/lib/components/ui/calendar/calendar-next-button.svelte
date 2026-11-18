@@ -23,6 +23,7 @@
 {/snippet}
 
 <CalendarPrimitive.NextButton
+  data-slot="calendar-next-button"
   bind:ref
   class={cn(
     buttonVariants({ variant }),

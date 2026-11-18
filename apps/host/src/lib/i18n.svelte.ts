@@ -611,6 +611,8 @@ const redesignedItalian: Record<string, string> = {
   Bold: "Grassetto",
   Underline: "Sottolineato",
   Preview: "Anteprima",
+  "Choose favourite connector": "Scegli connettore preferito",
+  "All connectors page": "Tutti i connettori",
   "Choose favourite": "Scegli preferito",
   "Tap an item to make it your mobile shortcut.": "Tocca una voce per aggiungerla alla navigazione mobile.",
   "Click Add door to create your example door.": "Premi Aggiungi porta per creare la porta di esempio.",

@@ -5,8 +5,8 @@
   import { page } from "$app/state";
   import { parseDate, type DateValue } from "@internationalized/date";
   import { RangeCalendar } from "$lib/components/ui/range-calendar";
-  import * as Popover from "$lib/components/ui/popover";
-  import { Button, buttonVariants } from "$lib/components/ui/button";
+  import CalendarDialog from "$lib/components/CalendarDialog.svelte";
+  import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import { Toaster } from "$lib/components/ui/sonner";
@@ -372,29 +372,24 @@
             "Colazioni utilizzate in un intervallo di date",
           )}
         </h2>
-        <Popover.Root bind:open={pickerOpen}
-          ><Popover.Trigger
-            class={buttonVariants({ variant: "outline" }) +
-              " max-w-full justify-start"}
-            aria-label={l("Choose date range", "Scegli intervallo date")}
-            ><CalendarDays size={16} />{rangeLabel}</Popover.Trigger
-          ><Popover.Content
-            class="w-auto max-w-[calc(100vw-2rem)] p-1"
-            align="start"
-            ><RangeCalendar
-              bind:value={range}
-              locale={language}
-              weekStartsOn={1}
-              class="[--cell-size:2.25rem]"
-              onValueChange={(value) => {
-                if (value.start && value.end) {
-                  pickerOpen = false;
-                  void load();
-                }
-              }}
-            /></Popover.Content
-          ></Popover.Root
+        <CalendarDialog
+          bind:open={pickerOpen}
+          title={l("Choose date range", "Scegli intervallo date")}
+          triggerClass="max-w-full justify-start"
         >
+          {#snippet trigger()}<CalendarDays size={16} />{rangeLabel}{/snippet}
+          <RangeCalendar
+            bind:value={range}
+            locale={language}
+            weekStartsOn={1}
+            onValueChange={(value) => {
+              if (value.start && value.end) {
+                pickerOpen = false;
+                void load();
+              }
+            }}
+          />
+        </CalendarDialog>
         <p id="total" aria-live="polite">
           {l(
             "Used in selected range",

@@ -58,6 +58,55 @@ globalThis.fetch = (async (input: any, init?: RequestInit) => {
           properties: [{ id_property: 42, name: "Kross fixture hotel" }],
         },
       });
+    if (url.pathname.endsWith("/app/get-planner")) {
+      const start = body.date_start;
+      const size = Number(body.days);
+      const first = Date.parse(start + "T00:00:00Z");
+      const dates = Array.from({ length: size }, (_, i) => {
+        const date = new Date(first + i * 86400000);
+        const iso = date.toISOString().slice(0, 10);
+        return {
+          timestamp: date.getTime() / 1000,
+          date: iso.slice(8) + "/" + iso.slice(5, 7),
+          w: date.toLocaleDateString("en", {
+            weekday: "short",
+            timeZone: "UTC",
+          }),
+        };
+      });
+      return Response.json({
+        data: {
+          result: true,
+          start,
+          end: new Date(first + size * 86400000).toISOString().slice(0, 10),
+          start_timestamp: first / 1000,
+          dates,
+          rooms: [
+            {
+              id_room: 7,
+              label_room: "Suite 1 [001]",
+              number: "Suite 1",
+              height: 1,
+            },
+            { id_room: 8, label_room: "Garden loft", number: "8", height: 1 },
+          ],
+          planner: {
+            7: [
+              {
+                [dates[0].timestamp]: {
+                  available: false,
+                  id_reservation: 93,
+                  reservation: "Planner Guest",
+                  size: 4,
+                  bg_color: "#314f67",
+                  text_color: "#fff",
+                },
+              },
+            ],
+          },
+        },
+      });
+    }
     if (
       url.pathname.includes("/dashboard-arrivals") ||
       url.pathname.endsWith("/search-reservation")
@@ -79,11 +128,16 @@ globalThis.fetch = (async (input: any, init?: RequestInit) => {
         data: {
           reservation: {
             id_reservation: body.id_reservation,
-            label: "Fixture Guest",
+            label:
+              body.id_reservation === 93 ? "Planner Guest" : "Fixture Guest",
             arrival: "2030-04-03",
             departure: "2030-04-05",
-            rooms: [{ number: "Suite 1" }],
+            rooms:
+              body.id_reservation === 93
+                ? [{ number: "1A" }, { number: "1B" }]
+                : [{ number: "Suite 1" }],
             email: "fixture-guest@example.test",
+            tel: "+39 000 000 000",
             notes: "Arrival by train",
             link_guest_portal: "https://example.com/checkin",
             link_check_in_instructions: "https://example.com/instructions",
@@ -241,6 +295,14 @@ try {
     common: false,
     singleUse: false,
   });
+  await api("doors", {
+    propertyId: property.id,
+    name: "Room 1A",
+    integration: "none",
+    config: {},
+    common: false,
+    singleUse: false,
+  });
   browser = await chromium.launch({ channel: "chrome", headless: true });
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
@@ -312,6 +374,156 @@ try {
   expect(JSON.stringify(await api("connections"))).not.toContain(
     "fixture-secret-token",
   );
+  await page.getByRole("button", { name: "Contact settings" }).click();
+  await page.getByLabel("Contact name format").fill("{name} - {rooms}");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Save", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const planner = page.getByRole("region", {
+    name: "Room planner",
+    exact: true,
+  });
+  await expect(planner.getByText("Garden loft", { exact: true })).toBeVisible();
+  const grid = planner.getByRole("region", { name: "Room availability by day" });
+  expect(await grid.evaluate(element => {
+    const card = element.closest('[data-slot="card"]')!.getBoundingClientRect();
+    const bounds = element.getBoundingClientRect();
+    return Math.max(Math.abs(bounds.left - card.left), Math.abs(bounds.right - card.right));
+  })).toBeLessThan(1);
+  const today = new Intl.DateTimeFormat("sv-SE", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: property.timezone,
+  }).format(new Date());
+  const monthStart = today.slice(0, 7) + "-01";
+  const nextMonth = new Date(monthStart + "T12:00:00Z");
+  nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
+  const nextMonthStart = nextMonth.toISOString().slice(0, 10);
+  const lastPlannerCall = () =>
+    providerCalls.filter((c) => c.path.includes("/app/get-planner")).at(-1)
+      ?.body;
+  expect(lastPlannerCall()).toMatchObject({
+    id_property: 42,
+    date_start: today,
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await planner.getByRole("button", { name: "Next month" }).click();
+  await expect.poll(() => lastPlannerCall()?.date_start).toBe(nextMonthStart);
+  await planner.getByRole("button", { name: "Choose date range" }).click();
+  const picker = page.getByRole("dialog", { name: "Choose date range" });
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 844 });
+    const theme = width === 390 ? "dark" : "light";
+    await page.emulateMedia({ colorScheme: theme });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await expect(picker).toBeVisible();
+    const calendar = picker.locator("[data-range-calendar-root]");
+    await expect(calendar).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(calendar).toHaveCSS("border-top-width", "1px");
+    const radius = await calendar.evaluate(el => getComputedStyle(el).borderTopLeftRadius);
+    expect(parseFloat(radius)).toBeGreaterThan(0);
+    const start = calendar.locator("[data-bits-day][data-range-start]").first();
+    const middle = calendar.locator("[data-bits-day][data-range-middle]").first();
+    const startColor = await start.evaluate(el => getComputedStyle(el).backgroundColor);
+    await expect(middle).not.toHaveCSS("background-color", startColor);
+    await expect
+      .poll(async () => {
+        const rect = await picker.boundingBox();
+        return (
+          rect &&
+          Math.max(
+            Math.abs(rect.x + rect.width / 2 - width / 2),
+            Math.abs(rect.y + rect.height / 2 - 422),
+          )
+        );
+      })
+      .toBeLessThan(2);
+    await picker.screenshot({
+      path: join(dir, `range-calendar-${theme}.png`),
+      animations: "disabled",
+    });
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  const selectedDay = nextMonthStart.slice(0, 8) + "10";
+  await picker
+    .locator('[data-value="' + selectedDay + '"]')
+    .getByRole("button")
+    .click();
+  await picker
+    .locator('[data-value="' + nextMonthStart.slice(0, 8) + '14"]')
+    .getByRole("button")
+    .click();
+  await expect(picker).toHaveCount(0);
+  await expect
+    .poll(lastPlannerCall)
+    .toMatchObject({ date_start: selectedDay, days: 5 });
+  await expect(
+    planner.getByRole("button", { name: "Choose date range" }),
+  ).toContainText("10");
+  const bar = planner.getByRole("button", { name: /Planner Guest.*Suite 1/ });
+  await expect(bar).toBeInViewport();
+  await planner.screenshot({
+    path: join(dir, "kross-room-planner-mobile.png"),
+    animations: "disabled",
+  });
+  await bar.click();
+  const imported = page.getByRole("dialog", {
+    name: "Review imported details",
+    exact: true,
+  });
+  await expect(imported).toContainText("Planner Guest");
+  await expect(imported).toContainText("1A, 1B");
+  await expect(imported).toContainText("Suite 1 [001]");
+  await expect(imported.getByText("Suite 1", { exact: true })).toHaveCount(0);
+  await expect(imported.getByText("Room 1A", { exact: true })).toBeVisible();
+  const download = page.waitForEvent("download");
+  await imported.getByRole("button", { name: "Save contact" }).click();
+  const exported = await download;
+  const vcard = await Bun.file((await exported.path())!).text();
+  expect(vcard).toContain("TEL;TYPE=CELL:+39 000 000 000");
+  expect(vcard).toContain("FN:Planner Guest - 1A\\, 1B");
+  expect(exported.suggestedFilename()).toBe("Planner Guest - 1A_ 1B.vcf");
+  await expect(imported).toContainText("fixture-guest@example.test");
+  await expect(imported).toContainText(formatDate("2030-04-03"));
+  expect((await api("codes")).length).toBe(0);
+  await imported.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(page).toHaveURL(/#\/connectors$/);
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Choose favourite", exact: true })
+    .click();
+  const favouriteConnector = page.getByRole("combobox", {
+    name: "Choose favourite connector",
+  });
+  await expect(favouriteConnector.locator("option")).toHaveText([
+    "Connectors",
+    "All connectors page",
+    "KrossBooking",
+  ]);
+  await favouriteConnector.selectOption("connectors");
+  await page.locator('[data-tour="nav-favourite"]').click();
+  await expect(page).toHaveURL(/#\/connectors$/);
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Choose favourite", exact: true })
+    .click();
+  await favouriteConnector.selectOption("connectors/kross");
+  await page.reload();
+  await expect(page.locator('[data-tour="nav-favourite"]')).toHaveText(
+    "KrossBooking",
+  );
+  await page.getByRole("button", { name: /^Connectors/ }).click();
+  await expect(page).toHaveURL(/#\/connectors$/);
+  await page.locator('[data-tour="nav-favourite"]').click();
+  await expect(page).toHaveURL(/#\/connectors\/kross$/);
   await page
     .getByRole("button", { name: "Find arrivals", exact: true })
     .click();
@@ -331,10 +543,6 @@ try {
   await page
     .getByRole("button", { name: /Fixture Guest.*Review draft/ })
     .click();
-  const imported = page.getByRole("dialog", {
-    name: "Review imported details",
-    exact: true,
-  });
   await expect(imported).toBeVisible();
   await expect(imported).toContainText("Source rooms");
   await expect(imported).toContainText("fixture-guest@example.test");

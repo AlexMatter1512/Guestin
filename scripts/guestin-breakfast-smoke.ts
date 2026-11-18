@@ -150,7 +150,11 @@ try {
   await totals
     .getByRole("button", { name: "Scegli intervallo date", exact: true })
     .click();
-  await expect(totals.getByRole("grid")).toBeVisible();
+  await expect(
+    totals
+      .getByRole("dialog", { name: "Scegli intervallo date" })
+      .getByRole("grid"),
+  ).toBeVisible();
   // Select one day, then the end of the same month-to-today range.
   await totals
     .locator(`[data-value="${month}"] [role="button"]`)
@@ -187,12 +191,19 @@ try {
   await expect(
     page.getByRole("switch", { name: "Include breakfast", exact: true }),
   ).toBeChecked();
+  const firstBreakfast = page.getByRole("button", {
+    name: "First breakfast date",
+    exact: true,
+  });
+  await expect(firstBreakfast).toHaveText(formatDate(today, "mm/dd/yyyy"));
+  await firstBreakfast.click();
   await expect(
-    page.getByLabel("First breakfast date", { exact: true }),
-  ).toHaveValue(formatDate(today, "mm/dd/yyyy"));
-  await page
-    .getByLabel("First breakfast date", { exact: true })
-    .fill(formatDate(today, "mm/dd/yyyy"));
+    page
+      .getByRole("dialog", { name: "First breakfast date" })
+      .getByRole("grid"),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(firstBreakfast).toBeFocused();
   await page
     .getByRole("button", { name: "Save access code", exact: true })
     .click();

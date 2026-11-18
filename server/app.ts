@@ -754,6 +754,7 @@ export function createApp(
   app.patch("/api/v1/me/preferences", async (c) => {
     const changes = z
       .object({
+        contactNameFormat: z.string().trim().min(1).max(180).optional(),
         tour: z.enum(["pending", "completed", "skipped"]).optional(),
         tourStep: z
           .enum(["install", "notifications", "smtp"])

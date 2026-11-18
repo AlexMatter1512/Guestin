@@ -85,6 +85,7 @@ const krossPaths = new Set([
   "/properties/get-list",
   "/app/search-reservation",
   "/app/get-reservation",
+  "/app/get-planner",
   "/app/dashboard-arrivals",
   "/app/dashboard-departures",
   "/app/dashboard-stays",
@@ -213,12 +214,29 @@ export function connectorRoutes(
         })
         .parse(input);
       const path = new URL(b.path, "https://apiapp.krossbooking.com");
+      const planner = path.pathname === "/app/get-planner";
       if (
         !krossPaths.has(path.pathname) ||
         path.origin !== "https://apiapp.krossbooking.com" ||
-        [...path.searchParams.keys()].some((k) => k !== "page")
+        (!planner && [...path.searchParams.keys()].some((k) => k !== "page"))
       )
         fail("Kross operation not allowed");
+      if (planner) {
+        const range = z
+          .object({
+            id_property: z.number().int().positive(),
+            days: z.number().int().min(1).max(31),
+            date_start: z.iso.date(),
+          })
+          .parse(b.body);
+        if (
+          path.searchParams.size !== 3 ||
+          Object.entries(range).some(
+            ([key, value]) => path.searchParams.get(key) !== String(value),
+          )
+        )
+          fail("Invalid KrossBooking planner range");
+      }
       const login = path.pathname === "/auth/get-token";
       if (login) owner(c);
       const operation = login

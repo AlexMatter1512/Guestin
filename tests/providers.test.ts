@@ -129,6 +129,49 @@ test("Kross relay persists tokens without exposing them and retains them on tran
   });
   expect(JSON.stringify(echoed.data)).not.toContain("provider-secret");
 
+  const plannerPath =
+    "/app/get-planner?id_property=12&days=30&date_start=2026-11-01";
+  const plannerBody = {
+    id_property: 12,
+    days: 30,
+    date_start: "2026-11-01",
+    lang: "en",
+    checkout: false,
+    groups: [],
+  };
+  let plannerCalls = 0;
+  globalThis.fetch = (async (url, init) => {
+    plannerCalls++;
+    expect(String(url)).toBe(
+      "https://apiapp.krossbooking.com/v5" + plannerPath,
+    );
+    expect(new Headers(init?.headers).get("Authorization")).toBe(
+      "Bearer provider-secret",
+    );
+    expect(JSON.parse(String(init?.body))).toEqual(plannerBody);
+    return Response.json({ data: { rooms: [], dates: [], planner: [] } });
+  }) as typeof fetch;
+  const planner = await req(`connections/${connection.id}/request`, {
+    path: plannerPath,
+    body: plannerBody,
+  });
+  expect(planner.r.status).toBe(200);
+  for (const path of [
+    plannerPath + "&extra=1",
+    plannerPath.replace("=12", "=13"),
+    plannerPath.replace("get-planner", "get-reservation"),
+  ]) {
+    expect(
+      (
+        await req(`connections/${connection.id}/request`, {
+          path,
+          body: plannerBody,
+        })
+      ).r.status,
+    ).toBe(400);
+  }
+  expect(plannerCalls).toBe(1);
+
   for (const status of [403, 503]) {
     globalThis.fetch = (async () =>
       Response.json({ error: "fail" }, { status })) as any;

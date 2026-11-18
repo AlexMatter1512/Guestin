@@ -1,5 +1,16 @@
 <script lang="ts">
   import { hostStorage } from "$lib/demo-storage";
+  import {
+    contactName,
+    sampleContact,
+    saveGuestContact,
+    type GuestContact,
+  } from "$lib/guest-contact";
+  import {
+    connectorProviders as providers,
+    matchesKind,
+  } from "$lib/connector-providers";
+  import KrossPlanner from "$lib/components/KrossPlanner.svelte";
   import DateInput from "$lib/components/DateInput.svelte";
   import {
     formatDisplayDate,
@@ -17,7 +28,6 @@
     ChevronRight,
     Check,
     Plug,
-    Image,
     Search,
     ArrowLeft,
     ArrowRight,
@@ -27,6 +37,8 @@
     FileUp,
     ShieldCheck,
     LoaderCircle,
+    Settings,
+    Contact,
   } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import * as Card from "$lib/components/ui/card";
@@ -45,6 +57,8 @@
     krossProperties,
     krossReservations,
     krossReservationDraft,
+    krossSourceRooms,
+    reservationDate,
     type CalendarAccessDraft,
   } from "../../../../../shared/connectors";
   import {
@@ -71,6 +85,8 @@
     property,
     owner,
     onDraft,
+    contactNameFormat,
+    savePreferences,
     view = $bindable("list"),
   }: {
     api: (
@@ -85,6 +101,8 @@
     doors: any[];
     property: any;
     owner: boolean;
+    contactNameFormat: string;
+    savePreferences: (changes: { contactNameFormat?: string }) => Promise<void>;
     onDraft: (draft: AccessCodeDraft) => void;
     view?: View;
   } = $props();
@@ -131,7 +149,31 @@
     draft: AccessCodeDraft;
     details: [string, string][];
     source: string;
+    contact?: GuestContact;
   } | null>(null);
+  let settingsOpen = $state(false),
+    formatDraft = $state("");
+  let formatInput = $state<HTMLInputElement | null>(null);
+  function insertPlaceholder(key: string) {
+    const input = formatInput;
+    if (!input) return;
+    const start = input.selectionStart ?? formatDraft.length;
+    const end = input.selectionEnd ?? start;
+    const token = "{" + key + "}";
+    if (formatDraft.length - (end - start) + token.length > 180) return;
+    input.setRangeText(token, start, end, "end");
+    formatDraft = input.value;
+    input.focus();
+  }
+  const formatValid = $derived(
+    formatDraft.trim().length > 0 &&
+      !/[{}]/.test(
+        formatDraft.replace(
+          /\{(name|arrival|departure|dates|rooms|property|reservation)\}/g,
+          "",
+        ),
+      ),
+  );
   let extractionDetails = $state<[string, string][]>([]);
   let screenshotInput = $state<HTMLInputElement | null>(null);
   let scope = "",
@@ -140,12 +182,6 @@
   const localConnections = $derived(
     connections.filter((c) => c.property_id === propertyId),
   );
-  function matchesKind(connection: Connection, kind: string) {
-    return (
-      connection.kind === kind ||
-      (kind === "ai" && connection.kind === "gemini")
-    );
-  }
   const currentConnections = $derived(
     localConnections.filter((c) => matchesKind(c, view)),
   );
@@ -153,11 +189,6 @@
     currentConnections.find((c) => c.id === selectedId),
   );
   const localDoors = $derived(doors.filter((d) => d.propertyId === propertyId));
-  const providers = [
-    { id: "kross" as const, name: "KrossBooking", icon: Plug },
-    { id: "ical" as const, name: "iCal", icon: CalendarDays },
-    { id: "ai" as const, name: "AI", icon: Image },
-  ];
   $effect(() => {
     const next = propertyId + "/" + view;
     if (next === scope) return;
@@ -279,6 +310,27 @@
       deviceId,
     );
   }
+  async function loadPlannerRange(start: string, end: string) {
+    const connection = selectedId;
+    try {
+      return await client().plannerRange(
+        Number(providerProperty),
+        start,
+        end,
+        hostLanguage.current,
+      );
+    } catch (e) {
+      if (
+        view === "kross" &&
+        selectedId === connection &&
+        (e as any).code === "KROSS_AUTH"
+      ) {
+        connected = false;
+        error = (e as Error).message;
+      }
+      throw e;
+    }
+  }
   async function loadProperties(id: string, current: () => boolean) {
     const response = await client(id).properties();
     if (!current()) return;
@@ -307,10 +359,7 @@
     if (!current()) return;
     await loadProperties(id, current);
     if (current() && providerProperties.length)
-      notice = l(
-        "KrossBooking connected. Choose arrivals or search for a guest.",
-        "KrossBooking collegato. Scegli gli arrivi o cerca un ospite.",
-      );
+      notice = l("KrossBooking connected.", "KrossBooking collegato.");
   }
   async function login(current: () => boolean) {
     if (!hotelId.trim() || !username.trim() || !password)
@@ -442,6 +491,11 @@
     searched = true;
   }
   async function reviewReservation(item: any, current: () => boolean) {
+    // Planner bars can be clipped at the edge of the displayed month.
+    const summary =
+      item.roomId !== undefined
+        ? { ...item, arrival: undefined, departure: undefined }
+        : item;
     const id = Number(item.id_reservation ?? item.id);
     if (!Number.isFinite(id) || !id)
       throw Error(
@@ -453,15 +507,19 @@
     const result = await client().reservation(id);
     if (!current()) return;
     const detail = result?.data?.reservation ?? result?.reservation ?? result;
-    const rooms = Array.isArray(detail.rooms)
-      ? detail.rooms
-          .map((r: any) =>
-            typeof r === "string"
-              ? r
-              : (r.number ?? r.name_room_type ?? r.name ?? ""),
-          )
-          .join(", ")
-      : String(item.name_room_type ?? "");
+    const rooms = krossSourceRooms(detail, summary).join(", ");
+    const phone =
+      [detail.tel, detail.phone, detail.mobile, summary.tel, summary.phone]
+        .map((v) => String(v ?? "").trim())
+        .find(Boolean) ?? "";
+    const email = String(detail.email || detail.email_guest || "").trim();
+    const contactDate = (value: unknown) => {
+      const date = reservationDate(value);
+      return date ? formatDisplayDate(date) : "";
+    };
+    const arrival = contactDate(detail.arrival ?? summary.arrival);
+    const departure = contactDate(detail.departure ?? summary.departure);
+    const plannerRoom = item.roomNames?.join(", ") ?? "";
     review(
       krossReservationDraft(
         result,
@@ -472,32 +530,56 @@
           checkOut: property.checkOut,
           doors: localDoors,
         },
-        item,
+        summary,
       ),
       [
         [l("Reservation", "Prenotazione"), String(id)],
-        [l("Arrival", "Arrivo"), String(detail.arrival ?? item.arrival ?? "")],
+        [
+          l("Arrival", "Arrivo"),
+          String(detail.arrival ?? summary.arrival ?? ""),
+        ],
         [
           l("Departure", "Partenza"),
-          String(detail.departure ?? item.departure ?? ""),
+          String(detail.departure ?? summary.departure ?? ""),
         ],
         [l("Source rooms", "Camere della prenotazione"), rooms],
+        [
+          l("Planner room", "Camera nel planner"),
+          plannerRoom !== rooms ? plannerRoom : "",
+        ],
         [l("Email", "Email"), String(detail.email ?? detail.email_guest ?? "")],
-        [l("Phone", "Telefono"), String(detail.phone ?? detail.mobile ?? "")],
+        [l("Phone", "Telefono"), phone],
         [
           l("Reservation notes", "Note prenotazione"),
           String(detail.notes ?? detail.note ?? ""),
         ],
       ],
+      phone
+        ? {
+            phone,
+            email,
+            fields: {
+              name: String(detail.label || summary.label || ""),
+              arrival,
+              departure,
+              dates: [arrival, departure].filter(Boolean).join(" – "),
+              rooms,
+              property: property.name ?? "",
+              reservation: String(id),
+            },
+          }
+        : undefined,
     );
   }
   function review(
     value: Partial<AccessCodeDraft>,
     details: [string, string][] = [],
+    contact?: GuestContact,
   ) {
     preview = {
       source: providers.find((p) => p.id === view)?.name ?? "",
       details,
+      contact,
       draft: {
         propertyId,
         label: "",
@@ -793,9 +875,22 @@
 </script>
 
 <section
-  class="grid w-full gap-6"
+  class="grid w-full min-w-0 gap-6"
   aria-label={l("Booking connectors", "Connettori prenotazioni")}
 >
+  {#if view === "kross"}
+    <div class="flex justify-end">
+      <Button
+        size="icon"
+        variant="outline"
+        aria-label={l("Contact settings", "Impostazioni contatto")}
+        onclick={() => {
+          formatDraft = contactNameFormat;
+          settingsOpen = true;
+        }}><Settings /></Button
+      >
+    </div>
+  {/if}
   {#if !propertyId}
     <Card.Root
       ><Card.Content class="flex flex-col items-center gap-3 py-8 text-center">
@@ -910,15 +1005,8 @@
                   >{l("Disconnect", "Disconnetti")}</Button
                 >{/if}
             </div>
-            <Card.Title>{l("Find a guest", "Trova un ospite")}</Card.Title
-            ><Card.Description
-              >{l(
-                "Choose a property, then look up arrivals or search a reservation.",
-                "Scegli una struttura, poi consulta gli arrivi o cerca una prenotazione.",
-              )}</Card.Description
-            ></Card.Header
-          >
-          <Card.Content class="grid gap-5">
+          </Card.Header>
+          <Card.Content class="grid min-w-0 gap-5">
             <div class="grid gap-2">
               <Label for="kross-property"
                 >{l("KrossBooking property", "Struttura KrossBooking")}</Label
@@ -952,6 +1040,27 @@
                   perform((current) => loadProperties(selectedId, current))}
                 >{l("Load properties", "Carica strutture")}</Button
               >{/if}
+          </Card.Content>
+        </Card.Root>
+        {#if providerProperty}
+          <Card.Root class="min-w-0 py-0">
+            {#key selectedId + "/" + providerProperty}
+              <KrossPlanner
+                timezone={property.timezone}
+                loadRange={loadPlannerRange}
+                onReview={(stay) =>
+                  perform((current) => reviewReservation(stay, current))}
+                {pending}
+              />
+            {/key}
+          </Card.Root>
+        {/if}
+        <Card.Root>
+          <Card.Header
+            ><Card.Title>{l("Find a guest", "Trova un ospite")}</Card.Title
+            ></Card.Header
+          >
+          <Card.Content class="grid gap-5">
             <form
               class="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
               onsubmit={(event) => {
@@ -1709,6 +1818,57 @@
 </section>
 
 <Modal
+  open={settingsOpen && view === "kross"}
+  title={l("Contact settings", "Impostazioni contatto")}
+  onclose={() => (settingsOpen = false)}
+>
+  <form
+    class="grid gap-3"
+    onsubmit={(event) => {
+      event.preventDefault();
+      if (formatValid)
+        void perform(async () => {
+          await savePreferences({ contactNameFormat: formatDraft.trim() });
+          settingsOpen = false;
+        });
+    }}
+  >
+    <Label for="contact-format"
+      >{l("Contact name format", "Formato nome contatto")}</Label
+    >
+    <Input
+      id="contact-format"
+      bind:ref={formatInput}
+      bind:value={formatDraft}
+      maxlength={180}
+    />
+    <div class="flex flex-wrap gap-1">
+      {#each Object.keys(sampleContact) as key (key)}
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          onclick={() => insertPlaceholder(key)}>{"{" + key + "}"}</Button
+        >
+      {/each}
+    </div>
+    <p class="text-sm text-muted-foreground">
+      {l("Preview", "Anteprima")} · {contactName(formatDraft, sampleContact)}
+    </p>
+    {#if !formatValid}<p role="alert">
+        {l(
+          "Enter a name format using the listed placeholders.",
+          "Inserisci un formato usando i segnaposto elencati.",
+        )}
+      </p>{/if}
+    {#if error}<p role="alert">{error}</p>{/if}
+    <Button type="submit" disabled={!formatValid || pending}
+      >{l("Save", "Salva")}</Button
+    >
+  </form>
+</Modal>
+
+<Modal
   open={!!preview}
   title={l("Review imported details", "Controlla i dettagli importati")}
   onclose={() => (preview = null)}
@@ -1727,6 +1887,14 @@
           )}
         </p>
       </div>
+      {#if preview.contact}
+        {@const contact = preview.contact}
+        <Button
+          variant="outline"
+          onclick={() => saveGuestContact(contact, contactNameFormat)}
+          ><Contact />{l("Save contact", "Salva contatto")}</Button
+        >
+      {/if}
       <dl class="grid gap-3">
         {#each preview.details.filter(([, value]) => value) as [label, value], index (index)}<div
             class="border-b pb-3"

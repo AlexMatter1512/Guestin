@@ -89,6 +89,7 @@
   import StructureSettings from "$lib/components/StructureSettings.svelte";
   import CodeTimeline from "$lib/components/CodeTimeline.svelte";
   import NotificationHistory from "$lib/components/NotificationHistory.svelte";
+  import { connectorProviders, matchesKind } from "$lib/connector-providers";
   import ConnectorManager from "$lib/components/ConnectorManager.svelte";
   import Modal from "$lib/components/Modal.svelte";
   import CodeRowActions from "$lib/components/CodeRowActions.svelte";
@@ -438,8 +439,31 @@
       (item) => item.id !== "connectors" || can("useBookingConnectors"),
     ),
   );
+  const connectorFavourites = $derived(
+    can("useBookingConnectors")
+      ? connectorProviders
+          .filter((provider) =>
+            connections.some(
+              (connection) =>
+                connection.property_id === propertyId &&
+                matchesKind(connection, provider.id),
+            ),
+          )
+          .map((provider) => ({
+            id: "connectors/" + provider.id,
+            view: provider.id,
+            title: provider.name,
+            icon: provider.icon,
+          }))
+      : [],
+  );
   const favourite = $derived(
-    visibleOtherItems.find((item) => item.id === favouriteId) ??
+    connectorFavourites.find((item) => item.id === favouriteId) ??
+      visibleOtherItems.find(
+        (item) =>
+          item.id === favouriteId ||
+          (favouriteId.startsWith("connectors/") && item.id === "connectors"),
+      ) ??
       visibleOtherItems.find((item) => item.id === "reports")!,
   );
   const favouriteActive = $derived(otherItemActive(favourite.id));
@@ -451,6 +475,8 @@
   function otherItemActive(id: string) {
     if (id === "reports") return tab === "Reports";
     if (id === "connectors") return tab === "Connectors";
+    if (id.startsWith("connectors/"))
+      return tab === "Connectors" && id === "connectors/" + connectorView;
     if (id === "settings")
       return (
         tab === "Messages" ||
@@ -475,6 +501,12 @@
       otherItems.find((i) => i.id === settingsPage),
   );
   function openSettings(id: string) {
+    const connector = connectorFavourites.find((item) => item.id === id);
+    if (connector) {
+      navigate("Connectors");
+      connectorView = connector.view;
+      return;
+    }
     if (id === "connectors" || id === "messages" || id === "reports") {
       navigate(id[0].toUpperCase() + id.slice(1));
       return;
@@ -3224,6 +3256,9 @@
               {property}
               owner={user.role === "owner"}
               onDraft={newCode}
+              contactNameFormat={user.preferences?.contactNameFormat ??
+                "{name}"}
+              savePreferences={preferences}
               bind:view={connectorView}
             />
           {:else if tab === "Messages"}<div class="page-intro">
@@ -3392,26 +3427,50 @@
           {:else if tab === "Other"}
             <Item.Group class="workspace-list">
               {#each visibleOtherItems as item (item.id)}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  class="settings-row"
-                  data-tour={"nav-" + item.id}
-                  aria-pressed={choosingFavourite
-                    ? favourite.id === item.id
-                    : undefined}
-                  onclick={() => activateOtherItem(item.id)}
-                >
-                  <item.icon size={20} /><span
-                    ><strong>{t(item.title)}</strong><small
-                      >{t(item.description)}</small
-                    ></span
-                  >{#if choosingFavourite && favourite.id === item.id}<Check
-                      size={18}
-                    />{:else if !choosingFavourite}<ChevronRight
-                      size={18}
-                    />{/if}
-                </Button>
+                {#if choosingFavourite && item.id === "connectors"}
+                  <div class="settings-row">
+                    <Plug size={20} />
+                    <NativeSelect.Root
+                      class="w-full"
+                      value=""
+                      aria-label={t("Choose favourite connector")}
+                      onchange={(e) => activateOtherItem(e.currentTarget.value)}
+                    >
+                      <NativeSelect.Option value="" disabled
+                        >{t("Connectors")}</NativeSelect.Option
+                      >
+                      <NativeSelect.Option value="connectors"
+                        >{t("All connectors page")}</NativeSelect.Option
+                      >
+                      {#each connectorFavourites as provider (provider.id)}
+                        <NativeSelect.Option value={provider.id}
+                          >{provider.title}</NativeSelect.Option
+                        >
+                      {/each}
+                    </NativeSelect.Root>
+                  </div>
+                {:else}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    class="settings-row"
+                    data-tour={"nav-" + item.id}
+                    aria-pressed={choosingFavourite
+                      ? favourite.id === item.id
+                      : undefined}
+                    onclick={() => activateOtherItem(item.id)}
+                  >
+                    <item.icon size={20} /><span
+                      ><strong>{t(item.title)}</strong><small
+                        >{t(item.description)}</small
+                      ></span
+                    >{#if choosingFavourite && favourite.id === item.id}<Check
+                        size={18}
+                      />{:else if !choosingFavourite}<ChevronRight
+                        size={18}
+                      />{/if}
+                  </Button>
+                {/if}
               {/each}
             </Item.Group>
             {#if !desktop.current}

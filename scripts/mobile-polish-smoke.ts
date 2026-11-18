@@ -170,9 +170,12 @@ try {
     ).toBe(true);
     await goToToday.click();
     await page.locator(".date-picker-trigger").click();
-    const calendar = page.locator('[data-slot="popover-content"]');
+    const calendar = page.getByRole("dialog", { name: "Valid on date" });
     await expect(calendar).toBeVisible();
     const bounds = (await calendar.boundingBox())!;
+    const month = calendar.locator("[data-calendar-root]");
+    await expect(month).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    expect((await month.boundingBox())!.width).toBeLessThan(bounds.width);
     expect(bounds.x).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(width + 1);
     await page.keyboard.press("Escape");

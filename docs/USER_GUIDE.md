@@ -22,7 +22,7 @@ Reset links expire after **10 minutes**, work **once**, and replace any earlier 
 
 ## Booking and calendar imports
 
-**KrossBooking:** connect your account, complete verification, find the reservation, and review the suggested code. The bearer token is encrypted in the server’s SQLite database and shared across the team’s devices. The browser never stores or receives it; your Kross password is not saved.
+**KrossBooking** opens the room planner from today through the end of the month. Select a date range to see another period. Open a booking to review its details and the doors matched to its source rooms. When a phone number is available, **Save contact** shares or downloads a vCard. The settings icon lets you customize the contact name using guest, room, date, property and reservation placeholders. Under **Other → Choose favourite**, open the **Connectors** dropdown to set your mobile shortcut to a configured connector or the **All connectors page**. The back button returns to all connectors. You can also find reservations by guest name or arrival date. The server encrypts the bearer token in SQLite and uses it for the team's devices. Your Kross password is used only for sign-in.
 
 **iCal:** upload a calendar or fetch a saved calendar URL, inspect its events, then choose the door those events belong to. For example, a calendar for “Room 2” maps to the Room 2 door. In the draft, you can add the main entrance or other doors before saving. Importing a calendar alone creates no access codes.
 

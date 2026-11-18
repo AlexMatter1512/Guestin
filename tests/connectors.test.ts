@@ -212,3 +212,157 @@ test("Kross v5 login validates acknowledgement, preserves leading zero verificat
   response = { error_code: 1, error_message: "Invalid login" };
   expect(client.login("user", "password")).rejects.toThrow("Invalid login");
 });
+
+test("Kross planner requests the selected calendar month and keeps each provider room and lane", async () => {
+  const calls: { path: string; body: Record<string, unknown> }[] = [];
+  const client = new KrossClient(
+    async (path, body) => {
+      calls.push({ path, body });
+      // Rome goes to summer time on the last weekend of March.
+      const start = Date.parse("2026-02-28T23:00:00Z") / 1000;
+      const arrival = Date.parse("2026-03-29T22:00:00Z") / 1000;
+      return {
+        data: {
+          start: "2026-03-01",
+          start_timestamp: start,
+          result: true,
+          dates: { [arrival]: { timestamp: arrival, date: "Mar 30" } },
+          rooms: [
+            {
+              id_room: 4,
+              label_room: "Amber [001]",
+              number: "A1",
+              name_room_type: "Room Double",
+              room_color: "a2b",
+            },
+            {
+              id_room: 5,
+              label_room: "Indigo",
+              number: "B1",
+              name_room_type: "Camera Double",
+            },
+          ],
+          planner: {
+            4: [
+              {
+                [arrival]: {
+                  id_reservation: 37,
+                  reservation: "Planner guest",
+                  size: 2,
+                  bg_color: "#002244",
+                  text_color: "#fff",
+                },
+              },
+              {
+                [arrival]: {
+                  id_room_block: 7,
+                  reservation: "Maintenance",
+                  size: 1,
+                },
+              },
+            ],
+          },
+        },
+      };
+    },
+    "hotel",
+    "device",
+  );
+  const plan = await client.planner(12, "2026-03", "it");
+  expect(calls[0]).toEqual({
+    path: "/app/get-planner?id_property=12&days=31&date_start=2026-03-01",
+    body: {
+      id_property: 12,
+      days: 31,
+      date_start: "2026-03-01",
+      checkout: false,
+      lang: "it",
+      groups: [],
+    },
+  });
+  expect(plan.rooms.map(({ id, name }) => [id, name])).toEqual([
+    ["4", "Amber [001]"],
+    ["5", "Indigo"],
+  ]);
+  expect(plan.rooms[0].color).toBe("#a2b");
+  expect(plan.reservations).toHaveLength(2);
+  expect(plan.reservations[0]).toEqual({
+    id_reservation: 37,
+    roomId: "4",
+    roomNames: ["Amber [001]"],
+    row: 1,
+    label: "Planner guest",
+    arrival: "2026-03-30",
+    departure: "2026-04-01",
+    color: "#002244",
+    textColor: "#fff",
+  });
+  expect(plan.reservations[1]).toMatchObject({
+    id_reservation: 0,
+    blockId: 7,
+    row: 2,
+    departure: "2026-03-31",
+  });
+  await client.planner(12, "2028-02");
+  expect(calls[1].body.days).toBe(29);
+  await expect(client.planner(0, "2026-03")).rejects.toThrow();
+  await expect(client.planner(12, "2026-13")).rejects.toThrow();
+  expect(calls).toHaveLength(2);
+});
+
+test("Kross planner retains empty rooms and treats the provider's day labels as calendar dates", async () => {
+  let response: any = {
+    data: { rooms: { 9: { id_room: 9, number: 101 } }, dates: [], planner: [] },
+  };
+  const client = new KrossClient(async () => response, "hotel", "device");
+  expect(await client.planner(1, "2026-12")).toMatchObject({
+    rooms: [{ id: "9", name: "101" }],
+    reservations: [],
+  });
+  response.data.dates = [{ timestamp: "1798671600", date: "31/12" }];
+  response.data.planner = {
+    9: [{ "1798671600": { id_reservation: "22", size: 2 } }],
+  };
+  expect((await client.planner(1, "2026-12")).reservations[0]).toMatchObject({
+    arrival: "2026-12-31",
+    departure: "2027-01-02",
+  });
+  response = { data: { unexpected: true } };
+  await expect(client.planner(1, "2026-12")).rejects.toThrow(
+    "unreadable planner",
+  );
+});
+
+test("planner ranges cross provider request boundaries without splitting a stay", async () => {
+  const calls: { date_start: string; days: number }[] = [];
+  const client = new KrossClient(
+    async (_path, body) => {
+      const start = String(body.date_start);
+      const days = Number(body.days);
+      calls.push({ date_start: start, days });
+      const timestamp = Date.parse(start) / 1000;
+      return {
+        data: {
+          start,
+          start_timestamp: timestamp,
+          dates: [{ timestamp }],
+          rooms: [{ id_room: 1, number: "A" }],
+          planner: { 1: [{ [timestamp]: { id_reservation: 42, size: days } }] },
+        },
+      };
+    },
+    "hotel",
+    "device",
+  );
+  const result = await client.plannerRange(1, "2026-12-20", "2027-01-23");
+  expect(calls).toEqual([
+    { date_start: "2026-12-20", days: 31 },
+    { date_start: "2027-01-20", days: 4 },
+  ]);
+  expect(result.rooms).toHaveLength(1);
+  expect(result.reservations).toHaveLength(1);
+  expect(result.reservations[0]).toMatchObject({
+    arrival: "2026-12-20",
+    departure: "2027-01-24",
+  });
+});
