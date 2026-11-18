@@ -481,8 +481,8 @@ const italian: Record<string, string> = {
     "Your owner sets up the property": "Il proprietario configura la struttura",
     "Give your property a name, confirm its timezone and save it with Add property. The guide continues only after it is saved.":
       "Assegna un nome alla struttura, conferma il fuso orario e salvala con Aggiungi struttura. La guida prosegue solo dopo il salvataggio.",
-    "Click the highlighted Settings button. We’ll create your property first, then an example door and an access code. You’ll save each item yourself.":
-      "Premi il pulsante Impostazioni evidenziato. Creeremo prima la tua struttura, poi una porta di esempio e un codice di accesso. Salverai ogni elemento personalmente.",
+    "Click the highlighted Other button. We’ll create your property first, then an example door and an access code. You’ll save each item yourself.":
+      "Premi il pulsante Altro evidenziato. Creeremo prima la tua struttura, poi una porta di esempio e un codice di accesso. Salverai ogni elemento personalmente.",
     "Your property is ready. Click the highlighted Doors button to add an example door. You will add a device connector later.":
       "La struttura è pronta. Premi Porte, il pulsante evidenziato, per aggiungere una porta di esempio. Aggiungerai un connettore per il dispositivo più tardi.",
     "Click Add door. Give it a name such as “Example entrance”. You will add a device connector later, so no device account or credentials are needed now.":
@@ -570,6 +570,10 @@ const redesignedItalian: Record<string, string> = {
   "Copy invitation": "Copia invito",
   "Notify me about": "Avvisami per",
   "Access accepted": "Accessi accettati",
+  "Door opened": "Porta aperta",
+  Other: "Altro",
+  Stats: "Statistiche",
+  Breakfasts: "Colazioni",
   "Access denied": "Accessi negati",
   "Device failures": "Errori dei dispositivi",
   "Breakfast usage": "Utilizzo colazioni",

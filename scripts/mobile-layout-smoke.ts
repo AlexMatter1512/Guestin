@@ -1,5 +1,6 @@
 import { chromium, expect } from "@playwright/test";
 import { openDatabase } from "../server/db";
+import { formatDate } from "../shared/date-format";
 
 import { websocket } from "../server/realtime";
 import { resolve, extname, join } from "node:path";
@@ -127,18 +128,50 @@ try {
     await expect(page.locator(".page-heading h1")).toHaveText(heading);
   }
   async function fits() {
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= innerWidth,
-      ),
-    ).toBe(true);
+    const overflow = await page.evaluate(() =>
+      [...document.querySelectorAll("main *, nav")]
+        .filter(
+          (element) => element.getBoundingClientRect().right > innerWidth + 1,
+        )
+        .map((element) => ({
+          tag: element.tagName,
+          class: element.className,
+          right: element.getBoundingClientRect().right,
+        })),
+    );
+    expect(overflow).toEqual([]);
   }
   await route("codes", "Access codes");
   await expect(page.locator(".code-row")).toHaveCount(1);
   for (const width of [320, 390, 430]) {
     await page.setViewportSize({ width, height: 844 });
+    const searchBox = (await page
+      .getByRole("button", { name: "Search codes", exact: true })
+      .boundingBox())!;
+    const overflowBox = (await page
+      .getByRole("button", { name: "List actions", exact: true })
+      .boundingBox())!;
+    expect(searchBox.y).toBe(overflowBox.y);
+    const tabsBox = (await page.locator(".code-view-tabs").boundingBox())!;
+    const dateBox = (await page.locator(".code-toolbar").boundingBox())!;
+    expect(
+      Math.abs(tabsBox.y + tabsBox.height / 2 - dateBox.y - dateBox.height / 2),
+    ).toBeLessThan(1);
     await fits();
     await capture("codes-" + width);
+    await page.getByRole("button", { name: "Next day", exact: true }).click();
+    const todayBox = (await page
+      .getByRole("button", { name: "Go to today", exact: true })
+      .boundingBox())!;
+    expect(todayBox.x).toBeGreaterThanOrEqual(tabsBox.x + tabsBox.width);
+    expect(todayBox.x + todayBox.width).toBeLessThanOrEqual(
+      (await page.locator(".code-toolbar").boundingBox())!.x,
+    );
+    await fits();
+    await capture("codes-future-" + width);
+    await page
+      .getByRole("button", { name: "Go to today", exact: true })
+      .click();
     const firstRow = await page.locator(".code-row").boundingBox();
     expect(firstRow!.y).toBeLessThan(291);
     for (const button of await page.locator(".code-row-actions button").all()) {
@@ -198,6 +231,40 @@ try {
   });
   await expect(share.getByLabel("Message preview")).toHaveValue(/Elena Rossi/);
   await share.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByRole("button", { name: "Other", exact: true }).click();
+  await expect(page).toHaveURL(/#\/other$/);
+  const otherRows = page.locator("main .settings-row");
+  await expect(otherRows.locator("strong")).toHaveText([
+    "Properties",
+    "Connectors",
+    "Stats",
+    "Breakfasts",
+    "Settings",
+  ]);
+  await otherRows.filter({ hasText: "Settings" }).click();
+  await expect(page.locator(".page-heading h1")).toHaveText("Settings");
+  for (const id of ["properties", "connectors", "reports", "breakfast"])
+    await expect(page.locator(`main [data-tour="nav-${id}"]`)).toHaveCount(0);
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(page.locator(".page-heading h1")).toHaveText("Other");
+  await page.reload();
+  await expect(page.locator(".page-heading h1")).toHaveText("Other");
+  for (const [path, title] of [
+    ["settings/team", "Team"],
+    ["settings/guest-links", "Guest links"],
+    ["settings/smtp", "Email delivery (SMTP)"],
+    ["reports", "Statistics"],
+  ]) {
+    await route(path, title);
+    await expect(
+      page.getByRole("heading", { name: title, exact: true }),
+    ).toHaveCount(1);
+    await expect(
+      page.locator(".view-content > [data-slot='card'], .view-content > .card"),
+    ).toHaveCount(0);
+    await fits();
+    await capture(path.replaceAll("/", "-"));
+  }
   await route("codes/" + code.id + "/edit", "Edit access code");
   const form = page.locator('form[data-tour="code-form"]');
   await expect(
@@ -217,6 +284,46 @@ try {
   expect(Math.abs((await bar.boundingBox())!.y - before.y)).toBeLessThan(1);
   await page.evaluate(() => window.scrollTo(0, 0));
   await capture("edit-code");
+  const validFrom = form.getByRole("button", {
+    name: "Valid from",
+    exact: true,
+  });
+  const originalTime = await form
+    .getByLabel("Valid from · Time", { exact: true })
+    .inputValue();
+  const alternateDate =
+    start.slice(0, 8) + (start.slice(8, 10) === "01" ? "02" : "01");
+  await validFrom.click();
+  await page
+    .locator(`[data-value="${alternateDate}"] [data-bits-day]`)
+    .first()
+    .click();
+  await expect(validFrom).toHaveText(formatDate(alternateDate));
+  await expect(
+    form.getByLabel("Valid from · Time", { exact: true }),
+  ).toHaveValue(originalTime);
+  await validFrom.click();
+  const calendarDay = page
+    .locator(`[data-value="${start.slice(0, 10)}"] [data-bits-day]`)
+    .first();
+  await expect(calendarDay).toBeVisible();
+  await capture("date-input-calendar");
+  await calendarDay.click();
+  await expect(validFrom).toHaveText(formatDate(start.slice(0, 10)));
+  await expect(
+    form.getByLabel("Valid from · Time", { exact: true }),
+  ).toHaveValue(originalTime);
+  const breakfastDate = form.getByRole("button", {
+    name: "First breakfast date",
+    exact: true,
+  });
+  await breakfastDate.click();
+  await page
+    .locator(`[data-value="${start.slice(0, 10)}"] [data-bits-day]`)
+    .first()
+    .click();
+  await expect(breakfastDate).toHaveText(formatDate(start.slice(0, 10)));
+  await fits();
   await expect(
     form.getByLabel("Online check-in link", { exact: true }),
   ).toBeHidden();
@@ -246,6 +353,8 @@ try {
   expect(saved.notes).toBe("Keep this private note");
   expect(saved.grants).toHaveLength(1);
   expect(saved.breakfast.total).toBe(4);
+  expect(saved.breakfast.start).toBe(start.slice(0, 10));
+  expect(saved.grants[0].start).toBe(start.slice(0, 16) + ":00.000Z");
   await expect(page.locator(".app-nav")).toBeVisible();
   await route("codes/" + code.id + "/edit", "Edit access code");
   await form

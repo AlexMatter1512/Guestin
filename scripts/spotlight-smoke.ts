@@ -138,7 +138,7 @@ try {
   await page.emulateMedia({ colorScheme: "light" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await page.screenshot({ path: join(directory, "desktop-spotlight.png") });
-  await page.locator('[data-tour="nav-settings"]').click();
+  await page.locator('[data-tour="nav-other"]').click();
   await expect(page.locator('[data-tour="nav-properties"]')).toHaveAttribute(
     "data-tour-highlighted",
     "true",

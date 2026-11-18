@@ -444,7 +444,7 @@ try {
     .getByRole("button", { name: "Click here to open 🔓", exact: true })
     .click();
   await expect(
-    page.getByText("Request accepted", { exact: false }),
+    page.getByText("Door opened", { exact: false }),
   ).toBeVisible();
   expect(deviceCalls).toBe(1);
   await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 6000 });

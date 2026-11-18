@@ -221,7 +221,7 @@ try {
   await confirm.getByRole("switch").check();
   await confirm.getByRole("button", { name: "Send unlock request" }).click();
   await expect(
-    page.getByText("Request accepted by device provider", { exact: true }),
+    page.getByText("Door opened", { exact: true }),
   ).toBeVisible();
   expect(deviceCalls).toBe(2);
   // The example door can be deleted, while preserving the connected one.

@@ -37,7 +37,7 @@ const titles: Record<string, [string, string]> = {
     "Device request resolved",
     "Richiesta dispositivo risolta",
   ],
-  "access.accepted": ["Request accepted", "Richiesta accettata"],
+  "access.accepted": ["Door opened", "Porta aperta"],
   "access.denied": ["Access denied", "Accesso negato"],
   "access.failed": [
     "Device request failed",

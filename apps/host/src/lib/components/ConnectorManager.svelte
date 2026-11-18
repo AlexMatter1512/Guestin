@@ -1,5 +1,5 @@
 <script lang="ts">
- import { hostStorage } from "$lib/demo-storage";
+  import { hostStorage } from "$lib/demo-storage";
   import DateInput from "$lib/components/DateInput.svelte";
   import {
     formatDisplayDate,
@@ -920,6 +920,7 @@
                   >{l("Arrivals date", "Data arrivi")}</Label
                 ><DateInput
                   id="kross-arrivals"
+                  label={l("Arrivals date", "Data arrivi")}
                   bind:value={arrivalDate}
                   required
                   disabled={pending}

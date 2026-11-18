@@ -212,7 +212,7 @@ try {
   await expect(
     timeline.getByRole("link", { name: "View all", exact: true }),
   ).toHaveCount(0);
-  await expect(timeline).toContainText("Request accepted · Entrance");
+  await expect(timeline).toContainText("Door opened · Entrance");
   await expect(timeline).toContainText("Access code created");
   await expect(recap.getByText("Manage access", { exact: true })).toHaveCount(
     0,

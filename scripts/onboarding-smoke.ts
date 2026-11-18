@@ -1,12 +1,13 @@
 import { chromium, expect, type Page } from "@playwright/test";
 async function showNavigation(page: Page) {
-  if (!(await page.locator('[data-tour="nav-settings"]').isVisible())) {
+  if (!(await page.locator('[data-tour="nav-other"]').isVisible())) {
     // Leaving an editor via Back preserves its draft; Cancel discards it.
     await page.getByRole("button", { name: "Back", exact: true }).click();
   }
 }
 async function replayTour(page: Page) {
   await showNavigation(page);
+  await page.locator('[data-tour="nav-other"]').click();
   await page.locator('[data-tour="nav-settings"]').click();
   await page.locator('[data-tour="app-tour"]').click();
 }
@@ -134,11 +135,11 @@ try {
   // Guidance points to a real navigation button rather than switching the page.
   await expect(page.locator(".page-heading h1")).toHaveText("Access codes");
   await noSideEffects(page, [0, 0, 0]);
-  await expect(page.locator('[data-tour="nav-settings"]')).toHaveAttribute(
+  await expect(page.locator('[data-tour="nav-other"]')).toHaveAttribute(
     "data-tour-highlighted",
     "true",
   );
-  await page.locator('[data-tour="nav-settings"]').click();
+  await page.locator('[data-tour="nav-other"]').click();
   await expect(page.locator('[data-tour="nav-properties"]')).toHaveAttribute(
     "data-tour-highlighted",
     "true",

@@ -255,7 +255,7 @@ try {
   ).toHaveAttribute("data-unread", "false");
   await expect(
     page.locator(`[data-notification-id="${accepted.id}"]`),
-  ).toContainText("Request accepted · Front door");
+  ).toContainText("Door opened · Front door");
   await expect(
     page.locator(`[data-notification-id="${accepted.id}"]`),
   ).not.toContainText("Fixture accepted");

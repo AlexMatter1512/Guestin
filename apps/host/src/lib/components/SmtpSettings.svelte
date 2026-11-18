@@ -51,8 +51,8 @@
   });
 </script>
 
-<section class="card stack" data-tour="smtp">
-  <h2>{t("Email delivery (SMTP)")}</h2>
+<section class="stack" data-tour="smtp">
+  {#if oncontinue}<h2>{t("Email delivery (SMTP)")}</h2>{/if}
   <p>
     {t(
       "Connect any SMTP server to send verification and password recovery emails. You can skip this and let owners generate recovery links.",

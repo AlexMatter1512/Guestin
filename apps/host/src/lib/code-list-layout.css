@@ -150,3 +150,50 @@
     margin: 4px 0 0;
   }
 }
+
+/* Align the type selector and date navigation under the heading actions. */
+.code-list-controls .code-toolbar {
+  margin: 0 0 0 auto;
+  flex-shrink: 0;
+}
+.code-list-controls > .today-button {
+  margin-inline: auto;
+  padding-inline: 8px;
+  white-space: normal;
+  line-height: 1.2;
+}
+@media (max-width: 639px) {
+  .code-list-controls {
+    gap: 4px;
+  }
+  .code-view-tabs {
+    gap: 0;
+    padding: 2px;
+    flex-shrink: 0;
+  }
+  .code-view-tabs .code-view-tab {
+    padding-inline: 6px;
+    font-size: 12px;
+  }
+  .code-list-controls .code-toolbar {
+    gap: 0;
+  }
+  .code-list-controls .code-toolbar > button {
+    min-width: 28px;
+    width: 28px;
+  }
+  .code-list-controls .code-toolbar .date-picker-trigger {
+    width: auto;
+    padding-inline: 4px;
+    font-size: 12px;
+  }
+  .code-list-controls .date-picker-trigger svg {
+    display: none;
+  }
+  .code-list-controls > .today-button {
+    min-width: 0;
+    max-width: 56px;
+    font-size: 12px;
+    padding-inline: 2px;
+  }
+}

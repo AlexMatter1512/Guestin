@@ -1,5 +1,6 @@
 import { chromium, expect } from "@playwright/test";
 async function replayTour(page: any) {
+  await page.locator('[data-tour="nav-other"]').click();
   await page.locator('[data-tour="nav-settings"]').click();
   await page.locator('[data-tour="app-tour"]').click();
 }
@@ -67,14 +68,12 @@ try {
     "Crea la tua prima struttura",
   );
   await expect(page.locator("html")).toHaveAttribute("lang", "it");
-  await expect(page.locator('[data-tour="nav-settings"]')).toHaveText(
-    "Impostazioni",
-  );
+  await expect(page.locator('[data-tour="nav-other"]')).toHaveText("Altro");
   await page.screenshot({
     path: join(dir, "italian-guide.png"),
     fullPage: true,
   });
-  await page.locator('[data-tour="nav-settings"]').click();
+  await page.locator('[data-tour="nav-other"]').click();
   await expect(page.locator('[data-tour="nav-properties"]')).toHaveAttribute(
     "data-tour-highlighted",
     "true",
@@ -120,6 +119,11 @@ try {
     .locator('[data-tour="enable-notifications"]')
     .getByRole("button", { name: "Continua", exact: true })
     .click();
+  await expect(tour.getByRole("heading")).toHaveText("Configura l’invio email");
+  await page
+    .locator('[data-tour="smtp"]')
+    .getByRole("button", { name: "Continue", exact: true })
+    .click();
   await expect(tour.getByRole("heading")).toHaveText(
     "Il tuo primo codice di accesso è pronto",
   );
@@ -140,6 +144,7 @@ try {
   );
   await expect(page.locator(".guided-setup")).toHaveCount(0);
   await expect(chooser).not.toBeVisible();
+  await page.locator('[data-tour="nav-other"]').click();
   await page.locator('[data-tour="nav-settings"]').click();
   await page.locator('[data-tour="nav-language"]').click();
   const language = page.getByRole("radiogroup", {

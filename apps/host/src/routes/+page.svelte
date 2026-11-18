@@ -51,6 +51,7 @@
     DoorOpen,
     Plus,
     Settings,
+    Menu,
     CircleHelp,
     ChevronRight,
     MessageSquare,
@@ -370,6 +371,38 @@
       owner: true,
     },
   ];
+  const otherItems = [
+    {
+      id: "properties",
+      title: "Properties",
+      description: "Names, timezones and arrival defaults",
+      icon: Building2,
+    },
+    {
+      id: "connectors",
+      title: "Connectors",
+      description: "KrossBooking, calendars and AI",
+      icon: Plug,
+    },
+    {
+      id: "reports",
+      title: "Stats",
+      description: "See code creation and usage",
+      icon: ChartNoAxesColumn,
+    },
+    {
+      id: "breakfast",
+      title: "Breakfasts",
+      description: "Breakfast page and password protection",
+      icon: Coffee,
+    },
+    {
+      id: "settings",
+      title: "Settings",
+      description: "Manage your workspace and preferences",
+      icon: Settings,
+    },
+  ];
   const currentSetting = $derived(
     settingItems.find((i) => i.id === settingsPage),
   );
@@ -379,7 +412,7 @@
       return;
     }
     navigate("Settings");
-    settingsPage = id;
+    settingsPage = id === "settings" ? "" : id;
   }
   function back() {
     if (tab === "Codes" && detailCodeId && codeActivity) {
@@ -396,7 +429,9 @@
       return;
     }
     if (tab === "Settings") {
-      settingsPage = "";
+      if (!settingsPage || ["properties", "breakfast"].includes(settingsPage))
+        navigate("Other");
+      else settingsPage = "";
       return;
     }
     navigate(
@@ -404,7 +439,7 @@
         ? "Codes"
         : tab === "Doors"
           ? "Doors"
-          : "Settings",
+          : "Other",
     );
   }
   function editProperty(p?: any) {
@@ -601,6 +636,7 @@
       ...tools.map((n) => n.name),
       "Profile",
       "Activity",
+      "Settings",
     ].find((n) => n.toLowerCase() === destination);
     if (!found) return;
     const savedDraft = user && hostStorage.getItem("guestin.draft." + user.id);
@@ -1599,7 +1635,7 @@
     { name: "Doors", icon: DoorOpen },
     { name: "Create", icon: Plus },
     { name: "Reports", label: "Statistics", icon: ChartNoAxesColumn },
-    { name: "Settings", icon: Settings },
+    { name: "Other", icon: Menu },
   ];
   const tools = [
     {
@@ -1641,6 +1677,7 @@
       doorEditor ||
       !!detailDoorId ||
       !!settingsPage ||
+      tab === "Settings" ||
       ["Messages", "Activity", "Connectors", "Profile"].includes(tab),
   );
   const pageTitle = $derived(
@@ -1709,8 +1746,8 @@
     tourStage === "smtp"
       ? '[data-tour="smtp"]'
       : tourStage === "property"
-        ? tab !== "Settings"
-          ? '[data-tour="nav-settings"]'
+        ? !["Other", "Settings"].includes(tab)
+          ? '[data-tour="nav-other"]'
           : settingsPage !== "properties"
             ? '[data-tour="nav-properties"]'
             : propertyForm
@@ -1743,7 +1780,8 @@
           "Connect email delivery for verification and password recovery, or continue to use owner-generated reset links.",
         )
       : tourStage === "property"
-        ? tab === "Settings" && settingsPage !== "properties"
+        ? tab === "Other" ||
+          (tab === "Settings" && settingsPage !== "properties")
           ? t("Open Properties to set up your first structure.")
           : tab === "Settings" && !propertyForm
             ? t(
@@ -1754,7 +1792,7 @@
                   "Give your property a name, confirm its timezone and save it with Add property. The guide continues only after it is saved.",
                 )
               : t(
-                  "Click the highlighted Settings button. We’ll create your property first, then an example door and an access code. You’ll save each item yourself.",
+                  "Click the highlighted Other button. We’ll create your property first, then an example door and an access code. You’ll save each item yourself.",
                 )
         : tourStage === "door"
           ? tab !== "Doors"
@@ -1884,7 +1922,7 @@
       tab === "Settings" &&
       settingsPage !== "properties"
     )
-      settingsPage = "";
+      navigate("Other");
     tourVisible = true;
   }
   function setTourProperty(id: string) {
@@ -2159,8 +2197,10 @@
             class={cn({
               active:
                 tab === item.name ||
-                (item.name === "Settings" &&
-                  ["Connectors", "Messages", "Profile"].includes(tab)),
+                (item.name === "Other" &&
+                  ["Settings", "Connectors", "Messages", "Profile"].includes(
+                    tab,
+                  )),
             })}
             aria-current={tab === item.name ? "page" : undefined}
             data-tour={"nav-" + item.name.toLowerCase()}
@@ -2170,18 +2210,62 @@
           >{/if}
       {/each}
     </nav>
-    <main class:settings-index={tab === "Settings" && !settingsPage}>
+    <main
+      class:settings-index={tab === "Other" ||
+        (tab === "Settings" && !settingsPage)}
+    >
       <div class="page-heading list-page-heading">
         <h1>{t(pageTitle)}</h1>
-        {#if user.role === "owner" && propertyId && ((tab === "Codes" && !editing && !detailCodeId) || (tab === "Doors" && !doorEditor && !detailDoorId))}
-          {#key tab + propertyId}<HeadingRecordActions
-              kind={tab === "Doors" ? "doors" : "codes"}
-              {propertyId}
-              propertyName={property?.name ?? ""}
-              {api}
-              {reload}
-            />{/key}
-        {/if}
+        <div class="code-list-tools">
+          {#if tab === "Codes" && !editing && !detailCodeId}
+            <Popover.Root>
+              <Popover.Trigger
+                class={buttonVariants({ variant: "ghost", size: "icon" })}
+                aria-label={t("Search codes")}
+                title={t("Search codes")}
+                data-search-active={!!search}
+                ><Search size={18} /></Popover.Trigger
+              >
+              <Popover.Content align="end" class="w-72">
+                <Label for="code-search">{t("Search codes")}</Label>
+                <div class="flex gap-2">
+                  <Input
+                    id="code-search"
+                    placeholder={t(
+                      staffCodes
+                        ? "Search staff access…"
+                        : "Search guest access…",
+                    )}
+                    bind:value={search}
+                  /><Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t("Clear search")}
+                    onclick={() => (search = "")}><X size={16} /></Button
+                  >
+                </div>
+              </Popover.Content>
+            </Popover.Root>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t("Filters")}
+              title={t("Filters")}
+              aria-expanded={filtersOpen}
+              onclick={() => (filtersOpen = !filtersOpen)}
+              ><ListFilter size={17} />{codeStatus !== "all" ? "1" : ""}</Button
+            >
+          {/if}
+          {#if user.role === "owner" && propertyId && ((tab === "Codes" && !editing && !detailCodeId) || (tab === "Doors" && !doorEditor && !detailDoorId))}
+            {#key tab + propertyId}<HeadingRecordActions
+                kind={tab === "Doors" ? "doors" : "codes"}
+                {propertyId}
+                propertyName={property?.name ?? ""}
+                {api}
+                {reload}
+              />{/key}
+          {/if}
+        </div>
       </div>
       <Tour
         open={tourVisible}
@@ -2315,6 +2399,7 @@
                         >
                           {#if !draft.staff}<Label class="field-label"
                               >{t("Valid from")}<DateInput
+                                label={t("Valid from")}
                                 withTime
                                 value={dateInput(grant.start)}
                                 onValueChange={(value) =>
@@ -2323,6 +2408,7 @@
                               /></Label
                             ><Label class="field-label"
                               >{t("Valid until")}<DateInput
+                                label={t("Valid until")}
                                 withTime
                                 value={dateInput(grant.end)}
                                 onValueChange={(value) =>
@@ -2364,11 +2450,13 @@
                         /></Label
                       ><Label class="field-label"
                         >{t("First breakfast date")}<DateInput
+                          label={t("First breakfast date")}
                           bind:value={draft.breakfast.start}
                           required
                         /></Label
                       ><Label class="field-label"
                         >{t("Last breakfast date")}<DateInput
+                          label={t("Last breakfast date")}
                           bind:value={draft.breakfast.end}
                           required
                         /></Label
@@ -2691,68 +2779,7 @@
                     >{hostLanguage.current === "it" ? "Staff" : "Staff"}</Button
                   >
                 </div>
-                <div class="code-list-tools">
-                  <Popover.Root>
-                    <Popover.Trigger
-                      class={buttonVariants({ variant: "ghost", size: "icon" })}
-                      aria-label={t("Search codes")}
-                      title={t("Search codes")}
-                      data-search-active={!!search}
-                      ><Search size={18} /></Popover.Trigger
-                    >
-                    <Popover.Content align="end" class="w-72">
-                      <Label for="code-search">{t("Search codes")}</Label>
-                      <div class="flex gap-2">
-                        <Input
-                          id="code-search"
-                          placeholder={t(
-                            staffCodes
-                              ? "Search staff access…"
-                              : "Search guest access…",
-                          )}
-                          bind:value={search}
-                        /><Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={t("Clear search")}
-                          onclick={() => (search = "")}><X size={16} /></Button
-                        >
-                      </div>
-                    </Popover.Content>
-                  </Popover.Root>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={t("Filters")}
-                    title={t("Filters")}
-                    aria-expanded={filtersOpen}
-                    onclick={() => (filtersOpen = !filtersOpen)}
-                    ><ListFilter size={17} />{codeStatus !== "all"
-                      ? "1"
-                      : ""}</Button
-                  >
-                </div>
-              </div>
-              {#if !staffCodes}<div class="calendar-bar code-toolbar">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={t("Previous day")}
-                    onclick={() => shiftDay(-1)}
-                    ><ChevronLeft size={18} /></Button
-                  >
-                  <AccessCalendar
-                    value={activeCodeDate}
-                    hasCodes={dateHasCodes}
-                    onchange={(day) => (codeDate = day)}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={t("Next day")}
-                    onclick={() => shiftDay(1)}
-                    ><ChevronRight size={18} /></Button
-                  >
+                {#if !staffCodes}
                   {#if activeCodeDate !== todayCodeDate}
                     <Button
                       variant="ghost"
@@ -2760,7 +2787,28 @@
                       onclick={() => (codeDate = "")}>{t("Go to today")}</Button
                     >
                   {/if}
-                </div>{/if}
+                  <div class="calendar-bar code-toolbar">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t("Previous day")}
+                      onclick={() => shiftDay(-1)}
+                      ><ChevronLeft size={18} /></Button
+                    >
+                    <AccessCalendar
+                      value={activeCodeDate}
+                      hasCodes={dateHasCodes}
+                      onchange={(day) => (codeDate = day)}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t("Next day")}
+                      onclick={() => shiftDay(1)}
+                      ><ChevronRight size={18} /></Button
+                    >
+                  </div>{/if}
+              </div>
               {#if filtersOpen}<div class="filter-panel">
                   <Label class="field-label"
                     >{t("Status")}<NativeSelect.Root
@@ -2918,8 +2966,7 @@
               {codes}
               {api}
             />
-          {:else if tab === "Reports"}<Card.Root class="workspace-card">
-              <h2>{t("Code creation and usage")}</h2>
+          {:else if tab === "Reports"}<section class="stack">
               <p class="muted">
                 {t(
                   "Grouped by creation month in the property timezone. Attempts and accepted requests are lifetime totals for those codes.",
@@ -2978,7 +3025,7 @@
                       : "No activity to show yet."}
                   </p>{/each}
               </div>
-            </Card.Root>
+            </section>
           {:else if tab === "Connectors" && can("useBookingConnectors")}<ConnectorManager
               {api}
               {reload}
@@ -3153,6 +3200,24 @@
                 ><LogOut size={17} />{t("Sign out")}</Button
               >
             </Card.Root>
+          {:else if tab === "Other"}
+            <Item.Group class="workspace-list">
+              {#each otherItems.filter((item) => item.id !== "connectors" || can("useBookingConnectors")) as item (item.id)}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  class="settings-row"
+                  data-tour={"nav-" + item.id}
+                  onclick={() => openSettings(item.id)}
+                >
+                  <item.icon size={20} /><span
+                    ><strong>{t(item.title)}</strong><small
+                      >{t(item.description)}</small
+                    ></span
+                  ><ChevronRight size={18} />
+                </Button>
+              {/each}
+            </Item.Group>
           {:else if tab === "Settings"}
             {#if !settingsPage}<div class="page-intro">
                 <p>{t("Manage your workspace and preferences")}</p>
@@ -3161,6 +3226,12 @@
                   settingItems.filter(
                     (i) =>
                       i.group === group &&
+                      ![
+                        "properties",
+                        "connectors",
+                        "reports",
+                        "breakfast",
+                      ].includes(i.id) &&
                       (!i.owner || user.role === "owner") &&
                       (i.id !== "connectors" || can("useBookingConnectors")),
                   )}{#if items.length}<section class="settings-group">
@@ -3373,7 +3444,7 @@
                       }}
                     />{t("All activity types")}</Label
                   >
-                  {#each [["code.created", "Access code created"], ["access.accepted", "Access accepted"], ["access.denied", "Access denied"], ["access.failed", "Device failures"], ["access.uncertain", "Uncertain requests"], ["access.invalid", "Invalid access code attempts (including page loads)"], ["breakfast.redeemed", "Breakfast usage"], ["breakfast.denied", "Rejected breakfasts"]] as option (option[0])}<Label
+                  {#each [["code.created", "Access code created"], ["access.accepted", "Door opened"], ["access.denied", "Access denied"], ["access.failed", "Device failures"], ["access.uncertain", "Uncertain requests"], ["access.invalid", "Invalid access code attempts (including page loads)"], ["breakfast.redeemed", "Breakfast usage"], ["breakfast.denied", "Rejected breakfasts"]] as option (option[0])}<Label
                       class="inline"
                       ><Switch
                         checked={pushAllEvents ||
@@ -3592,8 +3663,7 @@
                     </div>{/each}
                 </Item.Group>{/if}
             {:else if settingsPage === "team" && user.role === "owner"}
-              <Card.Root class="workspace-card stack">
-                <h2>{t("Team")}</h2>
+              <section class="stack">
                 <Button
                   type="button"
                   variant="outline"
@@ -3624,7 +3694,7 @@
                   {reload}
                   onDelete={(account) => requestDelete("users", account)}
                 />
-              </Card.Root>
+              </section>
             {:else if settingsPage === "breakfast"}<StructureSettings
                 {property}
                 mode="breakfast"

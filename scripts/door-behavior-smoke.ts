@@ -178,7 +178,7 @@ try {
   await page.getByRole("tab", { name: "Staff", exact: true }).click();
   await expect(
     page.getByText(
-      "Door browser fixture · Request accepted · Updated entrance",
+      "Door browser fixture · Door opened · Updated entrance",
       {
         exact: true,
       },

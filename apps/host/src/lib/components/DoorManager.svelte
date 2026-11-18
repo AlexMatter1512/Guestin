@@ -457,8 +457,8 @@
       <Alert.Title
         >{result.status === "accepted"
           ? l(
-              "Request accepted by device provider",
-              "Richiesta accettata dal fornitore",
+              "Door opened",
+              "Porta aperta",
             )
           : result.status === "failed"
             ? l("Device request failed", "Richiesta al dispositivo fallita")
