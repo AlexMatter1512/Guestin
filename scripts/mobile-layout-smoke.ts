@@ -270,6 +270,7 @@ try {
     "Connectors",
     "Stats",
     "Breakfasts",
+    "Guest Page",
     "Settings",
   ]);
   await page
@@ -282,6 +283,12 @@ try {
   await page.reload();
   await page.locator("[data-tour='nav-favourite']").click();
   await expect(page.locator(".page-heading h1")).toHaveText("Breakfast");
+  await expect(page.locator('[data-tour="nav-favourite"]')).toHaveClass(
+    /(?:^|\s)active(?:\s|$)/,
+  );
+  await expect(page.locator('[data-tour="nav-other"]')).not.toHaveClass(
+    /(?:^|\s)active(?:\s|$)/,
+  );
   await page.getByRole("button", { name: "Other", exact: true }).click();
   await otherRows.filter({ hasText: "Settings" }).click();
   await expect(page.locator(".page-heading h1")).toHaveText("Settings");
@@ -491,6 +498,7 @@ try {
     "Connectors",
     "Stats",
     "Breakfasts",
+    "Guest Page",
     "Settings",
   ]);
   await sidebar.getByRole("button", { name: "Settings", exact: true }).click();
@@ -516,6 +524,207 @@ try {
   await expect(page.locator(".app-nav")).toBeVisible();
   await fits();
   await capture("edit-desktop");
+  await page.setViewportSize({ width: 390, height: 844 });
+  const branded = await api("codes", {
+    propertyId: property.id,
+    label: "Guest branding fixture",
+    grants: [
+      { doorId: entrance.id, start, end, singleUse: true },
+      { doorId: room.id, start, end, singleUse: false },
+    ],
+  });
+  const guest = await context.newPage();
+  guest.on("pageerror", (error) => errors.push(error.message));
+  await guest.goto(branded.link);
+  await expect(guest.getByText(/This code is single-use/)).toBeVisible();
+  await expect(
+    guest.getByRole("img", { name: property.name, exact: true }),
+  ).toHaveCount(0);
+
+  await route("settings/properties/" + property.id, "Edit property");
+  const logo = Buffer.from(
+    await page.evaluate(() => {
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d")!;
+      context.fillStyle = "#6b28a6";
+      context.fillRect(6, 6, 18, 18);
+      return canvas.toDataURL().split(",")[1];
+    }),
+    "base64",
+  );
+  await page
+    .getByLabel("Upload property logo")
+    .setInputFiles({ name: "logo.png", mimeType: "image/png", buffer: logo });
+  await expect(page.getByRole("img", { name: "Property logo" })).toBeVisible();
+  await page
+    .getByRole("button", { name: "Save property", exact: true })
+    .click();
+  await expect(page).toHaveURL(/#\/settings\/properties$/);
+  await guest.reload();
+  await expect(
+    guest.getByRole("img", { name: property.name, exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Other", exact: true }).click();
+  await page.getByRole("button", { name: /^Guest Page Logo/ }).click();
+  await expect(page).toHaveURL(/#\/settings\/guest-page$/);
+
+  await page.getByRole("switch", { name: "Show property logo" }).check();
+  const accent = page.getByLabel("Accent color");
+  await accent.fill("#6b28a6");
+  const intro = page.getByRole("textbox", { name: "Intro text", exact: true });
+  const introEditor = page.getByRole("group", {
+    name: "Intro text",
+    exact: true,
+  });
+  await expect(intro).toHaveValue(/If it is your first access/);
+  const previewButton = page.getByRole("button", {
+    name: "Open guest page",
+    exact: true,
+  });
+  async function openBrandingPreview() {
+    await previewButton.click();
+    const picker = page.getByRole("dialog", { name: "Choose preview doors" });
+    await picker.getByRole("checkbox", { name: "Main entrance" }).check();
+    const [popup] = await Promise.all([
+      context.waitForEvent("page"),
+      picker.getByRole("button", { name: "Open preview" }).click(),
+    ]);
+    await expect(
+      popup.getByText("Demo only. Clicking buttons will not open doors."),
+    ).toBeVisible();
+    await expect(popup.locator("[data-door-id]")).toHaveCount(1);
+    return popup;
+  }
+  await intro.fill("Welcome to Casa Aurora");
+  await introEditor
+    .getByRole("button", { name: "Heading", exact: true })
+    .click();
+  await expect(intro).toHaveValue("## Welcome to Casa Aurora");
+  await intro.fill("## Welcome to Casa Aurora\n\nKeep your key handy.");
+  await intro.evaluate((node) => {
+    const input = node as HTMLTextAreaElement;
+    const start = input.value.indexOf("key");
+    input.setSelectionRange(start, start + 3);
+  });
+  await introEditor.getByRole("button", { name: "Bold", exact: true }).click();
+  await expect(intro).toHaveValue(/\*\*key\*\*/);
+  const single = page.getByRole("textbox", {
+    name: "Single-use door message",
+    exact: true,
+  });
+  await single.fill("Take the room keys with you.");
+  await single.evaluate((node) => {
+    const input = node as HTMLTextAreaElement;
+    const start = input.value.indexOf("room keys");
+    input.setSelectionRange(start, start + 9);
+  });
+  await page
+    .getByRole("group", { name: "Single-use door message", exact: true })
+    .getByRole("button", { name: "Underline", exact: true })
+    .click();
+  await expect(single).toHaveValue(/<u>room keys<\/u>/);
+  await page.getByRole("switch", { name: "Preview: Intro text" }).check();
+  await expect(intro).toBeHidden();
+  await expect(
+    page.getByRole("heading", { name: "Welcome to Casa Aurora" }),
+  ).toBeVisible();
+  await expect(introEditor.locator("strong")).toHaveText("key");
+  await page
+    .getByRole("switch", { name: "Preview: Single-use door message" })
+    .check();
+  await expect(page.locator(".guest-markdown u")).toHaveText("room keys");
+  const introLanguage = page.getByLabel("Intro text · Language");
+  await introLanguage.selectOption("it");
+  await intro.fill("## Benvenuti a Casa Aurora");
+  await page
+    .getByRole("button", { name: "Set as default language", exact: true })
+    .click();
+  await introLanguage.selectOption("en");
+  await expect(intro).toHaveValue(/Welcome to Casa Aurora/);
+  const beforeSave = await openBrandingPreview();
+  await expect(
+    beforeSave.getByText(/If it is your first access/),
+  ).toBeVisible();
+  await expect(
+    beforeSave.getByRole("heading", { name: "Welcome to Casa Aurora" }),
+  ).toHaveCount(0);
+  await beforeSave.close();
+  await capture("guest-page-settings");
+  await page.getByRole("button", { name: "Save guest page settings" }).click();
+  await expect
+    .poll(
+      async () =>
+        (await api("properties")).find((p: any) => p.id === property.id)
+          .guestPage?.accentColor,
+    )
+    .toBe("#6b28a6");
+  await guest.reload();
+  await expect(
+    guest.getByRole("img", { name: property.name, exact: true }),
+  ).toBeVisible();
+  await expect(
+    guest.getByRole("heading", { name: "Welcome to Casa Aurora" }),
+  ).toBeVisible();
+  await expect(guest.locator(".guest-markdown u")).toHaveCount(1);
+  await expect(guest.locator(".guest-markdown u")).toHaveText("room keys");
+  await expect(guest.locator("button.guest-primary").first()).toHaveCSS(
+    "background-color",
+    "rgb(107, 40, 166)",
+  );
+  const afterSave = await openBrandingPreview();
+  await expect(
+    afterSave.getByRole("heading", { name: "Welcome to Casa Aurora" }),
+  ).toBeVisible();
+  await afterSave.locator("button.guest-primary").click();
+  await expect(afterSave.getByRole("status")).toHaveText(
+    "Demo only. No door was opened.",
+  );
+  await afterSave.getByRole("button", { name: "Select language" }).click();
+  await afterSave.getByRole("button", { name: "Switch to fr" }).click();
+  await expect(
+    afterSave.getByRole("heading", { name: "Benvenuti a Casa Aurora" }),
+  ).toBeVisible();
+  await afterSave.close();
+
+  await page
+    .getByRole("button", { name: "Previous versions", exact: true })
+    .click();
+  const history = page.getByRole("dialog", { name: "Previous versions" });
+  await expect(history.getByText("Original settings")).toBeVisible();
+  await history.getByRole("button", { name: "Load in editor" }).click();
+  await expect(intro).toHaveValue(/If it is your first access/);
+  await intro.fill("Temporary text");
+  await page
+    .getByRole("button", { name: "Restore default", exact: true })
+    .first()
+    .click();
+  await expect(intro).toHaveValue(/If it is your first access/);
+  await guest.screenshot({ path: join(directory, "guest-page-branded.png") });
+
+  await page.reload();
+  await expect(
+    guest.getByRole("img", { name: property.name, exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("switch", { name: "Show property logo" }),
+  ).toBeChecked();
+  await expect(intro).toHaveValue(/Welcome to Casa Aurora/);
+  await guest.close();
+  await page.goto(origin + "/host/#/codes/" + code.id + "/activity");
+  await expect(
+    page
+      .locator(".timeline-event")
+      .filter({ hasText: "Access code updated" })
+      .first(),
+  ).toContainText("Owner");
+  await page.goto(origin + "/host/#/activity/" + property.id);
+  await page.getByRole("tab", { name: "Staff", exact: true }).click();
+  await expect(
+    page
+      .locator("[data-notification-id]")
+      .filter({ hasText: "Door updated" })
+      .first(),
+  ).toContainText("Owner updated door Main entrance updated.");
   await api("me/preferences", { language: "it", theme: "dark" }, "PATCH");
   await page.setViewportSize({ width: 320, height: 844 });
   await page.goto(origin + "/host/#/codes");
@@ -533,10 +742,9 @@ try {
     "color",
     darkForeground,
   );
-  await expect(page.locator(".code-summary")).toHaveCSS(
-    "color",
-    darkForeground,
-  );
+  await expect(
+    page.locator(".code-summary").filter({ hasText: "Elena Rossi" }),
+  ).toHaveCSS("color", darkForeground);
   await capture("codes-italian-dark");
   console.log(JSON.stringify({ directory, deviceCalls: calls, errors }));
   expect(errors).toEqual([]);

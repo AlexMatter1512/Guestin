@@ -222,6 +222,18 @@ export function logRoute(path: string) {
     [/^\/api\/v1\/doors\/[^/]+\/config$/, "/api/v1/doors/:id/config"],
     [/^\/api\/v1\/doors\/[^/]+\/thumbnail$/, "/api/v1/doors/:id/thumbnail"],
     [/^\/api\/v1\/properties\/[^/]+\/status$/, "/api/v1/properties/:id/status"],
+    [
+      /^\/api\/v1\/properties\/[^/]+\/guest-page\/versions$/,
+      "/api/v1/properties/:id/guest-page/versions",
+    ],
+    [
+      /^\/api\/v1\/properties\/[^/]+\/guest-page\/preview$/,
+      "/api/v1/properties/:id/guest-page/preview",
+    ],
+    [
+      /^\/api\/v1\/properties\/[^/]+\/guest-page$/,
+      "/api/v1/properties/:id/guest-page",
+    ],
     [/^\/api\/v1\/properties\/[^/]+\/links$/, "/api/v1/properties/:id/links"],
     [
       /^\/api\/v1\/public\/breakfast\/[^/]+\/auth$/,

@@ -15,6 +15,7 @@
     "backup": "bun scripts/backup.ts"
   },
   "dependencies": {
+    "@humanspeak/svelte-markdown": "2.2.0",
     "hono": "^4.10.0",
     "ical.js": "^2.2.1",
     "ipaddr.js": "^2.2.0",

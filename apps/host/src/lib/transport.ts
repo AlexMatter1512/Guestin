@@ -1,3 +1,7 @@
+import {
+  guestPageSchema,
+  recordGuestPageVersion,
+} from "../../../../shared/guest-page";
 import { demoUnreadCounts } from "../../../../shared/demo-notifications";
 import { notificationCategory } from "../../../../shared/notifications";
 import {
@@ -175,6 +179,10 @@ const requestDemo: Transport = async (
     }
     return { added, replaced: 0, removed: 0, skipped };
   }
+  if (route === "connections/ai-models" && method === "POST") {
+    const id = "demo-" + body.provider;
+    return { models: [{ id, name: "Demo model" }] };
+  }
   for (const [name, records] of [
     ["properties", properties],
     ["doors", doors],
@@ -183,7 +191,16 @@ const requestDemo: Transport = async (
   ] as const) {
     if (route === name && method === "GET") return structuredClone(records);
     if (route === name && body) {
-      const record = { ...body, id: crypto.randomUUID(), active: true };
+      const record =
+        name === "connections"
+          ? {
+              id: crypto.randomUUID(),
+              property_id: body.propertyId,
+              kind: body.kind,
+              name: body.name,
+              data: body.data,
+            }
+          : { ...body, id: crypto.randomUUID(), active: true };
       records.push(record);
       return structuredClone(record);
     }
@@ -207,7 +224,7 @@ const requestDemo: Transport = async (
       const record = records.find((r: any) => r.id === id);
       if (!record) throw Error("Sample record not found");
       if (name === "connections" && action === "request") {
-        if (record.kind === "gemini")
+        if (record.kind === "gemini" || record.kind === "ai")
           return {
             text: JSON.stringify({
               label: "Alex Morgan",
@@ -241,6 +258,16 @@ const requestDemo: Transport = async (
           token: "sample",
           verified: true,
         };
+      }
+      if (name === "properties" && action === "guest-page") {
+        if (route.endsWith("/versions"))
+          return structuredClone(record.guestPageHistory ?? []);
+        const guestPage = guestPageSchema.parse(body.guestPage);
+        Object.assign(
+          record,
+          recordGuestPageVersion(record, guestPage, new Date().toISOString()),
+        );
+        return structuredClone(guestPage);
       }
       if (name === "properties" && action === "notifications") {
         Object.assign(record, {

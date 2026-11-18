@@ -82,6 +82,10 @@ export function t(key: string): string {
 
 const extra: Record<string, Record<string, string>> = {
   en: {
+    previewBanner: "Demo only. Clicking buttons will not open doors.",
+    previewClicked: "Demo only. No door was opened.",
+    previewUnavailable:
+      "Guest preview unavailable. Open it again from the host app.",
     staffIntro:
       "Use this link to open your assigned doors. Access has no time limit.",
     unrestricted: "No time limit",
@@ -104,6 +108,9 @@ const extra: Record<string, Record<string, string>> = {
     future: "Not yet valid",
   },
   it: {
+    previewBanner: "Solo demo. I pulsanti non aprono le porte.",
+    previewClicked: "Solo demo. Nessuna porta è stata aperta.",
+    previewUnavailable: "Anteprima non disponibile. Riaprila dall’app host.",
     staffIntro:
       "Usa questo link per aprire le porte assegnate. L’accesso non ha limiti di orario.",
     unrestricted: "Senza limiti di orario",
@@ -125,6 +132,10 @@ const extra: Record<string, Record<string, string>> = {
     future: "Non ancora valido",
   },
   fr: {
+    previewBanner: "Démo uniquement. Les boutons n’ouvrent aucune porte.",
+    previewClicked: "Démo uniquement. Aucune porte n’a été ouverte.",
+    previewUnavailable:
+      "Aperçu indisponible. Ouvrez-le à nouveau depuis l’application hôte.",
     staffIntro:
       "Utilisez ce lien pour ouvrir les portes qui vous sont attribuées. L’accès est sans limite horaire.",
     unrestricted: "Sans limite horaire",
@@ -146,6 +157,10 @@ const extra: Record<string, Record<string, string>> = {
     future: "Pas encore valide",
   },
   es: {
+    previewBanner: "Solo demo. Los botones no abren puertas.",
+    previewClicked: "Solo demo. No se ha abierto ninguna puerta.",
+    previewUnavailable:
+      "Vista previa no disponible. Ábrela de nuevo desde la aplicación de anfitrión.",
     staffIntro:
       "Usa este enlace para abrir las puertas asignadas. El acceso no tiene límite de horario.",
     unrestricted: "Sin límite de horario",
@@ -168,6 +183,10 @@ const extra: Record<string, Record<string, string>> = {
     future: "Todavía no válido",
   },
   de: {
+    previewBanner: "Nur Demo. Die Schaltflächen öffnen keine Türen.",
+    previewClicked: "Nur Demo. Es wurde keine Tür geöffnet.",
+    previewUnavailable:
+      "Vorschau nicht verfügbar. Öffnen Sie sie erneut in der Gastgeber-App.",
     staffIntro:
       "Mit diesem Link öffnen Sie die Ihnen zugewiesenen Türen. Der Zugang ist zeitlich unbegrenzt.",
     unrestricted: "Ohne zeitliche Begrenzung",

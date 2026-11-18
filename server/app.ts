@@ -1,3 +1,11 @@
+import {
+  guestPageHistorySchema,
+  guestPageSchema,
+  guestPageView,
+  guestPreviewDoorLimit,
+  makeGuestPreview,
+  recordGuestPageVersion,
+} from "../shared/guest-page";
 import { sessionCookie } from "./branding";
 import { displaySettings } from "./display-settings";
 import { dateFormats } from "../shared/date-format";
@@ -220,6 +228,16 @@ export function createApp(
         );
     }
     pruneNotifications(db);
+  }
+  function staffEvent(
+    user: { name: string },
+    type: string,
+    message: string,
+    propertyId: string | null = null,
+    codeId: string | null = null,
+    context: NotificationContext = {},
+  ) {
+    event(type, message, propertyId, codeId, { ...context, actor: user.name });
   }
   const cryptoRandom = () => globalThis.crypto.randomUUID();
   function owner(c: any) {
@@ -654,8 +672,18 @@ export function createApp(
       .parse(await c.req.json());
     exclusiveMutation();
     const id = c.req.param("id");
-    if (!get("SELECT 1 FROM codes WHERE id=?", id)) fail("Code missing", 404);
-    db.transaction(() => deleteCode(db, id))();
+    const code = get("SELECT property_id FROM codes WHERE id=?", id);
+    if (!code) fail("Code missing", 404);
+    db.transaction(() => {
+      deleteCode(db, id);
+      // Keep a property-level activity entry without preserving the deleted code's data.
+      staffEvent(
+        c.get("user"),
+        "code.deleted",
+        "Access code deleted",
+        code.property_id,
+      );
+    })();
     realtime(db).workspaceChanged();
     return c.json({ ok: true });
   });
@@ -941,25 +969,29 @@ export function createApp(
     return c.json(
       all("SELECT * FROM properties")
         .filter((p) => includeInactive || JSON.parse(p.data).active !== false)
-        .map((p) => ({
-          active: true,
-          id: p.id,
-          ...JSON.parse(p.data),
-          notificationRetentionMonths:
-            get(
-              "SELECT notification_months FROM property_settings WHERE property_id=?",
+        .map((p) => {
+          const { guestPageHistory, guestPageUpdatedAt, ...property } =
+            JSON.parse(p.data);
+          return {
+            active: true,
+            id: p.id,
+            ...property,
+            notificationRetentionMonths:
+              get(
+                "SELECT notification_months FROM property_settings WHERE property_id=?",
+                p.id,
+              )?.notification_months ?? 3,
+            notificationRetentionLimit:
+              get(
+                "SELECT notification_limit FROM property_settings WHERE property_id=?",
+                p.id,
+              )?.notification_limit ?? 1000,
+            breakfastProtected: !!get(
+              "SELECT breakfast_password FROM property_settings WHERE property_id=?",
               p.id,
-            )?.notification_months ?? 3,
-          notificationRetentionLimit:
-            get(
-              "SELECT notification_limit FROM property_settings WHERE property_id=?",
-              p.id,
-            )?.notification_limit ?? 1000,
-          breakfastProtected: !!get(
-            "SELECT breakfast_password FROM property_settings WHERE property_id=?",
-            p.id,
-          )?.breakfast_password,
-        })),
+            )?.breakfast_password,
+          };
+        }),
     );
   });
   app.post("/api/v1/properties", async (c) => {
@@ -967,6 +999,8 @@ export function createApp(
     const data = propertySchema.parse({
         ...(await c.req.json()),
         active: true,
+        guestPageHistory: undefined,
+        guestPageUpdatedAt: undefined,
       }),
       id = cryptoRandom();
     run("INSERT INTO properties VALUES(?,?)", id, JSON.stringify(data));
@@ -974,15 +1008,27 @@ export function createApp(
   });
   app.put("/api/v1/properties/:id", async (c) => {
     owner(c);
-    const current = get(
-      "SELECT data FROM properties WHERE id=?",
-      c.req.param("id"),
+    const input = await c.req.json();
+    const id = c.req.param("id");
+    requireActiveProperty(id);
+    const stored = JSON.parse(
+      get("SELECT data FROM properties WHERE id=?", id).data,
     );
-    if (!current) fail("Property missing", 404);
+    const next =
+      input.guestPage === undefined
+        ? {}
+        : recordGuestPageVersion(
+            stored,
+            guestPageSchema.parse(input.guestPage),
+            new Date().toISOString(),
+          );
     const data = propertySchema.parse({
-      ...JSON.parse(current.data),
-      ...(await c.req.json()),
-      active: JSON.parse(current.data).active !== false,
+      ...stored,
+      ...input,
+      guestPageHistory: stored.guestPageHistory,
+      guestPageUpdatedAt: stored.guestPageUpdatedAt,
+      ...next,
+      active: stored.active !== false,
     });
     run(
       "UPDATE properties SET data=? WHERE id=?",
@@ -1005,6 +1051,67 @@ export function createApp(
       c.req.param("id"),
     );
     return c.json(links);
+  });
+  app.get("/api/v1/properties/:id/guest-page/versions", (c) => {
+    owner(c);
+    const property = get(
+      "SELECT data FROM properties WHERE id=?",
+      c.req.param("id"),
+    );
+    if (!property) fail("Property missing", 404);
+    c.header("Cache-Control", "no-store");
+    return c.json(
+      guestPageHistorySchema.parse(
+        JSON.parse(property.data).guestPageHistory ?? [],
+      ),
+    );
+  });
+  app.get("/api/v1/properties/:id/guest-page/preview", (c) => {
+    const id = c.req.param("id");
+    const property = get("SELECT data FROM properties WHERE id=?", id);
+    if (!property) fail("Property missing", 404);
+    const selected = new Set(
+      z
+        .array(z.string().min(1).max(100))
+        .min(1)
+        .max(guestPreviewDoorLimit)
+        .parse(c.req.queries("door") ?? []),
+    );
+    const doors = all("SELECT id, data FROM doors WHERE property_id=?", id)
+      .filter((row) => selected.has(row.id))
+      .map((row) => ({ ...JSON.parse(row.data), id: row.id }));
+    if (doors.length !== selected.size)
+      fail("A selected preview door is unavailable", 404);
+    c.header("Cache-Control", "no-store");
+    return c.json(
+      makeGuestPreview(
+        JSON.parse(property.data),
+        doors,
+        displaySettings(db).dateFormat,
+      ),
+    );
+  });
+  app.patch("/api/v1/properties/:id/guest-page", async (c) => {
+    owner(c);
+    const { guestPage } = z
+      .object({ guestPage: guestPageSchema })
+      .parse(await c.req.json());
+    const id = c.req.param("id");
+    requireActiveProperty(id);
+    const property = JSON.parse(
+      get("SELECT data FROM properties WHERE id=?", id).data,
+    );
+    const next = recordGuestPageVersion(
+      property,
+      guestPage,
+      new Date().toISOString(),
+    );
+    run(
+      "UPDATE properties SET data=? WHERE id=?",
+      JSON.stringify({ ...property, ...next }),
+      id,
+    );
+    return c.json(guestPage);
   });
   app.patch("/api/v1/properties/:id/notifications", async (c) => {
     const id = c.req.param("id");
@@ -1119,6 +1226,12 @@ export function createApp(
     )
       fail("Include every door in the property exactly once");
     db.transaction(() => {
+      const changed = b.doorIds.some(
+        (id, order) =>
+          (JSON.parse(doors.find((door) => door.id === id).data).order ?? 0) !==
+          order,
+      );
+      if (!changed) return;
       for (const [order, id] of b.doorIds.entries()) {
         const d = doors.find((d) => d.id === id);
         run(
@@ -1127,6 +1240,12 @@ export function createApp(
           id,
         );
       }
+      staffEvent(
+        c.get("user"),
+        "door.reordered",
+        "Doors reordered",
+        b.propertyId,
+      );
     })();
     return c.json({ ok: true });
   });
@@ -1138,13 +1257,23 @@ export function createApp(
     validateDoorPhotos(data);
     validateDevice(data.integration, secret);
     const id = cryptoRandom();
-    run(
-      "INSERT INTO doors VALUES(?,?,?,?)",
-      id,
-      data.propertyId,
-      JSON.stringify(data),
-      crypto.seal(secret),
-    );
+    db.transaction(() => {
+      run(
+        "INSERT INTO doors VALUES(?,?,?,?)",
+        id,
+        data.propertyId,
+        JSON.stringify(data),
+        crypto.seal(secret),
+      );
+      staffEvent(
+        c.get("user"),
+        "door.created",
+        "Door created",
+        data.propertyId,
+        null,
+        { doorId: id, doorName: data.name },
+      );
+    })();
     return c.json({ id, ...data }, 201);
   });
   app.put("/api/v1/doors/:id", async (c) => {
@@ -1176,12 +1305,13 @@ export function createApp(
         crypto.seal(use),
         d.id,
       );
-      event(
+      staffEvent(
+        c.get("user"),
         "door.updated",
         `${c.get("user").name} updated door ${data.name}`,
         d.property_id,
         null,
-        { actor: c.get("user").name, doorId: d.id, doorName: data.name },
+        { doorId: d.id, doorName: data.name },
       );
     })();
     return c.json({ ok: true });
@@ -1218,14 +1348,17 @@ export function createApp(
       );
     if (get("SELECT 1 FROM door_tests WHERE door_id=? AND resolved=0", d.id))
       fail("Resolve the door test before deleting this door", 409);
-    run("DELETE FROM doors WHERE id=?", d.id);
-    event(
-      "door.deleted",
-      `Door deleted: ${JSON.parse(d.data).name}`,
-      d.property_id,
-      null,
-      { doorName: JSON.parse(d.data).name },
-    );
+    db.transaction(() => {
+      run("DELETE FROM doors WHERE id=?", d.id);
+      staffEvent(
+        c.get("user"),
+        "door.deleted",
+        `Door deleted: ${JSON.parse(d.data).name}`,
+        d.property_id,
+        null,
+        { doorName: JSON.parse(d.data).name },
+      );
+    })();
     return c.json({ ok: true });
   });
   app.post("/api/v1/doors/:id/test", async (c) => {
@@ -1276,13 +1409,13 @@ export function createApp(
         Number(result.status !== "uncertain"),
         id,
       );
-      event(
+      staffEvent(
+        c.get("user"),
         "device.test." + result.status,
         `${c.get("user").name} tested ${data.name}: ${result.detail}`,
         d.property_id,
         null,
         {
-          actor: c.get("user").name,
           doorId: d.id,
           doorName: data.name,
           detail: result.detail,
@@ -1307,12 +1440,13 @@ export function createApp(
     if (action.resolved) return c.json({ ok: true });
     run("UPDATE door_tests SET resolved=1 WHERE id=?", action.id);
     const d = get("SELECT * FROM doors WHERE id=?", action.door_id);
-    event(
+    staffEvent(
+      c.get("user"),
       "device.test.resolved",
       `${c.get("user").name} checked the uncertain door test`,
       d?.property_id,
       null,
-      { actor: c.get("user").name, doorId: d?.id },
+      { doorId: d?.id },
     );
     return c.json({ ok: true });
   });
@@ -1371,7 +1505,12 @@ export function createApp(
       ).map(codeView),
     ),
   );
-  function saveCode(data: any, id: string, userId: string, isNew: boolean) {
+  function saveCode(
+    data: any,
+    id: string,
+    user: { id: string; name: string },
+    isNew: boolean,
+  ) {
     if (data.staff)
       data = {
         ...data,
@@ -1433,7 +1572,7 @@ export function createApp(
           "INSERT INTO codes(id,property_id,creator,digest,secret,data,created) VALUES(?,?,?,?,?,?,?)",
           id,
           data.propertyId,
-          userId,
+          user.id,
           digest(raw),
           crypto.seal(raw),
           JSON.stringify(record),
@@ -1463,13 +1602,13 @@ export function createApp(
               Boolean(prior.find((v) => v.door_id === g.doorId)?.active ?? 1),
           ),
         );
-      event(
+      staffEvent(
+        user,
         isNew ? "code.created" : "code.updated",
         isNew ? "Access code created" : "Access code updated",
         data.propertyId,
         id,
         {
-          actor: get("SELECT name FROM users WHERE id=?", userId)?.name,
           validFrom:
             !data.staff && grants.length
               ? grants.map((g: { start: string }) => g.start).sort()[0]
@@ -1493,7 +1632,7 @@ export function createApp(
     saveCode(
       codeInputSchema.parse(await c.req.json()),
       id,
-      c.get("user").id,
+      c.get("user"),
       true,
     );
     return c.json(codeView(get("SELECT * FROM codes WHERE id=?", id)), 201);
@@ -1502,7 +1641,7 @@ export function createApp(
     saveCode(
       codeInputSchema.parse(await c.req.json()),
       c.req.param("id"),
-      c.get("user").id,
+      c.get("user"),
       false,
     );
     return c.json({ ok: true });
@@ -1527,7 +1666,8 @@ export function createApp(
       code.id,
       grant.door_id,
     );
-    event(
+    staffEvent(
+      c.get("user"),
       "code.permission",
       b.active ? "Door permission resumed" : "Door permission paused",
       code.property_id,
@@ -1539,7 +1679,13 @@ export function createApp(
     const r = get("SELECT * FROM codes WHERE id=?", c.req.param("id"));
     if (!r) fail("Code missing", 404);
     run("UPDATE codes SET revoked=1 WHERE id=?", r.id);
-    event("code.revoked", "Access code revoked", r.property_id, r.id);
+    staffEvent(
+      c.get("user"),
+      "code.revoked",
+      "Access code revoked",
+      r.property_id,
+      r.id,
+    );
     return c.json({ ok: true });
   });
   app.post("/api/v1/codes/:id/regenerate", (c) => {
@@ -1552,7 +1698,13 @@ export function createApp(
     );
     const code = get("SELECT * FROM codes WHERE id=?", c.req.param("id"));
     if (code)
-      event("code.updated", "Guest link replaced", code.property_id, code.id);
+      staffEvent(
+        c.get("user"),
+        "code.updated",
+        "Guest link replaced",
+        code.property_id,
+        code.id,
+      );
     return c.json({ ok: true });
   });
   app.post("/api/v1/codes/:id/resolve", async (c) => {
@@ -1575,7 +1727,8 @@ export function createApp(
         g.code_id,
         g.door_id,
       );
-      event(
+      staffEvent(
+        c.get("user"),
         "device.resolved",
         `Host resolved uncertain action as ${b.consumed ? "consumed" : "retry permitted"}`,
         get("SELECT property_id FROM codes WHERE id=?", g.code_id).property_id,
@@ -1785,7 +1938,10 @@ export function createApp(
           `${budget.summary} invalid-link attempts suppressed`,
           null,
           null,
-          { ...attribution, suppressedAttempts: budget.summary },
+          {
+            category: attribution.category,
+            suppressedAttempts: budget.summary,
+          },
         );
       if (budget.allowed) {
         let previousVisit: NotificationContext["previousVisit"];
@@ -1842,6 +1998,7 @@ export function createApp(
       staff: d.staff === true,
       label: d.label,
       property: p.name,
+      guestPage: guestPageView(p),
       timezone: p.timezone,
       breakfast: d.breakfast,
       breakfastUsed: get(

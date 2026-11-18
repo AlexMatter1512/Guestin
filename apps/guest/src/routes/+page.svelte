@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { demoGuestRequest } from "../../../../shared/demo-guest";
+  import {
+    demoGuestRequest,
+    demoGuestPreview,
+  } from "../../../../shared/demo-guest";
   const demoMode = import.meta.env.MODE === "demo";
   import { migrateBrowserPreferences } from "../../../../shared/browser-brand";
   import { dateSettings } from "$lib/date-settings.svelte";
@@ -19,10 +22,17 @@
   } from "$lib/i18n/translations";
   import { locale_state } from "$lib/states.svelte";
   import { formatDate } from "$lib/utils/dateUtils";
+  import GuestMarkdown from "../../../../shared/GuestMarkdown.svelte";
+  import {
+    defaultGuestPage,
+    guestAccentText,
+    resolveGuestCopy,
+  } from "../../../../shared/guest-page";
   import DoorOpenerV2 from "$lib/components/DoorOpenerV2.svelte";
   import Colazioni from "$lib/components/colazioni/Colazioni.svelte";
   import UsagePeriodWarn from "$lib/components/colazioni/UsagePeriodWarn.svelte";
   let code = $state(""),
+    previewQuery = $state(""),
     data = $state<any>(null),
     loaded = $state(false),
     tab = $state("doors"),
@@ -96,6 +106,22 @@
       used: !!(d.singleUse && d.used),
     })),
   );
+  const guestPage = $derived(data?.guestPage);
+  const accent = $derived(guestPage?.accentColor ?? null);
+  const introMarkdown = $derived(
+    resolveGuestCopy(
+      guestPage?.intro ?? defaultGuestPage.intro,
+      "intro",
+      locale_state.current,
+    ),
+  );
+  const singleUseMarkdown = $derived(
+    resolveGuestCopy(
+      guestPage?.singleUse ?? defaultGuestPage.singleUse,
+      "singleUse",
+      locale_state.current,
+    ),
+  );
   const guestInfo = $derived.by(() => {
     if (!data) return null;
     const starts = (data.staff ? [] : data.doors)
@@ -153,9 +179,20 @@
       locale_state.current = language as LocaleKey;
     tab = fragment.get("page") === "breakfast" ? "breakfast" : "doors";
     hasRedeemed = false;
-    const next = guestTokenFromURL(location.href);
-    if (next !== code) {
+    const params = new URL(location.href).searchParams;
+    const previewId = params.get("preview");
+    const nextPreview = previewId
+      ? new URLSearchParams(
+          params.getAll("door").map((id) => ["door", id]),
+        ).toString()
+      : "";
+    const preview = previewId
+      ? encodeURIComponent(previewId) + "?" + nextPreview
+      : "";
+    const next = preview ? "" : guestTokenFromURL(location.href);
+    if (next !== code || preview !== previewQuery) {
       code = next;
+      previewQuery = preview;
       data = null;
       loaded = false;
       loadRequest++;
@@ -190,9 +227,8 @@
     locale_state.current = translations_keys.includes(language as LocaleKey)
       ? (language as LocaleKey)
       : "en";
-    code = guestTokenFromURL(location.href);
     readRoute();
-    void load();
+    if (!previewQuery && !code) void load();
     const timer = setInterval(() => (clock = Date.now()), 15000);
     const refresh = () => {
       clock = Date.now();
@@ -209,6 +245,28 @@
     };
   });
   async function request(path = "", body?: any, key?: string) {
+    if (previewQuery) {
+      if (path || body || key) throw Error(guestText("previewBanner"));
+      const split = previewQuery.indexOf("?");
+      const property = previewQuery.slice(0, split);
+      const doorQuery = previewQuery.slice(split + 1);
+      if (property === "." || property === "..")
+        throw Error(guestText("previewUnavailable"));
+      if (demoMode)
+        return demoGuestPreview(
+          decodeURIComponent(property),
+          new URLSearchParams(doorQuery).getAll("door"),
+        );
+      const response = await fetch(
+        `/api/v1/properties/${property}/guest-page/preview?${doorQuery}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok)
+        throw Object.assign(Error(guestText("previewUnavailable")), {
+          status: response.status,
+        });
+      return await response.json();
+    }
     if (demoMode)
       return demoGuestRequest(path, body, guestTokenFromURL(location.href));
     const credential = guestTokenFromURL(location.href);
@@ -247,6 +305,7 @@
       if (ticket !== loadRequest) return;
       dateSettings.format = next.dateFormat ?? "dd/mm/yyyy";
       data = next;
+      if (next.preview) return;
       try {
         localStorage.setItem(
           "guestin.guest.visit",
@@ -266,6 +325,7 @@
     }
   }
   async function openDoor(door: any) {
+    if (previewQuery || data?.preview) throw Error(guestText("previewBanner"));
     if (activeAction) throw Error(guestText("uncertain"));
     if (!navigator.onLine) throw Error(guestText("offline"));
     activeAction = true;
@@ -288,6 +348,7 @@
     }
   }
   async function redeem(quantity: number) {
+    if (previewQuery || data?.preview) throw Error(guestText("previewBanner"));
     if (activeAction) throw Error(guestText("offline"));
     if (!navigator.onLine) throw Error(guestText("offline"));
     const codeId = data?.codeId;
@@ -356,11 +417,26 @@
             ></path>
           </svg>
         </div>
-        <p class="text-slate-800 text-xl font-semibold">{t("invalid_code")}</p>
+        <p class="text-slate-800 text-xl font-semibold">
+          {previewQuery ? guestText("previewUnavailable") : t("invalid_code")}
+        </p>
       </div>
     </div>
   {:else}
-    <div class="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div
+      class="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100"
+      class:guest-branded={!!accent}
+      style:--guest-accent={accent}
+      style:--guest-accent-text={accent ? guestAccentText(accent) : null}
+    >
+      {#if data.preview}
+        <div
+          class="bg-amber-100 px-4 py-3 text-center text-sm font-semibold text-amber-950"
+          role="note"
+        >
+          {guestText("previewBanner")}
+        </div>
+      {/if}
       <!-- Header -->
       <header
         class="bg-white/70 backdrop-blur-sm border-b border-white/50 z-50 relative"
@@ -369,17 +445,26 @@
           <div class="flex items-center justify-between h-16">
             <!-- Guest Info on the Left -->
             {#if guestInfo?.guest_name}
-              <div class="text-left min-w-0 flex-shrink">
-                <p class="text-base font-medium text-slate-800 truncate">
-                  {guestInfo.guest_name}
-                </p>
-                {#if guestInfo.arrival_date && guestInfo.departure_date}
-                  <p class="text-sm text-slate-600 truncate">
-                    {formatDate(guestInfo.arrival_date)} - {formatDate(
-                      guestInfo.departure_date,
-                    )}
-                  </p>
+              <div class="flex min-w-0 items-center gap-3">
+                {#if guestPage?.showLogo && guestPage.logo}
+                  <img
+                    src={guestPage.logo}
+                    alt={data.property}
+                    class="h-10 max-w-20 shrink-0 object-contain sm:max-w-32"
+                  />
                 {/if}
+                <div class="text-left min-w-0">
+                  <p class="text-base font-medium text-slate-800 truncate">
+                    {guestInfo.guest_name}
+                  </p>
+                  {#if guestInfo.arrival_date && guestInfo.departure_date}
+                    <p class="text-sm text-slate-600 truncate">
+                      {formatDate(guestInfo.arrival_date)} - {formatDate(
+                        guestInfo.departure_date,
+                      )}
+                    </p>
+                  {/if}
+                </div>
               </div>
             {/if}
 
@@ -455,7 +540,7 @@
                 onclick={(e) => navigate(e, "doors")}
                 class="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-lg font-semibold transition-all duration-300 transform flex-1 min-h-[48px] relative overflow-hidden group
                 {isDoors
-                  ? 'bg-gradient-to-br from-emerald-600 via-emerald-700 to-cyan-700 text-white shadow-lg shadow-emerald-400/25 scale-[1.02] translate-y-[-1px]'
+                  ? 'guest-primary bg-gradient-to-br from-emerald-600 via-emerald-700 to-cyan-700 text-white shadow-lg shadow-emerald-400/25 scale-[1.02] translate-y-[-1px]'
                   : 'text-slate-700 hover:text-white bg-gradient-to-br from-slate-200 to-slate-300 hover:from-emerald-500 hover:to-cyan-600 shadow-md hover:shadow-lg hover:scale-[1.01] hover:translate-y-[-0.5px] border border-slate-300'}"
               >
                 {#if isDoors}
@@ -478,7 +563,7 @@
                 onclick={(e) => navigate(e, "breakfast")}
                 class="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-lg font-semibold transition-all duration-300 transform flex-1 min-h-[48px] relative overflow-hidden group
                 {isBreakfast
-                  ? 'bg-gradient-to-br from-amber-600 via-orange-600 to-orange-700 text-white shadow-lg shadow-orange-400/25 scale-[1.02] translate-y-[-1px]'
+                  ? 'guest-primary bg-gradient-to-br from-amber-600 via-orange-600 to-orange-700 text-white shadow-lg shadow-orange-400/25 scale-[1.02] translate-y-[-1px]'
                   : 'text-slate-700 hover:text-white bg-gradient-to-br from-slate-200 to-slate-300 hover:from-amber-500 hover:to-orange-600 shadow-md hover:shadow-lg hover:scale-[1.01] hover:translate-y-[-0.5px] border border-slate-300'}"
               >
                 {#if isBreakfast}
@@ -509,11 +594,19 @@
               <h2 class="text-3xl font-bold text-slate-800 mb-4">
                 {t("door_access")}
               </h2>
-              <p
-                class="text-slate-600 text-lg max-w-2xl mx-auto leading-relaxed"
-              >
-                {data.staff ? guestText("staffIntro") : t("subtitle")}
-              </p>
+              {#if !data.staff}
+                <div
+                  class="text-slate-600 text-lg max-w-2xl mx-auto leading-relaxed"
+                >
+                  <GuestMarkdown source={introMarkdown} />
+                </div>
+              {:else}
+                <p
+                  class="text-slate-600 text-lg max-w-2xl mx-auto leading-relaxed"
+                >
+                  {guestText("staffIntro")}
+                </p>
+              {/if}
             </div>
             <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {#each normalizedDoors as door (door.id)}
@@ -522,6 +615,8 @@
                   bind:allButtonsDisabled
                   {clock}
                   timezone={data.timezone}
+                  {singleUseMarkdown}
+                  preview={data.preview === true}
                   onOpen={openDoor}
                 />
               {/each}
@@ -557,7 +652,7 @@
               <a
                 href={guestHref("doors")}
                 onclick={(e) => navigate(e, "doors")}
-                class="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-br from-emerald-600 to-cyan-700 text-white font-semibold rounded-xl hover:from-emerald-700 hover:to-cyan-800 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+                class="guest-primary inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-br from-emerald-600 to-cyan-700 text-white font-semibold rounded-xl hover:from-emerald-700 hover:to-cyan-800 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
                 ><span class="text-xl">🔐</span><span>{t("door_access")}</span
                 ></a
               >
@@ -571,3 +666,14 @@
     </div>
   {/if}
 {/if}
+
+<style>
+  .guest-branded :global(.guest-primary) {
+    background: var(--guest-accent);
+    color: var(--guest-accent-text);
+  }
+  .guest-branded :global(.guest-primary:focus-visible) {
+    outline: 2px solid var(--guest-accent);
+    outline-offset: 3px;
+  }
+</style>

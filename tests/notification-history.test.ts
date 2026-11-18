@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createApp } from "../server/app";
 import { openDatabase } from "../server/db";
 import { digest } from "../server/security";
+import { notificationText } from "../shared/notifications";
 import { exportRecords, restoreRecords } from "../server/portable-backup";
 
 const origin = "http://localhost:3000",
@@ -76,6 +77,134 @@ async function fixture() {
   ).data;
   return { db, app, req, user, property, other, door, code };
 }
+
+test("staff activity names the authenticated actor in history and queued notifications", async () => {
+  const f = await fixture();
+  try {
+    const collaborator = crypto.randomUUID();
+    f.db
+      .query("INSERT INTO users VALUES(?,?,?,?,?)")
+      .run(collaborator, "Nina", "nina@example.test", "unused", "collaborator");
+    f.db
+      .query("INSERT INTO user_permissions VALUES(?,?)")
+      .run(
+        collaborator,
+        JSON.stringify({ createStaffCodes: true, createDoors: true }),
+      );
+    f.db
+      .query("INSERT INTO sessions VALUES(?,?,?,?)")
+      .run(digest("nina"), collaborator, "csrf", Date.now() + 60_000);
+    const subscription = crypto.randomUUID();
+    f.db
+      .query("INSERT INTO subscriptions VALUES(?,?,?,?)")
+      .run(subscription, f.user, "{}", JSON.stringify({ allEvents: true }));
+    async function actAsNina(path: string, method: string, body: unknown) {
+      const response = await f.app.request("/api/v1/" + path, {
+        method,
+        body: JSON.stringify(body),
+        headers: {
+          Origin: origin,
+          Cookie: "guestin_session=nina",
+          "X-CSRF-Token": "csrf",
+          "Content-Type": "application/json",
+        },
+      });
+      expect(response.ok).toBe(true);
+      return (await response.json()) as any;
+    }
+
+    const door = await actAsNina("doors", "POST", {
+      propertyId: f.property.id,
+      name: "Side entrance",
+      integration: "none",
+      config: {},
+    });
+    const codeInput = {
+      propertyId: f.property.id,
+      staff: true,
+      label: "Night shift",
+      grants: [{ doorId: door.id, singleUse: false }],
+    };
+    const code = await actAsNina("codes", "POST", codeInput);
+    await actAsNina("codes/" + code.id, "PUT", {
+      ...codeInput,
+      label: "Late shift",
+    });
+    await actAsNina(`codes/${code.id}/grants/${door.id}`, "PATCH", {
+      active: false,
+      actor: "Forged name",
+    });
+    await actAsNina(`codes/${code.id}/regenerate`, "POST", {});
+    await actAsNina(`codes/${code.id}/revoke`, "POST", {});
+    expect(
+      (
+        await f.req(
+          "doors/" + door.id,
+          { name: "Side entry", config: {} },
+          "PUT",
+        )
+      ).status,
+    ).toBe(200);
+    const history = (await f.req("events?category=staff")).data.events;
+    const staffEvents = history.filter(
+      (event: any) =>
+        event.code_id === code.id ||
+        (event.type === "door.created" && event.context.doorId === door.id),
+    );
+    expect(staffEvents.map((event: any) => event.type).sort()).toEqual([
+      "code.created",
+      "code.permission",
+      "code.revoked",
+      "code.updated",
+      "code.updated",
+      "door.created",
+    ]);
+    for (const event of staffEvents) {
+      expect(event.context.actor).toBe("Nina");
+      expect(notificationText(event, "en").body).toContain("Nina");
+      expect(notificationText(event, "it").body).toContain("Nina");
+      expect(
+        f.db
+          .query("SELECT 1 FROM jobs WHERE event_id=? AND subscription_id=?")
+          .get(event.id, subscription),
+      ).not.toBeNull();
+    }
+    expect(
+      history.find((event: any) => event.type === "door.updated").context.actor,
+    ).toBe("Owner");
+
+    expect(
+      (
+        await f.req(
+          "codes/" + code.id,
+          { confirmation: "DELETE CODE" },
+          "DELETE",
+        )
+      ).status,
+    ).toBe(200);
+    expect((await f.req("doors/" + door.id, undefined, "DELETE")).status).toBe(
+      200,
+    );
+    const after = (await f.req("events?category=staff")).data.events;
+    expect(after.some((event: any) => event.code_id === code.id)).toBe(false);
+    const deletion = after.find((event: any) => event.type === "code.deleted");
+    expect(deletion).toMatchObject({
+      code_id: null,
+      href: null,
+      context: { actor: "Owner" },
+    });
+    expect(deletion.context).not.toHaveProperty("codeLabel");
+    expect(notificationText(deletion).body).toContain("Owner");
+    const doorDeletion = after.find(
+      (event: any) => event.type === "door.deleted",
+    );
+    expect(notificationText(doorDeletion, "it").body).toBe(
+      "Owner: Porta eliminata: Side entry",
+    );
+  } finally {
+    f.db.close();
+  }
+});
 
 test("history defaults to 20 with stable cursor pagination; loading never creates read receipts", async () => {
   const f = await fixture();
@@ -207,7 +336,9 @@ test("code activity filters before pagination and includes guest and staff event
 test("code notices link to their code; successful door usage has the exact protected photo and code link; invalid attempts have no destination", async () => {
   const f = await fixture();
   try {
-    const created = (await f.req("events")).data.events[0];
+    const created = (await f.req("events")).data.events.find(
+      (event: any) => event.type === "code.created",
+    );
     expect(created).toMatchObject({
       icon: "key",
       href: `/host/#/codes/${f.code.id}`,
@@ -521,10 +652,16 @@ test("guest and staff histories classify actual initiators, paginate independent
     const staffHistory = (
       await f.req(`events?propertyId=${f.property.id}&category=staff`)
     ).data;
-    expect(staffHistory.events).toHaveLength(5);
+    expect(staffHistory.events).toHaveLength(6);
     expect(
       staffHistory.events.filter((e: any) => e.context.actor === "Owner"),
-    ).toHaveLength(4);
+    ).toHaveLength(5);
+    const staffBreakfast = staffHistory.events.find(
+      (e: any) => e.type === "breakfast.redeemed",
+    );
+    expect(notificationText(staffBreakfast).body).toBe(
+      "Owner: 1 breakfasts redeemed.",
+    );
     expect(
       staffHistory.events.some(
         (e: any) => e.type === "access.accepted" && e.code_id === f.code.id,

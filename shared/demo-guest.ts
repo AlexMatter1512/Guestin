@@ -1,5 +1,17 @@
+import { guestPageView, makeGuestPreview } from "./guest-page";
 import { demoWorkspace, seedDemoWorkspace } from "./demo-workspace";
 const day = () => new Date().toISOString().slice(0, 10);
+export function demoGuestPreview(propertyId: string, doorIds: string[]) {
+  const state = demoWorkspace(seedDemoWorkspace())!;
+  const property = state.properties.find(
+    (p) => p.id === propertyId && p.active !== false,
+  );
+  if (!property) throw Error("Property unavailable");
+  const doors = state.doors.filter(
+    (door) => door.propertyId === propertyId && doorIds.includes(door.id),
+  );
+  return makeGuestPreview(property, doors, "dd/mm/yyyy");
+}
 export async function demoGuestRequest(
   path = "",
   body?: any,
@@ -72,6 +84,7 @@ export async function demoGuestRequest(
     codeId: code.id,
     label: code.label,
     property: property.name,
+    guestPage: guestPageView(property),
     propertyName: property.name,
     timezone: property.timezone,
     dateFormat: "dd/mm/yyyy",

@@ -55,7 +55,7 @@ code exposes its validity fields again. Portable backups preserve the staff flag
 
 ## Connections
 
-Owners configure connections in Settings. KrossBooking bearer tokens, calendar URLs, Gemini keys, and door credentials are stored encrypted in SQLite. The server attaches provider credentials to requests; staff browsers cannot read them. Kross passwords are used only during sign-in and are never saved.
+Owners configure connections under Other → Connectors. KrossBooking bearer tokens, calendar URLs, AI provider tokens, and door credentials are stored encrypted in SQLite. The server attaches provider credentials to requests; staff browsers cannot read them. Kross passwords are used only during sign-in and are never saved.
 
 Connectors prepare drafts for review. They do not synchronize bookings or create access codes automatically.
 

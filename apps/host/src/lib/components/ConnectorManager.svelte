@@ -47,8 +47,14 @@
     krossReservationDraft,
     type CalendarAccessDraft,
   } from "../../../../../shared/connectors";
+  import {
+    aiProviders,
+    type AiModel,
+    type AiProvider,
+  } from "../../../../../shared/ai-providers";
+  import * as Item from "$lib/components/ui/item";
   import type { AccessCodeDraft } from "../../../../../shared/schema";
-  type View = "list" | "kross" | "ical" | "gemini";
+  type View = "list" | "kross" | "ical" | "ai";
   type Connection = {
     id: string;
     property_id: string;
@@ -113,8 +119,10 @@
     calendarResults = $state<CalendarAccessDraft[]>([]),
     calendarFileName = $state(""),
     calendarText = $state("");
-  let geminiKey = $state(""),
-    geminiModel = $state("gemini-2.5-flash"),
+  let aiProvider = $state<AiProvider | "">(""),
+    aiKey = $state(""),
+    aiModels = $state<AiModel[]>([]),
+    aiModel = $state(""),
     imageFile = $state<File | null>(null),
     imageUrl = $state(""),
     extraction = $state<Partial<AccessCodeDraft> | null>(null),
@@ -132,8 +140,14 @@
   const localConnections = $derived(
     connections.filter((c) => c.property_id === propertyId),
   );
+  function matchesKind(connection: Connection, kind: string) {
+    return (
+      connection.kind === kind ||
+      (kind === "ai" && connection.kind === "gemini")
+    );
+  }
   const currentConnections = $derived(
-    localConnections.filter((c) => c.kind === view),
+    localConnections.filter((c) => matchesKind(c, view)),
   );
   const selected = $derived(
     currentConnections.find((c) => c.id === selectedId),
@@ -142,7 +156,7 @@
   const providers = [
     { id: "kross" as const, name: "KrossBooking", icon: Plug },
     { id: "ical" as const, name: "iCal", icon: CalendarDays },
-    { id: "gemini" as const, name: "AI", icon: Image },
+    { id: "ai" as const, name: "AI", icon: Image },
   ];
   $effect(() => {
     const next = propertyId + "/" + view;
@@ -170,7 +184,9 @@
       extraction = null;
       calendarDoor = "";
       calendarUrl = "";
-      geminiKey = "";
+      aiProvider = "";
+      aiKey = "";
+      resetAiModels();
       addingCalendar = false;
       selectedId = currentConnections[0]?.id ?? "";
       loadedConnection = "";
@@ -198,7 +214,7 @@
       deviceId = source?.data.deviceId ?? "";
       hostStorage.removeItem("guestin.kross.device");
       connected = Boolean(source?.data.authenticated);
-      if (source?.data.model) geminiModel = String(source.data.model);
+      if (view === "ai") clearImage();
       if (view === "ical") {
         calendarDoor = localDoors.some((d) => d.id === source?.data.doorId)
           ? String(source!.data.doorId)
@@ -634,18 +650,41 @@
       calendarFileName = file.name;
     }
   }
-  async function saveGemini(current: () => boolean) {
-    const r = await api("connections", {
-      propertyId,
-      kind: "gemini",
-      name: "AI",
-      secret: { key: geminiKey.trim() },
-      data: { model: geminiModel.trim() },
+  function resetAiModels() {
+    aiModel = "";
+    aiModels = [];
+    error = "";
+  }
+  async function fetchAiModels(current: () => boolean) {
+    const result = await api("connections/ai-models", {
+      provider: aiProvider,
+      key: aiKey.trim(),
     });
     if (!current()) return;
-    geminiKey = "";
-    selectedId = r.id;
+    aiModels = result.models;
+    if (!aiModels.some((model) => model.id === aiModel)) aiModel = "";
+    if (!aiModels.length)
+      throw Error(
+        l(
+          "The provider returned no models for this token.",
+          "Il servizio non ha restituito modelli per questo token.",
+        ),
+      );
+  }
+  async function saveAi(current: () => boolean) {
+    const result = await api("connections", {
+      propertyId,
+      kind: "ai",
+      name: aiProvider ? aiProviders[aiProvider] : "AI",
+      secret: { key: aiKey.trim() },
+      data: { provider: aiProvider, model: aiModel },
+    });
+    if (!current()) return;
+    aiKey = "";
+    resetAiModels();
     await reload();
+    if (!current()) return;
+    selectedId = result.id;
     notice = l(
       "AI connected. Select an image to prepare a draft.",
       "AI collegata. Seleziona un’immagine per preparare una bozza.",
@@ -667,6 +706,7 @@
   }
   async function extract(current: () => boolean) {
     if (!imageFile) return;
+    extraction = null;
     const image = await resizeImage(imageFile);
     if (!current()) return;
     const r = await api(`connections/${selectedId}/request`, {
@@ -677,7 +717,17 @@
         localDoors.map((d) => d.name).join(", "),
     });
     if (!current()) return;
-    const parsed = parseExtraction(r.text);
+    let parsed: ReturnType<typeof parseExtraction>;
+    try {
+      parsed = parseExtraction(r.text);
+    } catch {
+      throw Error(
+        l(
+          "The model did not return usable details. Try again or use a different image-capable model.",
+          "Il modello non ha restituito dettagli utilizzabili. Riprova o usa un altro modello che supporta le immagini.",
+        ),
+      );
+    }
     const completeDates =
       parsed.start &&
       parsed.end &&
@@ -743,7 +793,7 @@
 </script>
 
 <section
-  class="mx-auto grid w-full max-w-3xl gap-6"
+  class="grid w-full gap-6"
   aria-label={l("Booking connectors", "Connettori prenotazioni")}
 >
   {#if !propertyId}
@@ -768,22 +818,26 @@
         "Parti dai dettagli degli ospiti che hai già. Ogni importazione apre una bozza modificabile: scegli tu quando creare il codice di accesso.",
       )}
     </p>
-    <div class="grid gap-4 sm:grid-cols-3">
+    <Item.Group class="workspace-list">
       {#each providers as provider (provider.id)}
-        {@const saved = localConnections.filter((c) => c.kind === provider.id)}
-        <Card.Root class="h-full">
-          <Card.Header class="gap-3">
-            <div class="flex items-center justify-between gap-2">
-              <span
-                class="flex size-10 items-center justify-center rounded-lg bg-muted"
-                ><provider.icon class="size-5 text-muted-foreground" /></span
-              >
-              {#if saved.length}<Badge variant="secondary"
+        {@const configured = localConnections.some((connection) =>
+          matchesKind(connection, provider.id),
+        )}
+        <Button
+          type="button"
+          variant="ghost"
+          class="settings-row"
+          onclick={() => (view = provider.id)}
+        >
+          <provider.icon size={20} />
+          <span>
+            <strong class="flex flex-wrap items-center gap-x-2 gap-y-1">
+              {provider.name}
+              {#if configured}<Badge variant="secondary"
                   >{l("Configured", "Configurato")}</Badge
                 >{/if}
-            </div>
-            <Card.Title>{provider.name}</Card.Title>
-            <Card.Description class="leading-6"
+            </strong>
+            <small
               >{provider.id === "kross"
                 ? l(
                     "Find a reservation and prefill guest access.",
@@ -797,21 +851,13 @@
                   : l(
                       "Read guest details from a screenshot.",
                       "Leggi i dettagli degli ospiti da uno screenshot.",
-                    )}</Card.Description
+                    )}</small
             >
-          </Card.Header>
-          <Card.Footer class="mt-auto"
-            ><Button
-              variant="outline"
-              class="w-full"
-              onclick={() => (view = provider.id)}
-              >{l("Open", "Apri")}
-              {provider.name}<ChevronRight class="size-4" /></Button
-            ></Card.Footer
-          >
-        </Card.Root>
+          </span>
+          <ChevronRight size={18} />
+        </Button>
       {/each}
-    </div>
+    </Item.Group>
     <Alert.Root role="note"
       ><ShieldCheck /><Alert.Title
         >{l("You stay in control", "Decidi sempre tu")}</Alert.Title
@@ -1423,58 +1469,116 @@
               </p>{/each}
           </Card.Content></Card.Root
         >{/if}
-    {:else if view === "gemini"}
-      {#if !selected && owner}<Card.Root
-          ><Card.Header
-            ><Card.Title>{l("Connect AI", "Collega AI")}</Card.Title
-            ><Card.Description
-              >{l(
-                "Use your team’s Gemini key to prepare a draft from a screenshot.",
-                "Usa la chiave Gemini del team per preparare una bozza da uno screenshot.",
-              )}</Card.Description
-            ></Card.Header
-          ><Card.Content
-            ><form
-              class="grid gap-4"
-              onsubmit={(event) => {
-                event.preventDefault();
-                void perform(saveGemini);
-              }}
-            >
-              <div class="grid gap-2">
-                <Label for="gemini-key"
-                  >{l("Gemini API key", "Chiave API Gemini")}</Label
-                ><Input
-                  id="gemini-key"
-                  type="password"
-                  bind:value={geminiKey}
-                  autocomplete="off"
-                  required
-                  disabled={pending}
-                />
-              </div>
-              <div class="grid gap-2">
-                <Label for="gemini-model">{l("Model", "Modello")}</Label><Input
-                  id="gemini-model"
-                  bind:value={geminiModel}
-                  required
-                  disabled={pending}
-                />
-              </div>
-              <p class="text-xs leading-5 text-muted-foreground">
+    {:else if view === "ai"}
+      {#if !selected && owner}
+        <form
+          class="stack"
+          onsubmit={(event) => {
+            event.preventDefault();
+            if (!aiProvider || !aiKey.trim()) return;
+            if (!aiModels.length) void perform(fetchAiModels);
+            else if (aiModel) void perform(saveAi);
+          }}
+        >
+          <p class="muted">
+            {l(
+              "Choose a provider and enter an API token to fetch its available models.",
+              "Scegli un servizio e inserisci un token API per caricare i modelli disponibili.",
+            )}
+          </p>
+          <div class="form-grid">
+            <div class="grid gap-2">
+              <Label for="ai-provider">{l("Provider", "Servizio")}</Label>
+              <NativeSelect.Root
+                id="ai-provider"
+                class="w-full"
+                bind:value={aiProvider}
+                required
+                disabled={pending}
+                onchange={resetAiModels}
+              >
+                <NativeSelect.Option value="" disabled
+                  >{l(
+                    "Choose a provider",
+                    "Scegli un servizio",
+                  )}</NativeSelect.Option
+                >
+                {#each Object.entries(aiProviders) as [id, name] (id)}
+                  <NativeSelect.Option value={id}>{name}</NativeSelect.Option>
+                {/each}
+              </NativeSelect.Root>
+            </div>
+            <div class="grid gap-2">
+              <Label for="ai-token">{l("API token", "Token API")}</Label>
+              <Input
+                id="ai-token"
+                type="password"
+                bind:value={aiKey}
+                autocomplete="off"
+                required
+                disabled={pending}
+                oninput={resetAiModels}
+              />
+            </div>
+          </div>
+          {#if aiModels.length}
+            <div class="grid gap-2">
+              <Label for="ai-model">{l("Model", "Modello")}</Label>
+              <NativeSelect.Root
+                id="ai-model"
+                class="w-full"
+                bind:value={aiModel}
+                required
+                disabled={pending}
+                aria-describedby="ai-model-help"
+              >
+                <NativeSelect.Option value="" disabled
+                  >{l(
+                    "Choose a model",
+                    "Scegli un modello",
+                  )}</NativeSelect.Option
+                >
+                {#each aiModels as model (model.id)}
+                  <NativeSelect.Option value={model.id}
+                    >{model.name === model.id
+                      ? model.id
+                      : model.name + " · " + model.id}</NativeSelect.Option
+                  >
+                {/each}
+              </NativeSelect.Root>
+              <p id="ai-model-help" class="muted">
                 {l(
-                  "The key is encrypted on the server and never returned to the browser.",
-                  "La chiave viene cifrata sul server e non viene mai restituita al browser.",
+                  "Choose a model that supports image input.",
+                  "Scegli un modello che supporta le immagini.",
                 )}
               </p>
-              <Button
-                type="submit"
-                disabled={pending || !geminiKey.trim() || !geminiModel.trim()}
+            </div>
+          {/if}
+          <div class="row">
+            {#if aiModels.length}
+              <Button type="submit" disabled={pending || !aiModel}
                 >{l("Connect AI", "Collega AI")}</Button
               >
-            </form></Card.Content
-          ></Card.Root
-        >
+              <Button
+                type="button"
+                variant="outline"
+                disabled={pending}
+                onclick={() => void perform(fetchAiModels)}
+              >
+                {l("Refresh models", "Aggiorna modelli")}
+              </Button>
+            {:else}
+              <Button
+                type="submit"
+                disabled={pending || !aiProvider || !aiKey.trim()}
+              >
+                {pending
+                  ? l("Loading models…", "Caricamento modelli…")
+                  : l("Fetch models", "Carica modelli")}
+              </Button>
+            {/if}
+          </div>
+        </form>
       {:else if !selected}<Alert.Root role="note"
           ><Plug /><Alert.Description
             >{l(
@@ -1490,7 +1594,11 @@
                 <Badge variant="secondary"
                   ><Check class="size-3" />{l("Connected", "Collegato")}</Badge
                 ><span class="text-sm text-muted-foreground"
-                  >{selected.data.model ?? "AI"}</span
+                  >{aiProviders[
+                    selected.kind === "gemini"
+                      ? "google"
+                      : (selected.data.provider as AiProvider)
+                  ]} · {selected.data.model ?? "gemini-2.5-flash"}</span
                 >
               </div>
               {#if owner}<Button
@@ -1504,16 +1612,15 @@
               >{l("Read a screenshot", "Leggi uno screenshot")}</Card.Title
             ><Card.Description
               >{l(
-                "The image is sent to Gemini and is not saved by guestin. Review every extracted field before saving a code.",
-                "L’immagine viene inviata a Gemini e non viene salvata da guestin. Controlla ogni campo estratto prima di salvare un codice.",
+                "The image is sent to the selected AI provider and is not saved by guestin. Review every extracted field before saving a code.",
+                "L’immagine viene inviata al servizio AI scelto e non viene salvata da guestin. Controlla ogni campo estratto prima di salvare un codice.",
               )}</Card.Description
             ></Card.Header
           ><Card.Content class="grid gap-4"
             ><div class="grid gap-2">
-              <Label for="gemini-screenshot"
-                >{l("Screenshot", "Screenshot")}</Label
+              <Label for="ai-screenshot">{l("Screenshot", "Screenshot")}</Label
               ><Input
-                id="gemini-screenshot"
+                id="ai-screenshot"
                 bind:ref={screenshotInput}
                 type="file"
                 accept="image/jpeg,image/png,image/webp"

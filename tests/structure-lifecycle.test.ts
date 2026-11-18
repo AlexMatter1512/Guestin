@@ -261,6 +261,11 @@ test("owner-only confirmed code deletion clears all related usage, jobs and rece
   const f = await fixture();
   try {
     history(f);
+    const oldEventIds = (
+      f.db.query("SELECT id FROM events WHERE code_id=?").all(f.code.id) as {
+        id: string;
+      }[]
+    ).map((row) => row.id);
     expect(
       (
         await f.req(
@@ -290,14 +295,17 @@ test("owner-only confirmed code deletion clears all related usage, jobs and rece
       "redemptions",
       "actions",
       "code_metrics",
-      "events",
-      "jobs",
-      "event_reads",
-      "event_context",
     ])
       expect(
         (f.db.query(`SELECT COUNT(*) n FROM ${table}`).get() as any).n,
       ).toBe(0);
+    for (const id of oldEventIds) {
+      expect(f.db.query("SELECT id FROM events WHERE id=?").get(id)).toBeNull();
+      for (const table of ["jobs", "event_reads", "event_context"])
+        expect(
+          f.db.query(`SELECT event_id FROM ${table} WHERE event_id=?`).get(id),
+        ).toBeNull();
+    }
     expect((await f.req("properties")).data).toHaveLength(1);
     expect((await f.req("doors")).data).toHaveLength(1);
     expect((await f.guest()).status).toBe(403);

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
+  import GuestMarkdown from "../../../../../shared/GuestMarkdown.svelte";
   import { t, guestText } from "$lib/i18n/translations";
   import { locale_state } from "$lib/states.svelte";
   import { formatDateTime } from "$lib/utils/dateUtils";
@@ -27,6 +28,8 @@
     onOpen,
     clock,
     timezone,
+    singleUseMarkdown,
+    preview = false,
   }: {
     allButtonsDisabled?: boolean;
     door: Door;
@@ -36,12 +39,15 @@
     }>;
     clock: number;
     timezone: string;
+    singleUseMarkdown: string;
+    preview?: boolean;
   } = $props();
   let message = $state(""),
     showModal = $state(false),
     outcome = $state<"accepted" | "failed" | "uncertain">("accepted"),
     uncertain = $state(false),
-    selectedPhoto = $state("");
+    selectedPhoto = $state(""),
+    previewPressed = $state(false);
   let timer: ReturnType<typeof setTimeout> | undefined,
     ownsLock = false;
   const valid_from = $derived(new Date(door.times.from));
@@ -106,6 +112,10 @@
   }
   onDestroy(dismiss);
   async function handleOpen() {
+    if (preview) {
+      previewPressed = true;
+      return;
+    }
     if (allButtonsDisabled || doorStatus !== "ready") return;
     if (!navigator.onLine) {
       message = guestText("offline");
@@ -192,18 +202,18 @@
   {#if door.single_use}
     <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 w-full">
       <div class="flex items-start gap-3">
-        <p class="text-sm text-amber-800 leading-relaxed">
-          {t("single_use_message")}
-        </p>
+        <div class="text-sm text-amber-800 leading-relaxed min-w-0">
+          <GuestMarkdown source={singleUseMarkdown} />
+        </div>
       </div>
     </div>
   {/if}
 
   <!-- pulsante per aprire la porta -->
   <button
-    class="group relative w-full bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-600 hover:to-cyan-700 text-white font-semibold px-8 py-4 rounded-2xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:hover:shadow-lg flex items-center justify-center gap-3"
+    class="guest-primary group relative w-full bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-600 hover:to-cyan-700 text-white font-semibold px-8 py-4 rounded-2xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:hover:shadow-lg flex items-center justify-center gap-3"
     onclick={handleOpen}
-    disabled={allButtonsDisabled || doorStatus !== "ready"}
+    disabled={!preview && (allButtonsDisabled || doorStatus !== "ready")}
   >
     <svg
       class="w-5 h-5 transition-transform duration-300 group-hover:scale-110"
@@ -223,6 +233,13 @@
       class="absolute inset-0 rounded-2xl bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
     ></div>
   </button>
+
+  {#if previewPressed}<p
+      class="text-sm font-medium text-slate-700"
+      role="status"
+    >
+      {guestText("previewClicked")}
+    </p>{/if}
 
   <!-- warning pulsante stanza gia usato  -->
   {#if consumed}

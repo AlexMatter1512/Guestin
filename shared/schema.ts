@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  guestPageHistorySchema,
+  guestPageSchema,
+  propertyLogoSchema,
+} from "./guest-page";
 // Compatibility bounds for stored staff grants. Authorization uses the staff
 // flag, so these timestamps never impose a time window on staff access.
 export const STAFF_ACCESS_START = "1970-01-01T00:00:00.000Z";
@@ -30,6 +35,10 @@ export const guestLinksSchema = z.object({
 export const propertySchema = z.object({
   active: z.boolean().default(true),
   ...guestLinksSchema.shape,
+  logo: propertyLogoSchema.optional(),
+  guestPage: guestPageSchema.optional(),
+  guestPageHistory: guestPageHistorySchema.optional(),
+  guestPageUpdatedAt: z.iso.datetime().optional(),
   name: z.string().min(1).max(120),
   timezone: z.string().refine((v) => {
     try {

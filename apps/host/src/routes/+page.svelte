@@ -15,6 +15,7 @@
     notificationText,
     wantsNotification,
     notificationTypes,
+    notificationTitle,
   } from "../../../../shared/notifications";
   import "$lib/access-form.css";
   import { Toaster } from "$lib/components/ui/sonner";
@@ -24,6 +25,8 @@
   import { flip } from "svelte/animate";
   import AccessCalendar from "$lib/components/AccessCalendar.svelte";
   import { Switch } from "$lib/components/ui/switch";
+  import GuestPageSettings from "$lib/components/GuestPageSettings.svelte";
+  import PropertyLogoInput from "$lib/components/PropertyLogoInput.svelte";
   import GuestLinksSettings from "$lib/components/GuestLinksSettings.svelte";
   import InstallAppInfo from "$lib/components/InstallAppInfo.svelte";
   import JsonBackup from "$lib/components/JsonBackup.svelte";
@@ -50,6 +53,7 @@
     Plus,
     Settings,
     Menu,
+    PanelsTopLeft,
     CircleHelp,
     ChevronRight,
     ChevronDown,
@@ -96,6 +100,13 @@
     hasPermission,
     type Permission,
   } from "../../../../shared/permissions";
+  const customNotificationLabels: Record<string, string> = {
+    "access.failed": "Device failures",
+    "access.uncertain": "Uncertain requests",
+    "access.invalid": "Invalid access code attempts (including page loads)",
+    "breakfast.redeemed": "Breakfast usage",
+    "breakfast.denied": "Rejected breakfasts",
+  };
   const can = (key: Permission) => hasPermission(user, key);
   const canManageCode = (code: any) =>
     can(code.staff ? "createStaffCodes" : "createAccessCodes");
@@ -252,7 +263,7 @@
     shareText = $state("");
   let settingsPage = $state(""),
     propertyForm = $state(false),
-    connectorView = $state<"list" | "kross" | "ical" | "gemini">("list"),
+    connectorView = $state<"list" | "kross" | "ical" | "ai">("list"),
     invitationLink = $state(""),
     manualCopy = $state(""),
     copyDialog = $state(false),
@@ -406,6 +417,12 @@
       icon: Coffee,
     },
     {
+      id: "guest-page",
+      title: "Guest Page",
+      description: "Logo, accent color and guest messages",
+      icon: PanelsTopLeft,
+    },
+    {
       id: "settings",
       title: "Settings",
       description: "Manage your workspace and preferences",
@@ -425,6 +442,12 @@
     visibleOtherItems.find((item) => item.id === favouriteId) ??
       visibleOtherItems.find((item) => item.id === "reports")!,
   );
+  const favouriteActive = $derived(otherItemActive(favourite.id));
+  const otherActive = $derived(
+    tab === "Other" ||
+      ((desktop.current || !favouriteActive) &&
+        visibleOtherItems.some((item) => otherItemActive(item.id))),
+  );
   function otherItemActive(id: string) {
     if (id === "reports") return tab === "Reports";
     if (id === "connectors") return tab === "Connectors";
@@ -432,7 +455,7 @@
       return (
         tab === "Messages" ||
         (tab === "Settings" &&
-          !["properties", "breakfast"].includes(settingsPage))
+          !["properties", "breakfast", "guest-page"].includes(settingsPage))
       );
     return tab === "Settings" && settingsPage === id;
   }
@@ -448,7 +471,8 @@
     } else openSettings(id);
   }
   const currentSetting = $derived(
-    settingItems.find((i) => i.id === settingsPage),
+    settingItems.find((i) => i.id === settingsPage) ??
+      otherItems.find((i) => i.id === settingsPage),
   );
   function openSettings(id: string) {
     if (id === "connectors" || id === "messages" || id === "reports") {
@@ -473,7 +497,10 @@
       return;
     }
     if (tab === "Settings") {
-      if (!settingsPage || ["properties", "breakfast"].includes(settingsPage))
+      if (
+        !settingsPage ||
+        ["properties", "breakfast", "guest-page"].includes(settingsPage)
+      )
         navigate("Other");
       else settingsPage = "";
       return;
@@ -489,6 +516,8 @@
   function editProperty(p?: any) {
     pEditing = p?.id ?? "";
     pName = p?.name ?? "";
+    pLogo = originalLogo = p?.logo ?? null;
+    logoProcessing = false;
     pZone = p?.timezone ?? "Europe/Rome";
     pIn = p?.checkIn ?? "15:00";
     pOut = p?.checkOut ?? "11:00";
@@ -703,10 +732,15 @@
     settingsPage = found === "Settings" ? (id ?? "") : "";
     propertyForm = found === "Settings" && id === "properties" && !!action;
     if (propertyForm) editProperty(properties.find((p) => p.id === action));
-    connectorView =
-      found === "Connectors" && ["kross", "ical", "gemini"].includes(id)
-        ? (id as "kross" | "ical" | "gemini")
-        : "list";
+    connectorView = "list";
+    if (found === "Connectors") {
+      if (id === "gemini") {
+        connectorView = "ai";
+        history.replaceState(null, "", "#/connectors/ai");
+      } else if (id === "kross" || id === "ical" || id === "ai") {
+        connectorView = id;
+      }
+    }
     editing = false;
     notesEnabled = false;
     doorEditor = false;
@@ -876,6 +910,9 @@
     });
   let pEditing = $state(""),
     pName = $state(""),
+    pLogo = $state<string | null>(null),
+    originalLogo = $state<string | null>(null),
+    logoProcessing = $state(false),
     pZone = $state("Europe/Rome"),
     pIn = $state("15:00"),
     pOut = $state("11:00");
@@ -1765,7 +1802,7 @@
               ? {
                   kross: "KrossBooking",
                   ical: "Calendars",
-                  gemini: "AI",
+                  ai: "AI",
                 }[connectorView]
               : tab === "Reports"
                 ? "Statistics"
@@ -2274,8 +2311,8 @@
         >
         <Button
           variant="ghost"
-          class={cn({ active: otherItemActive(favourite.id) })}
-          aria-current={otherItemActive(favourite.id) ? "page" : undefined}
+          class={cn({ active: favouriteActive })}
+          aria-current={favouriteActive ? "page" : undefined}
           data-tour="nav-favourite"
           onclick={() => openSettings(favourite.id)}
         >
@@ -2284,11 +2321,7 @@
       {/if}
       <Button
         variant="ghost"
-        class={cn({
-          active:
-            tab === "Other" ||
-            visibleOtherItems.some((item) => otherItemActive(item.id)),
-        })}
+        class={cn({ active: otherActive })}
         aria-current={!desktop.current && tab === "Other" ? "page" : undefined}
         aria-expanded={desktop.current ? otherExpanded : undefined}
         aria-controls={desktop.current ? "sidebar-other-items" : undefined}
@@ -3620,22 +3653,24 @@
                       }}
                     />{t("All activity types")}</Label
                   >
-                  {#each [["code.created", "Access code created"], ["access.accepted", "Door opened"], ["access.denied", "Access denied"], ["access.failed", "Device failures"], ["access.uncertain", "Uncertain requests"], ["access.invalid", "Invalid access code attempts (including page loads)"], ["breakfast.redeemed", "Breakfast usage"], ["breakfast.denied", "Rejected breakfasts"]] as option (option[0])}<Label
+                  {#each notificationTypes.filter((type) => type !== "account.reset_requested" || user.role === "owner") as type (type)}<Label
                       class="inline"
                       ><Switch
                         checked={pushAllEvents ||
-                          pushEvents.split(",").includes(option[0])}
+                          pushEvents.split(",").includes(type)}
                         onCheckedChange={(checked) => {
                           const values = (
                             pushAllEvents
                               ? notificationTypes
                               : pushEvents.split(",").filter(Boolean)
-                          ).filter((v) => v !== option[0]);
+                          ).filter((v) => v !== type);
                           pushAllEvents = false;
-                          if (checked) values.push(option[0]);
+                          if (checked) values.push(type);
                           pushEvents = values.join(",");
                         }}
-                      />{t(option[1])}</Label
+                      />{customNotificationLabels[type]
+                        ? t(customNotificationLabels[type])
+                        : notificationTitle(type, hostLanguage.current)}</Label
                     >{/each}
                 </fieldset>
                 <div class="row">
@@ -3702,12 +3737,21 @@
                 {api}
                 {reload}
               />
+            {:else if settingsPage === "guest-page"}
+              {#key propertyId}<GuestPageSettings
+                  {property}
+                  {doors}
+                  owner={user.role === "owner"}
+                  {api}
+                  {reload}
+                />{/key}
             {:else if settingsPage === "properties"}
               {#if propertyForm && user.role === "owner"}<form
                   data-tour="property-form"
                   class="card stack"
                   onsubmit={(e) => {
                     e.preventDefault();
+                    if (busy || logoProcessing) return;
                     void act(async () => {
                       const savedProperty = await api(
                         "properties" + (pEditing ? "/" + pEditing : ""),
@@ -3716,6 +3760,7 @@
                           timezone: pZone,
                           checkIn: pIn,
                           checkOut: pOut,
+                          ...(pLogo !== originalLogo ? { logo: pLogo } : {}),
                         },
                         pEditing ? "PUT" : "POST",
                       );
@@ -3751,7 +3796,15 @@
                       /></Label
                     >
                   </div>
-                  <Button type="submit" variant="outline"
+                  {#key pEditing}<PropertyLogoInput
+                      bind:value={pLogo}
+                      bind:processing={logoProcessing}
+                      disabled={busy}
+                    />{/key}
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    disabled={busy || logoProcessing}
                     >{t(pEditing ? "Save property" : "Add property")}</Button
                   >
                 </form>

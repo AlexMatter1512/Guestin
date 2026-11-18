@@ -26,7 +26,7 @@ Reset links expire after **10 minutes**, work **once**, and replace any earlier 
 
 **iCal:** upload a calendar or fetch a saved calendar URL, inspect its events, then choose the door those events belong to. For example, a calendar for “Room 2” maps to the Room 2 door. In the draft, you can add the main entrance or other doors before saving. Importing a calendar alone creates no access codes.
 
-**AI:** optionally connect a Gemini API key and extract guest details from a screenshot. KrossBooking, iCal and AI each show source details, mapped doors, dates and links before you choose **Use details in access code**. You still review and save the final form yourself.
+**AI:** open **Other → Connectors → AI**, choose Google (Gemini), OpenAI, or Anthropic (Claude), enter an API token, and select **Fetch models**. Choose a model that supports image input and select **Connect AI**. You can then extract guest details from a screenshot. KrossBooking, iCal and AI each show source details, mapped doors, dates and links before you choose **Use details in access code**. You still review and save the final form yourself.
 
 All connectors are optional. You can create your first access code without configuring any of them. Set reusable check-in and instructions links under **Settings → Guest links** for each structure. New forms use those defaults; reservation-specific links from a connector take priority. New breakfast allowances start the day after arrival by default, with editable dates.
 

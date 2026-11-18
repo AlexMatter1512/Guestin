@@ -7,6 +7,7 @@ import {
 import { createApp } from "../server/app";
 import { openDatabase } from "../server/db";
 import { digest } from "../server/security";
+import type { GuestPageSettings } from "../shared/guest-page";
 import { sessionCookie } from "../server/branding";
 import { realtime, websocket } from "../server/realtime";
 import { localDate } from "../shared/schema";
@@ -84,6 +85,157 @@ function fixture() {
   }
   return { db, app, origin, req };
 }
+
+test("guest branding is owner-managed, validated and scoped to the linked property", async () => {
+  const f = fixture();
+  const logo =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRJoAAAAASUVORK5CYII=";
+  try {
+    const branded = (await (
+      await f.req("properties", { name: "Branded", timezone: "UTC", logo })
+    ).json()) as { id: string };
+    const plain = (await (
+      await f.req("properties", { name: "Plain", timezone: "UTC" })
+    ).json()) as { id: string };
+    const invalidLogo = await f.req(
+      `properties/${branded.id}`,
+      { logo: "data:image/png;base64,ZmFrZQ==" },
+      "owner",
+      "PUT",
+    );
+    expect(invalidLogo.status).toBe(400);
+    const path = `properties/${branded.id}/guest-page`;
+    const settings = {
+      showLogo: true,
+      accentColor: "#fafafa",
+      introMarkdown: "## Welcome",
+      singleUseMarkdown: "Take the <u>keys</u>.",
+    };
+    expect(
+      (await f.req(path, { guestPage: settings }, "collaborator", "PATCH"))
+        .status,
+    ).toBe(403);
+    expect(
+      (
+        await f.req(
+          path,
+          { guestPage: { ...settings, accentColor: "transparent" } },
+          "owner",
+          "PATCH",
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (await f.req(path, { guestPage: settings }, "owner", "PATCH")).status,
+    ).toBe(200);
+    async function guestToken(propertyId: string) {
+      const code = (await (
+        await f.req("codes", { propertyId, label: "Guest", grants: [] })
+      ).json()) as { link: string };
+      return new URLSearchParams(new URL(code.link).hash.slice(1)).get("code")!;
+    }
+    async function branding(token: string) {
+      const response = await f.req("guest", undefined, "anonymous", "GET", {
+        Authorization: "Bearer " + token,
+      });
+      expect(response.status).toBe(200);
+      return ((await response.json()) as { guestPage: unknown }).guestPage;
+    }
+    const token = await guestToken(branded.id);
+    const localized: GuestPageSettings = {
+      showLogo: settings.showLogo,
+      accentColor: settings.accentColor,
+      intro: {
+        defaultLanguage: "en",
+        translations: { en: settings.introMarkdown },
+      },
+      singleUse: {
+        defaultLanguage: "en",
+        translations: { en: settings.singleUseMarkdown },
+      },
+    };
+    expect(await branding(token)).toEqual({ ...localized, logo });
+    expect(await branding(await guestToken(plain.id))).toEqual({
+      showLogo: false,
+      accentColor: null,
+      intro: { defaultLanguage: "en", translations: {} },
+      singleUse: { defaultLanguage: "en", translations: {} },
+      logo: null,
+    });
+    expect(
+      (
+        await f.req(
+          path,
+          { guestPage: { ...settings, showLogo: false } },
+          "owner",
+          "PATCH",
+        )
+      ).status,
+    ).toBe(200);
+    expect(await branding(token)).toEqual({
+      ...localized,
+      showLogo: false,
+      logo: null,
+    });
+    const versionsPath = path + "/versions";
+    const versions = (await (await f.req(versionsPath)).json()) as {
+      guestPage: unknown;
+    }[];
+    expect(versions.map((version) => version.guestPage)).toEqual([
+      localized,
+      {
+        showLogo: false,
+        accentColor: null,
+        intro: { defaultLanguage: "en", translations: {} },
+        singleUse: { defaultLanguage: "en", translations: {} },
+      },
+    ]);
+    for (let i = 0; i < 12; i++) {
+      const next = {
+        ...localized,
+        intro: {
+          defaultLanguage: "fr",
+          translations: { fr: "Version " + i, en: "Welcome" },
+        },
+      };
+      expect(
+        (await f.req(path, { guestPage: next }, "owner", "PATCH")).status,
+      ).toBe(200);
+    }
+    const recent = (await (await f.req(versionsPath)).json()) as {
+      guestPage: typeof localized;
+    }[];
+    expect(recent).toHaveLength(10);
+    expect(recent[0].guestPage.intro.translations).toEqual({
+      en: "Welcome",
+      fr: "Version 10",
+    });
+    const door = (await (
+      await f.req("doors", {
+        propertyId: branded.id,
+        name: "Entry",
+        integration: "none",
+        config: {},
+        singleUse: true,
+      })
+    ).json()) as { id: string };
+    const previewPath = path + "/preview?door=" + door.id;
+    expect((await f.req(previewPath, undefined, "anonymous")).status).toBe(401);
+    expect(
+      (await f.req(`properties/${plain.id}/guest-page/preview?door=${door.id}`))
+        .status,
+    ).toBe(404);
+    const preview = await (await f.req(previewPath)).json();
+    expect(preview).toMatchObject({
+      preview: true,
+      doors: [{ id: door.id, singleUse: true }],
+      guestPage: { intro: { translations: { fr: "Version 11" } } },
+    });
+    expect(preview).not.toHaveProperty("codeId");
+  } finally {
+    f.db.close();
+  }
+});
 
 test("workspace date format is owner-managed, defaults to day/month/year and propagates to public and guest responses", async () => {
   const f = fixture();

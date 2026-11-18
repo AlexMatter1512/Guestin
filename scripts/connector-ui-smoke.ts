@@ -4,12 +4,14 @@ import { tmpdir } from "node:os";
 import { resolve, join, extname } from "node:path";
 import { createApp } from "../server/app";
 import { openDatabase } from "../server/db";
+import { websocket } from "../server/realtime";
+import { formatDate } from "../shared/date-format";
 const dir = mkdtempSync(join(tmpdir(), "guestin-connectors-")),
   origin = "http://localhost:3092";
 const db = openDatabase(join(dir, "test.sqlite"));
 const originalFetch = globalThis.fetch;
 let providerState = "normal",
-  geminiState = "normal";
+  aiState = "normal";
 const providerCalls: { path: string; body: any }[] = [];
 globalThis.fetch = (async (input: any, init?: RequestInit) => {
   const url = new URL(String(input instanceof Request ? input.url : input));
@@ -90,30 +92,74 @@ globalThis.fetch = (async (input: any, init?: RequestInit) => {
       });
     throw Error("Unexpected fixture provider operation");
   }
-  if (url.hostname === "generativelanguage.googleapis.com") {
-    if (geminiState === "slow") await Bun.sleep(400);
+  const aiHost = {
+    "generativelanguage.googleapis.com": "google",
+    "api.openai.com": "openai",
+    "api.anthropic.com": "anthropic",
+  }[url.hostname];
+  if (aiHost) {
+    const headers = new Headers(init?.headers);
+    const prefix = aiHost === "google" ? "/v1beta/openai/" : "/v1/";
+    if (url.pathname === prefix + "models") {
+      const key =
+        aiHost === "anthropic"
+          ? headers.get("x-api-key")
+          : headers.get("authorization")?.replace(/^Bearer /, "");
+      if (key === "bad-token") return Response.json({}, { status: 401 });
+      expect(key).toBe("fixture-key");
+      expect(init?.method ?? "GET").toBe("GET");
+      if (aiHost === "anthropic") {
+        expect(headers.get("anthropic-version")).toBe("2023-06-01");
+        return url.searchParams.get("after_id") === "claude-fixture"
+          ? Response.json({
+              data: [{ id: "claude-second", display_name: "Claude Second" }],
+              has_more: false,
+            })
+          : Response.json({
+              data: [{ id: "claude-fixture" }],
+              has_more: true,
+              last_id: "claude-fixture",
+            });
+      }
+      return Response.json({
+        data: [
+          { id: aiHost === "google" ? "models/gemini-fixture" : "gpt-fixture" },
+        ],
+      });
+    }
+    expect(url.pathname).toBe(prefix + "chat/completions");
+    expect(init?.method).toBe("POST");
+    expect(headers.get("authorization")).toBe("Bearer fixture-key");
+    const body = JSON.parse(String(init?.body));
+    expect(body.model).toBe(
+      {
+        google: "gemini-fixture",
+        openai: "gpt-fixture",
+        anthropic: "claude-second",
+      }[aiHost],
+    );
+    expect(body.messages[0].content[1]).toEqual({
+      type: "image_url",
+      image_url: { url: expect.stringMatching(/^data:image\/jpeg;base64,/) },
+    });
     return Response.json({
-      candidates: [
+      choices: [
         {
-          content: {
-            parts: [
-              {
-                text:
-                  geminiState === "malformed"
-                    ? "not-json"
-                    : JSON.stringify({
-                        label: "Extracted Guest",
-                        doors: ["Suite 1"],
-                        ...(geminiState === "complete"
-                          ? {
-                              start: "2030-04-03T13:00:00Z",
-                              end: "2030-04-05T09:00:00Z",
-                              breakfastTotal: 3,
-                            }
-                          : {}),
-                      }),
-              },
-            ],
+          message: {
+            content:
+              aiState === "malformed"
+                ? "not-json"
+                : JSON.stringify({
+                    label: "Extracted Guest",
+                    doors: ["Suite 1"],
+                    ...(aiState === "complete"
+                      ? {
+                          start: "2030-04-03T13:00:00Z",
+                          end: "2030-04-05T09:00:00Z",
+                          breakfastTotal: 3,
+                        }
+                      : {}),
+                  }),
           },
         },
       ],
@@ -145,7 +191,8 @@ app.get("*", async (c) => {
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port: 3092,
-  fetch: app.fetch,
+  websocket,
+  fetch: (request, server) => app.fetch(request, { server }),
 });
 let browser;
 try {
@@ -220,7 +267,11 @@ try {
       configurable: true,
     }),
   );
-  await page.goto(origin + "/host/#/connectors/kross");
+  await page.goto(origin + "/host/#/connectors");
+  await page
+    .getByRole("button", { name: /^KrossBooking Find a reservation/ })
+    .click();
+  await expect(page).toHaveURL(/#\/connectors\/kross$/);
   await page.getByLabel("Hotel ID", { exact: true }).fill("hotel-fixture");
   await page.getByLabel("Username", { exact: true }).fill("fixture-user");
   await page.getByLabel("Password", { exact: true }).fill("fixture-password");
@@ -382,17 +433,129 @@ try {
   await expect(
     page.getByRole("switch", { name: "Suite 1", exact: true }),
   ).toBeChecked();
-  await expect(page.getByLabel("Valid from", { exact: true })).toHaveValue(
-    `${start.slice(0, 4)}-${start.slice(4, 6)}-${start.slice(6, 8)}T15:00`,
-  );
-  await expect(page.getByLabel("Valid until", { exact: true })).toHaveValue(
-    `${end.slice(0, 4)}-${end.slice(4, 6)}-${end.slice(6, 8)}T11:00`,
-  );
+  const calendarStart = start
+    .replace(/^(\d{4})(\d{2})(\d{2})/, "$1-$2-$3")
+    .slice(0, 10);
+  const calendarEnd = end
+    .replace(/^(\d{4})(\d{2})(\d{2})/, "$1-$2-$3")
+    .slice(0, 10);
+  await expect(
+    page.getByRole("button", { name: "Valid from", exact: true }),
+  ).toHaveText(formatDate(calendarStart));
+  await expect(
+    page.getByRole("button", { name: "Valid until", exact: true }),
+  ).toHaveText(formatDate(calendarEnd));
+  await expect(
+    page.getByLabel("Valid from · Time", { exact: true }),
+  ).toHaveValue("15:00");
+  await expect(
+    page.getByLabel("Valid until · Time", { exact: true }),
+  ).toHaveValue("11:00");
   expect((await api("codes")).length).toBe(0);
+  for (const [provider, model] of [
+    ["google", "gemini-fixture"],
+    ["openai", "gpt-fixture"],
+  ]) {
+    const result = await api("connections/ai-models", {
+      provider,
+      key: "fixture-key",
+    });
+    expect(result.models).toEqual([{ id: model, name: model }]);
+    const saved = await api("connections", {
+      propertyId: property.id,
+      kind: "ai",
+      name: provider,
+      data: { provider, model },
+      secret: { key: "fixture-key" },
+    });
+    expect(JSON.stringify(await api("connections"))).not.toContain(
+      "fixture-key",
+    );
+    expect(
+      JSON.parse(
+        (
+          db.query("SELECT data FROM connections WHERE id=?").get(saved.id) as {
+            data: string;
+          }
+        ).data,
+      ),
+    ).toEqual({ provider, model });
+    expect(
+      (
+        db.query("SELECT secret FROM connections WHERE id=?").get(saved.id) as {
+          secret: string;
+        }
+      ).secret,
+    ).not.toContain("fixture-key");
+    expect(
+      (
+        await api(`connections/${saved.id}/request`, {
+          image: "aW1hZ2U=",
+          mime: "image/jpeg",
+          prompt: "Read the fixture",
+        })
+      ).text,
+    ).toContain("Extracted Guest");
+    await api(`connections/${saved.id}`, undefined, "DELETE");
+  }
+
+  const legacy = await api("connections", {
+    propertyId: property.id,
+    kind: "gemini",
+    name: "AI",
+    data: { model: "gemini-fixture" },
+    secret: { key: "fixture-key" },
+  });
   await page.goto(origin + "/host/#/connectors/gemini");
-  await page.getByLabel("Gemini API key", { exact: true }).fill("fixture-key");
+  await page.reload();
+  await expect(page).toHaveURL(/#\/connectors\/ai$/);
+  await expect(
+    page.getByText("Google (Gemini) · gemini-fixture"),
+  ).toBeVisible();
+  expect(
+    (
+      await api(`connections/${legacy.id}/request`, {
+        image: "aW1hZ2U=",
+        mime: "image/jpeg",
+        prompt: "Read the fixture",
+      })
+    ).text,
+  ).toContain("Extracted Guest");
+  await api(`connections/${legacy.id}`, undefined, "DELETE");
+
+  await page.goto(origin + "/host/#/connectors");
+  await page.reload();
+  await page.getByRole("button", { name: /^AI Read guest details/ }).click();
+  await expect(page).toHaveURL(/#\/connectors\/ai$/);
+  const provider = page.getByLabel("Provider", { exact: true });
+  const token = page.getByLabel("API token", { exact: true });
+  const model = page.getByLabel("Model", { exact: true });
+  const fetchModels = page.getByRole("button", {
+    name: "Fetch models",
+    exact: true,
+  });
+  await provider.selectOption("openai");
+  await token.fill("bad-token");
+  await fetchModels.click();
+  await expect(page.getByRole("alert")).toContainText("rejected the token");
+  await token.fill("fixture-key");
+  await fetchModels.click();
+  await expect(model.locator("option")).toHaveText([
+    "Choose a model",
+    "gpt-fixture",
+  ]);
+  await model.selectOption("gpt-fixture");
+  await provider.selectOption("anthropic");
+  await expect(model).toHaveCount(0);
+  await fetchModels.click();
+  await expect(model.locator("option")).toHaveCount(3);
+  await model.selectOption("claude-second");
+  await page.screenshot({ path: join(dir, "ai-model-selection.png") });
   await page.getByRole("button", { name: "Connect AI", exact: true }).click();
   await expect(page.getByLabel("Screenshot", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Anthropic (Claude) · claude-second"),
+  ).toBeVisible();
   const png = Buffer.from(
     await page.evaluate(() => {
       const canvas = document.createElement("canvas");
@@ -406,13 +569,13 @@ try {
   await page
     .getByLabel("Screenshot", { exact: true })
     .setInputFiles({ name: "fixture.png", mimeType: "image/png", buffer: png });
-  geminiState = "malformed";
+  aiState = "malformed";
   await page
     .getByRole("button", { name: "Extract details", exact: true })
     .click();
   await expect(page.getByRole("alert")).toBeVisible();
   expect((await api("codes")).length).toBe(0);
-  geminiState = "normal";
+  aiState = "normal";
   await page
     .getByRole("button", { name: "Extract details", exact: true })
     .click();
@@ -431,7 +594,7 @@ try {
     0,
   );
   expect((await api("codes")).length).toBe(0);
-  geminiState = "complete";
+  aiState = "complete";
   await page
     .getByLabel("Screenshot", { exact: true })
     .setInputFiles({ name: "fixture.png", mimeType: "image/png", buffer: png });
@@ -439,7 +602,7 @@ try {
     .getByRole("button", { name: "Extract details", exact: true })
     .click();
   await page.getByRole("button", { name: "Review draft", exact: true }).click();
-  await expect(imported).toContainText("2030-04-04");
+  await expect(imported).toContainText(formatDate("2030-04-04"));
   await imported
     .getByRole("button", { name: "Use details in access code", exact: true })
     .click();
@@ -447,13 +610,13 @@ try {
     page.getByRole("switch", { name: "Include breakfast", exact: true }),
   ).toBeChecked();
   await expect(
-    page.getByLabel("First breakfast date", { exact: true }),
-  ).toHaveValue("2030-04-04");
+    page.getByRole("button", { name: "First breakfast date", exact: true }),
+  ).toHaveText(formatDate("2030-04-04"));
   await expect(
     page.getByLabel("Total breakfasts", { exact: true }),
   ).toHaveValue("3");
   expect((await api("codes")).length).toBe(0);
-  await page.getByRole("button", { name: "Discard", exact: true }).click();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -461,7 +624,7 @@ try {
   ).toBe(true);
   expect(errors).toEqual([]);
   console.log(
-    "Connector UI smoke passed: HTTP-safe identity, automatic setup, 2FA, properties, search/pagination/details, persisted login, 403 retention/401 expiry, calendar upload, Gemini malformed/cancel, draft-only imports. " +
+    "Connector UI smoke passed: HTTP-safe identity, automatic setup, 2FA, properties, search/pagination/details, persisted login, 403 retention/401 expiry, calendar upload, live model selection and image extraction for all three AI providers, draft-only imports. " +
       dir,
   );
 } catch (e) {

@@ -126,7 +126,7 @@
           pending ||
           showModal ||
           showConfirmModal}
-        class="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:from-slate-400 disabled:to-slate-500 text-white font-bold py-4 px-6 rounded-xl disabled:opacity-50 shadow-md hover:shadow-lg transition-all duration-200 hover:scale-105 active:scale-95 flex items-center justify-center space-x-3 mb-6"
+        class="guest-primary w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:from-slate-400 disabled:to-slate-500 text-white font-bold py-4 px-6 rounded-xl disabled:opacity-50 shadow-md hover:shadow-lg transition-all duration-200 hover:scale-105 active:scale-95 flex items-center justify-center space-x-3 mb-6"
       >
         <span class="text-lg">
           {#if selectedToUse > 0}
@@ -270,7 +270,7 @@
         <button
           onclick={confirmUse}
           disabled={pending}
-          class="flex-1 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:from-slate-400 disabled:to-slate-500 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50"
+          class="guest-primary flex-1 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:from-slate-400 disabled:to-slate-500 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-50"
         >
           {t("confirm")}
         </button>

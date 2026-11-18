@@ -25,8 +25,11 @@ const titles: Record<string, [string, string]> = {
   ],
   "code.created": ["Access code created", "Codice di accesso creato"],
   "code.updated": ["Access code updated", "Codice di accesso aggiornato"],
+  "code.deleted": ["Access code deleted", "Codice di accesso eliminato"],
   "code.revoked": ["Access code revoked", "Codice di accesso revocato"],
   "code.permission": ["Door permission changed", "Permesso porta modificato"],
+  "door.created": ["Door created", "Porta creata"],
+  "door.reordered": ["Doors reordered", "Porte riordinate"],
   "door.updated": ["Door updated", "Porta aggiornata"],
   "door.deleted": ["Door deleted", "Porta eliminata"],
   "device.test.accepted": ["Door test accepted", "Test porta accettato"],
@@ -55,6 +58,13 @@ const titles: Record<string, [string, string]> = {
   "breakfast.denied": ["Breakfast rejected", "Colazione rifiutata"],
 };
 export const notificationTypes = Object.keys(titles);
+export function notificationTitle(type: string, language = "en") {
+  const it = language === "it";
+  return (
+    titles[type]?.[it ? 1 : 0] ??
+    (it ? "Aggiornamento attività" : "Activity update")
+  );
+}
 export function notificationCategory(event: {
   type: string;
   context?: NotificationContext;
@@ -105,6 +115,7 @@ const reasons: Record<string, string> = {
   "Access code created": "Il codice di accesso è stato creato.",
   "Access code updated": "Il codice di accesso è stato aggiornato.",
   "Access code revoked": "Il codice di accesso è stato revocato.",
+  "Guest link replaced": "Il link ospite è stato sostituito.",
 };
 export function notificationText(
   event: { type: string; message: string; context?: NotificationContext },
@@ -114,9 +125,8 @@ export function notificationText(
 ) {
   const it = language === "it",
     context = event.context ?? {};
-  let title =
-    titles[event.type]?.[it ? 1 : 0] ??
-    (it ? "Aggiornamento attività" : "Activity update");
+  let title = notificationTitle(event.type, language);
+  let actor = context.actor?.trim();
   const label = context.codeLabel || fallbackLabel;
   let body = event.message;
   if (
@@ -124,7 +134,8 @@ export function notificationText(
     event.type === "device.test.accepted"
   ) {
     if (context.doorName) title += ` · ${context.doorName}`;
-    body = context.actor ?? "";
+    body = actor ?? "";
+    actor = undefined;
   } else if (event.type === "access.invalid") {
     body =
       context.action === "door"
@@ -146,17 +157,18 @@ export function notificationText(
       body += it
         ? ` Questo browser dichiara una visita precedente: ${context.previousVisit.label} (${formatDateTime(context.previousVisit.date, dateFormat)}). Informazione non verificata.`
         : ` This browser reports a previous visit: ${context.previousVisit.label} (${formatDateTime(context.previousVisit.date, dateFormat)}). Unverified information.`;
-  } else if (event.type === "code.created" && context.actor) {
+  } else if (event.type === "code.created" && actor) {
     const date = (value: string) =>
       formatDateTime(value, dateFormat, context.timezone ?? "UTC");
     body = it
-      ? `${context.actor} ha creato il codice di accesso ${label ?? ""}`
-      : `${context.actor} created access code ${label ?? ""}`;
+      ? `${actor} ha creato il codice di accesso ${label ?? ""}`
+      : `${actor} created access code ${label ?? ""}`;
     if (context.validFrom && context.validTo)
       body += it
         ? ` valido dal ${date(context.validFrom)} al ${date(context.validTo)}`
         : ` valid from ${date(context.validFrom)} to ${date(context.validTo)}`;
     if (context.timezone) body += ` (${context.timezone})`;
+    actor = undefined;
   } else if (event.type === "breakfast.redeemed") {
     const count = /^([0-9]+) breakfast/.exec(event.message)?.[1];
     body = count
@@ -166,36 +178,49 @@ export function notificationText(
       : it
         ? "Colazione utilizzata."
         : "Breakfast redeemed.";
-  } else if (event.type === "door.updated") {
-    body = context.actor
-      ? it
-        ? `${context.actor} ha aggiornato la porta ${context.doorName ?? ""}.`
-        : `${context.actor} updated door ${context.doorName ?? ""}.`
-      : event.message;
+  } else if (event.type === "door.created" || event.type === "door.updated") {
+    if (actor && context.doorName) {
+      const verb =
+        event.type === "door.created"
+          ? it
+            ? "ha creato la porta"
+            : "created door"
+          : it
+            ? "ha aggiornato la porta"
+            : "updated door";
+      body = `${actor} ${verb} ${context.doorName}.`;
+      actor = undefined;
+    }
   } else if (event.type === "door.deleted") {
     body =
       (it ? "Porta eliminata: " : "Door deleted: ") +
       (context.doorName ?? event.message.replace(/^Door deleted: /, ""));
   } else if (event.type === "device.test.resolved") {
-    body =
-      (context.actor ? context.actor + ": " : "") +
-      (it
-        ? "Il test incerto è stato verificato."
-        : "The uncertain door test was checked.");
+    body = it
+      ? "Il test incerto è stato verificato."
+      : "The uncertain door test was checked.";
   } else {
+    const legacySeparator =
+      actor && context.doorName && event.message.startsWith(actor + " ")
+        ? event.message.indexOf(": ")
+        : -1;
     const reason =
       context.detail ??
-      (context.actor && context.doorName
-        ? event.message.split(": ").slice(1).join(": ")
+      (legacySeparator >= 0
+        ? event.message.slice(legacySeparator + 2)
         : event.message);
-    body = reason;
-    if (it)
-      body =
-        reasons[reason] ??
+    body = it
+      ? (reasons[reason] ??
         titles[event.type]?.[1] ??
-        "È stata registrata una nuova attività.";
-    if (context.actor && context.doorName)
-      body = `${context.actor} · ${context.doorName}: ${body}`;
+        "È stata registrata una nuova attività.")
+      : reason;
+  }
+  if (actor) {
+    const subject =
+      context.doorName && event.type !== "door.deleted"
+        ? `${actor} · ${context.doorName}`
+        : actor;
+    body = body ? `${subject}: ${body}` : subject;
   }
   return { title: label ? `${label} · ${title}` : title, body };
 }

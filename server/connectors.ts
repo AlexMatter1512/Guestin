@@ -4,6 +4,13 @@ import { log } from "./log";
 import { z } from "zod";
 import { lookup } from "node:dns/promises";
 import ipaddr from "ipaddr.js";
+import {
+  aiConfiguration,
+  aiKey,
+  aiProvider,
+  extractAiImage,
+  listAiModels,
+} from "./connector-ai";
 class CalendarError extends Error {
   constructor(
     message: string,
@@ -120,12 +127,21 @@ export function connectorRoutes(
       }),
     ),
   );
+  app.post("/api/v1/connections/ai-models", async (c) => {
+    owner(c);
+    const { provider, key } = z
+      .object({ provider: aiProvider, key: aiKey })
+      .parse(await c.req.json());
+    return c.json({
+      models: await listAiModels(provider, key, boundedFetch, fail),
+    });
+  });
   app.post("/api/v1/connections", async (c) => {
     owner(c);
     const b = z
       .object({
         propertyId: z.string(),
-        kind: z.enum(["kross", "ical", "gemini"]),
+        kind: z.enum(["kross", "ical", "gemini", "ai"]),
         name: z.string().min(1),
         secret: z.record(z.string(), z.unknown()),
         data: z.record(z.string(), z.unknown()).default({}),
@@ -151,6 +167,21 @@ export function connectorRoutes(
             ? b.data.deviceId
             : globalThis.crypto.randomUUID(),
       };
+    }
+    if (b.kind === "ai") {
+      const configuration = aiConfiguration.parse(b.data);
+      const key = aiKey.parse(b.secret.key);
+      const models = await listAiModels(
+        configuration.provider,
+        key,
+        boundedFetch,
+        fail,
+      );
+      if (!models.some((model) => model.id === configuration.model))
+        fail("Select a model available to this AI provider token.");
+      // Persist only the selected provider/model and the encrypted key.
+      b.data = configuration;
+      b.secret = { key };
     }
     const id = globalThis.crypto.randomUUID();
     db.query("INSERT INTO connections VALUES(?,?,?,?,?,?)").run(
@@ -483,6 +514,8 @@ export function connectorRoutes(
       });
       return c.json({ text });
     }
+    if (row.kind !== "ai" && row.kind !== "gemini")
+      fail("Unknown connector type", 400);
     const b = z
       .object({
         image: z.string().max(6 * 1024 * 1024),
@@ -490,41 +523,14 @@ export function connectorRoutes(
         prompt: z.string().max(12000),
       })
       .parse(input);
-    const model = String(meta.model ?? "gemini-2.5-flash");
-    if (!/^[a-zA-Z0-9.-]+$/.test(model)) fail("Invalid model");
-    const r = await boundedFetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": String(secret.key),
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: b.prompt },
-                { inlineData: { mimeType: b.mime, data: b.image } },
-              ],
-            },
-          ],
-          generationConfig: { responseMimeType: "application/json" },
-        }),
-      },
+    const configuration = aiConfiguration.parse(
+      row.kind === "gemini"
+        ? { provider: "google", model: meta.model ?? "gemini-2.5-flash" }
+        : meta,
     );
-    if (r.status !== 200) fail("Image extraction provider failed", 502);
-    let data: any;
-    try {
-      data = JSON.parse(r.text);
-    } catch {
-      fail("Invalid extraction response", 502);
-    }
+    const key = aiKey.parse(secret.key);
     return c.json({
-      text:
-        data.candidates?.[0]?.content?.parts
-          ?.map((p: any) => p.text ?? "")
-          .join("") ?? "",
+      text: await extractAiImage(configuration, key, b, boundedFetch, fail),
     });
   });
 }

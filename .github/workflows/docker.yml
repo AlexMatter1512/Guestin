@@ -40,6 +40,8 @@ jobs:
   docker:
     name: Build, smoke test and publish
     needs: [test, secrets]
+    # Validate the container in PRs and on the tag that publishes it.
+    if: github.event_name != 'push' || github.ref_type == 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
@@ -60,6 +62,7 @@ jobs:
           persist-credentials: false
       - uses: docker/setup-buildx-action@v4
       - uses: oven-sh/setup-bun@v2
+        if: env.PUBLISH == 'true'
         with:
           bun-version: 1.4.0
       - name: Classify tag
@@ -68,25 +71,6 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: bun scripts/release-metadata.ts
-      - name: Build test image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          load: true
-          push: false
-          platforms: linux/amd64
-          tags: guestin:ci
-          build-args: |
-            GUESTIN_BUILD_ID=${{ github.run_id }}-${{ github.run_attempt }}
-            GUESTIN_VERSION=${{ github.ref_type == 'tag' && github.ref_name || 'development' }}
-            GUESTIN_COMMIT=${{ github.sha }}
-            GUESTIN_BUILT_AT=${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
-            GUESTIN_IMAGE=${{ vars.DOCKERHUB_IMAGE || format('{0}/guestin', vars.DOCKERHUB_USERNAME || 'alexmatter') }}
-            GUESTIN_REPOSITORY=${{ github.repository }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Test container startup and restart persistence
-        run: bash scripts/container-smoke.sh guestin:ci
       - name: Validate Docker Hub configuration
         if: env.PUBLISH == 'true'
         id: image
@@ -107,6 +91,40 @@ jobs:
             exit 1
           fi
           printf 'name=%s\n' "$image" >> "$GITHUB_OUTPUT"
+      - name: Prepare shared build metadata
+        id: stamp
+        env:
+          IMAGE_VERSION: ${{ env.PUBLISH == 'true' && github.ref_name || 'development' }}
+          IMAGE_NAME: ${{ steps.image.outputs.name || vars.DOCKERHUB_IMAGE || format('{0}/guestin', vars.DOCKERHUB_USERNAME || 'alexmatter') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          {
+            printf 'built_at=%s\n' "$built_at"
+            printf 'args<<ARGS\n'
+            printf 'GUESTIN_BUILD_ID=%s-%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+            printf 'GUESTIN_VERSION=%s\n' "$IMAGE_VERSION"
+            printf 'GUESTIN_COMMIT=%s\n' "$GITHUB_SHA"
+            printf 'GUESTIN_BUILT_AT=%s\n' "$built_at"
+            printf 'GUESTIN_IMAGE=%s\n' "$IMAGE_NAME"
+            printf 'GUESTIN_REPOSITORY=%s\n' "$GITHUB_REPOSITORY"
+            printf 'GUESTIN_TYPE_CHECK=0\n'
+            printf 'ARGS\n'
+          } >> "$GITHUB_OUTPUT"
+      - name: Build test image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          push: false
+          platforms: linux/amd64
+          tags: guestin:ci
+          build-args: ${{ steps.stamp.outputs.args }}
+          cache-from: type=gha
+          cache-to: ${{ env.PUBLISH != 'true' && 'type=gha,mode=max' || '' }}
+      - name: Test container startup and restart persistence
+        run: bash scripts/container-smoke.sh guestin:ci
       - name: Log in to Docker Hub
         if: env.PUBLISH == 'true'
         uses: docker/login-action@v4
@@ -131,6 +149,7 @@ jobs:
           flavor: latest=false
           labels: |
             org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.created=${{ steps.stamp.outputs.built_at }}
       - name: Publish amd64 and arm64 image
         if: env.PUBLISH == 'true'
         id: publish_image
@@ -141,13 +160,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
-          build-args: |
-            GUESTIN_BUILD_ID=${{ github.run_id }}-${{ github.run_attempt }}
-            GUESTIN_VERSION=${{ github.ref_name }}
-            GUESTIN_COMMIT=${{ github.sha }}
-            GUESTIN_BUILT_AT=${{ fromJSON(steps.metadata.outputs.json || '{"labels":{}}').labels['org.opencontainers.image.created'] }}
-            GUESTIN_IMAGE=${{ steps.image.outputs.name }}
-            GUESTIN_REPOSITORY=${{ github.repository }}
+          build-args: ${{ steps.stamp.outputs.args }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: mode=min
@@ -158,11 +171,10 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PUBLISHED_DIGEST: ${{ steps.publish_image.outputs.digest }}
-          GUESTIN_BUILT_AT: ${{ fromJSON(steps.metadata.outputs.json || '{"labels":{}}').labels['org.opencontainers.image.created'] }}
         run: |
           docker run --rm \
             --env GITHUB_TOKEN --env GITHUB_REPOSITORY \
-            --env PUBLISHED_DIGEST --env GUESTIN_BUILT_AT \
+            --env PUBLISHED_DIGEST \
             guestin:ci bun scripts/publish-update-manifests.ts
 
   release:
@@ -203,7 +215,7 @@ jobs:
 
   sync-landing:
     name: Update landing demo revision
-    needs: docker
+    needs: [test, secrets]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5

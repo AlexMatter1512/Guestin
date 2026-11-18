@@ -13,7 +13,9 @@ ARG GUESTIN_BUILT_AT=""
 ARG GUESTIN_IMAGE="alexmatter/guestin"
 ARG GUESTIN_REPOSITORY="AlexMatter1512/guestin"
 RUN GUESTIN_BUILD_ID="$GUESTIN_BUILD_ID" GUESTIN_VERSION="$GUESTIN_VERSION" GUESTIN_COMMIT="$GUESTIN_COMMIT" GUESTIN_BUILT_AT="$GUESTIN_BUILT_AT" GUESTIN_IMAGE="$GUESTIN_IMAGE" GUESTIN_REPOSITORY="$GUESTIN_REPOSITORY" bun scripts/stamp-build.ts
-RUN bun run check && bun run build
+# CI image jobs already require the separate type-check and test job to pass.
+ARG GUESTIN_TYPE_CHECK=1
+RUN if [ "$GUESTIN_TYPE_CHECK" = "1" ]; then bun run check; fi && bun run build
 FROM oven/bun:1.4.0 AS runtime
 ARG GUESTIN_BUILD_ID=""
 ARG GUESTIN_VERSION="development"
