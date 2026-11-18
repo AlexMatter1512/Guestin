@@ -26,6 +26,15 @@ test("calendar all-day exclusive end and recurrence generate drafts only", () =>
   expect(d[0].grants![0].start).toBe("2026-11-10T14:00:00.000Z");
   expect(d[0].grants![0].end).toBe("2026-11-12T10:00:00.000Z");
   expect(d[0].breakfast).toBeNull();
+  const counted = calendarDrafts(
+    text.replace("SUMMARY:Alex", "SUMMARY:Alex\r\nX-GUEST-COUNT:3"),
+    options,
+    new Date("2026-11-09"),
+  );
+  expect(counted.map((draft) => draft.breakfast)).toEqual([
+    { start: "2026-11-11", end: "2026-11-12", total: 6 },
+    { start: "2026-11-18", end: "2026-11-19", total: 6 },
+  ]);
 });
 test("property-local date boundary and DST conversion", () => {
   expect(localDate("Europe/Rome", new Date("2026-11-09T23:30:00Z"))).toBe(
@@ -149,7 +158,11 @@ test("Kross v5 property wrappers, search pagination, detail rooms and guest link
   expect(draft.grants?.[1].end).toBe("2026-07-03T09:00:00.000Z");
   expect(draft.checkinLink).toBe("https://example.com/check-in");
   expect(draft.instructionsLink).toBe("https://example.com/arrival");
-  expect(draft.breakfast).toBeNull(); // Guest count does not imply a breakfast allowance.
+  expect(draft.breakfast).toEqual({
+    start: "2026-07-02",
+    end: "2026-07-03",
+    total: 6,
+  });
   const missing = krossReservationDraft(
     { data: { reservation: { label: "Unknown dates" } } },
     options,

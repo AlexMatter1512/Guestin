@@ -10,7 +10,8 @@ export type {
 } from "./kross-planner";
 import ICAL from "ical.js";
 import { z } from "zod";
-import type { AccessCodeDraft } from "./schema";
+import { localDate, type AccessCodeDraft } from "./schema";
+import { nextDate } from "./draft-defaults";
 export interface DraftConnector {
   name: string;
   load(): Promise<Partial<AccessCodeDraft>[]>;
@@ -294,6 +295,28 @@ export function reservationDate(value: unknown): string | null {
     ? date
     : null;
 }
+// Count local calendar days so a daylight-saving change still counts as one night.
+export function reservationBreakfast(
+  arrival: string | null,
+  departure: string | null,
+  guests: unknown,
+  explicitTotal?: unknown,
+) {
+  if (!arrival || !departure || departure <= arrival) return null;
+  const nights = (Date.parse(departure) - Date.parse(arrival)) / 86400000;
+  const count =
+    typeof guests === "number" || typeof guests === "string"
+      ? Number(guests)
+      : 0;
+  const total =
+    Number.isSafeInteger(count) && count > 0
+      ? count * nights
+      : Number(explicitTotal);
+  return Number.isSafeInteger(total) && total > 0
+    ? { total, start: nextDate(arrival), end: departure }
+    : null;
+}
+
 export function krossSourceRooms(detail: any, summary: any = {}): string[] {
   let rooms: string[] = Array.isArray(detail.rooms)
     ? detail.rooms.flatMap((room: any) => {
@@ -375,19 +398,12 @@ export function krossReservationDraft(
           end: wallTime(end!, options.checkOut, options.timezone),
           singleUse: !!d.singleUse,
         }));
-  const total = Number(detail.n_breakfasts ?? detail.breakfast_total);
-  const breakfastStart =
-    start &&
-    new Date(Date.parse(start + "T12:00:00Z") + 86400000)
-      .toISOString()
-      .slice(0, 10);
-  const breakfast =
-    !missingDates &&
-    Number.isInteger(total) &&
-    total > 0 &&
-    breakfastStart! <= end!
-      ? { total, start: breakfastStart!, end: end! }
-      : null;
+  const breakfast = reservationBreakfast(
+    start,
+    end,
+    detail.n_guests || summary.n_guests,
+    detail.n_breakfasts ?? detail.breakfast_total,
+  );
   return {
     propertyId: options.propertyId,
     label: String(detail.label ?? summary.label ?? ""),
@@ -496,7 +512,15 @@ export function calendarDrafts(
             singleUse: options.singleUse,
           },
         ],
-        breakfast: null,
+        breakfast: reservationBreakfast(
+          start.isDate
+            ? startDate
+            : localDate(options.timezone, new Date(begin)),
+          end.isDate ? endDate : localDate(options.timezone, new Date(finish)),
+          sub.getFirstPropertyValue("x-guest-count") ??
+            sub.getFirstPropertyValue("x-num-guests") ??
+            sub.getFirstPropertyValue("x-n-guests"),
+        ),
         notes: "Imported calendar draft — review dates and guest details",
         calendarDetails: {
           uid: String(sub.getFirstPropertyValue("uid") ?? ""),
@@ -530,6 +554,7 @@ export const extractedDraft = z.object({
   start: z.string().optional(),
   end: z.string().optional(),
   doors: z.array(z.string()).default([]),
+  guestCount: z.number().int().positive().optional(),
   breakfastTotal: z.number().int().nonnegative().optional(),
 });
 export function parseExtraction(text: string) {

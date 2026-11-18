@@ -137,7 +137,10 @@ globalThis.fetch = (async (input: any, init?: RequestInit) => {
                 ? [{ number: "1A" }, { number: "1B" }]
                 : [{ number: "Suite 1" }],
             email: "fixture-guest@example.test",
-            tel: "+39 000 000 000",
+            tel: body.id_reservation === 93 ? "+39 000 000 000" : "",
+            channel: "Booking.com",
+            n_guests: 3,
+            name_reservation_status: "Confirmed",
             notes: "Arrival by train",
             link_guest_portal: "https://example.com/checkin",
             link_check_in_instructions: "https://example.com/instructions",
@@ -210,7 +213,7 @@ globalThis.fetch = (async (input: any, init?: RequestInit) => {
                       ? {
                           start: "2030-04-03T13:00:00Z",
                           end: "2030-04-05T09:00:00Z",
-                          breakfastTotal: 3,
+                          guestCount: 2,
                         }
                       : {}),
                   }),
@@ -482,6 +485,13 @@ try {
   await expect(imported).toContainText("1A, 1B");
   await expect(imported).toContainText("Suite 1 [001]");
   await expect(imported.getByText("Suite 1", { exact: true })).toHaveCount(0);
+  await expect(
+    imported.getByText("Booking.com", { exact: true }),
+  ).toBeVisible();
+  await expect(imported.getByText("Confirmed", { exact: true })).toBeVisible();
+  await imported
+    .getByRole("button", { name: "Proposed code", exact: true })
+    .click();
   await expect(imported.getByText("Room 1A", { exact: true })).toBeVisible();
   const download = page.waitForEvent("download");
   await imported.getByRole("button", { name: "Save contact" }).click();
@@ -544,6 +554,7 @@ try {
     .getByRole("button", { name: /Fixture Guest.*Review draft/ })
     .click();
   await expect(imported).toBeVisible();
+  await expect(imported.getByText("No phone number provided")).toBeVisible();
   await expect(imported).toContainText("Source rooms");
   await expect(imported).toContainText("fixture-guest@example.test");
   await expect(imported).toContainText("Arrival by train");
@@ -562,6 +573,9 @@ try {
   await expect(
     page.getByLabel("Guest name / label", { exact: true }),
   ).toHaveValue("Fixture Guest");
+  await expect(
+    page.getByLabel("Total breakfasts", { exact: true }),
+  ).toHaveValue("6");
   await expect(
     page.getByLabel("Online check-in link", { exact: true }),
   ).toHaveValue("https://example.com/checkin");
@@ -822,7 +836,7 @@ try {
   ).toHaveText(formatDate("2030-04-04"));
   await expect(
     page.getByLabel("Total breakfasts", { exact: true }),
-  ).toHaveValue("3");
+  ).toHaveValue("4");
   expect((await api("codes")).length).toBe(0);
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   expect(

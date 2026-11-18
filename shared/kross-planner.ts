@@ -11,6 +11,7 @@ export type KrossPlannerReservation = {
   departure: string;
   color?: string;
   textColor?: string;
+  channel?: string;
 };
 export type KrossPlanner = {
   rooms: KrossPlannerRoom[];
@@ -123,6 +124,8 @@ export function krossPlanner(response: any, month: string): KrossPlanner {
           departure: end.toISOString().slice(0, 10),
           color: color(slot.bg_color),
           textColor: color(slot.text_color),
+          channel:
+            slot.channel || slot.name_channel || slot.cod_channel || undefined,
         });
       }
     }

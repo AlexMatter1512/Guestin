@@ -18,10 +18,7 @@
   } from "$lib/date-settings.svelte";
   import FeedbackToast from "$lib/components/FeedbackToast.svelte";
   import Modal from "$lib/components/Modal.svelte";
-  import {
-    guestLinkDefaults,
-    breakfastDefaults,
-  } from "../../../../../shared/draft-defaults";
+  import { guestLinkDefaults } from "../../../../../shared/draft-defaults";
   import { untrack } from "svelte";
   import {
     CalendarDays,
@@ -57,6 +54,7 @@
     krossProperties,
     krossReservations,
     krossReservationDraft,
+    reservationBreakfast,
     krossSourceRooms,
     reservationDate,
     type CalendarAccessDraft,
@@ -67,7 +65,11 @@
     type AiProvider,
   } from "../../../../../shared/ai-providers";
   import * as Item from "$lib/components/ui/item";
-  import type { AccessCodeDraft } from "../../../../../shared/schema";
+  import * as Accordion from "$lib/components/ui/accordion";
+  import {
+    localDate,
+    type AccessCodeDraft,
+  } from "../../../../../shared/schema";
   type View = "list" | "kross" | "ical" | "ai";
   type Connection = {
     id: string;
@@ -509,10 +511,23 @@
     const detail = result?.data?.reservation ?? result?.reservation ?? result;
     const rooms = krossSourceRooms(detail, summary).join(", ");
     const phone =
-      [detail.tel, detail.phone, detail.mobile, summary.tel, summary.phone]
+      [
+        detail.tel,
+        detail.phone,
+        detail.mobile,
+        summary.tel,
+        summary.phone,
+        summary.mobile,
+      ]
         .map((v) => String(v ?? "").trim())
         .find(Boolean) ?? "";
-    const email = String(detail.email || detail.email_guest || "").trim();
+    const email = String(
+      detail.email ||
+        detail.email_guest ||
+        summary.email ||
+        summary.email_guest ||
+        "",
+    ).trim();
     const contactDate = (value: unknown) => {
       const date = reservationDate(value);
       return date ? formatDisplayDate(date) : "";
@@ -520,6 +535,69 @@
     const arrival = contactDate(detail.arrival ?? summary.arrival);
     const departure = contactDate(detail.departure ?? summary.departure);
     const plannerRoom = item.roomNames?.join(", ") ?? "";
+    const missing = l("Not supplied", "Non disponibile");
+    const channel =
+      detail.channel ||
+      detail.name_channel ||
+      summary.channel ||
+      summary.name_channel ||
+      detail.cod_channel ||
+      summary.cod_channel;
+    const fields = { ...(item.roomId === undefined ? summary : {}), ...detail };
+    const extraDetails: [string, string][] = [];
+    function addField(label: string, value: unknown) {
+      if (value && typeof value === "object" && Object.keys(value).length) {
+        for (const [key, child] of Object.entries(value)) {
+          const part = Array.isArray(value)
+            ? Number(key) + 1
+            : key.replaceAll("_", " ");
+          addField(label + " · " + part, child);
+        }
+      } else {
+        extraDetails.push([
+          label,
+          value == null || typeof value === "object" || value === ""
+            ? missing
+            : String(value),
+        ]);
+      }
+    }
+    const fieldNames: Record<string, string> = {
+      cod_reservation: l("Booking reference", "Riferimento prenotazione"),
+      date_reservation: l("Booked on", "Data prenotazione"),
+      name_reservation_status: l("Reservation status", "Stato prenotazione"),
+      n_rooms: l("Number of rooms", "Numero di camere"),
+      nights: l("Nights", "Notti"),
+      rooms: l("Rooms", "Camere"),
+      cod_channel: l("Channel code", "Codice canale"),
+      link_guest_portal: l("Guest portal link", "Link portale ospite"),
+      link_check_in_instructions: l(
+        "Check-in instructions link",
+        "Link istruzioni check-in",
+      ),
+    };
+    const displayed = new Set([
+      "id_reservation",
+      "label",
+      "arrival",
+      "departure",
+      "n_guests",
+      "notes",
+      "tel",
+      "email",
+    ]);
+    for (const [key, value] of Object.entries(fields)) {
+      if (
+        !displayed.has(key) &&
+        !(key === "channel" && value === channel && typeof value !== "object")
+      )
+        addField(
+          Object.hasOwn(fieldNames, key)
+            ? fieldNames[key]
+            : key.replaceAll("_", " "),
+          value,
+        );
+    }
     review(
       krossReservationDraft(
         result,
@@ -533,7 +611,18 @@
         summary,
       ),
       [
-        [l("Reservation", "Prenotazione"), String(id)],
+        [l("Reservation number", "Numero prenotazione"), String(id)],
+        [
+          l("Booking source", "Canale di prenotazione"),
+          channel && typeof channel === "object"
+            ? String(channel.name || channel.label || missing)
+            : String(channel || missing),
+        ],
+        [l("Phone", "Telefono"), phone],
+        [
+          l("Guests", "Ospiti"),
+          String(detail.n_guests || summary.n_guests || missing),
+        ],
         [
           l("Arrival", "Arrivo"),
           String(detail.arrival ?? summary.arrival ?? ""),
@@ -547,12 +636,14 @@
           l("Planner room", "Camera nel planner"),
           plannerRoom !== rooms ? plannerRoom : "",
         ],
-        [l("Email", "Email"), String(detail.email ?? detail.email_guest ?? "")],
-        [l("Phone", "Telefono"), phone],
+        [l("Email", "Email"), email],
         [
           l("Reservation notes", "Note prenotazione"),
-          String(detail.notes ?? detail.note ?? ""),
+          String(
+            detail.notes || detail.note || summary.notes || summary.note || "",
+          ),
         ],
+        ...extraDetails,
       ],
       phone
         ? {
@@ -795,7 +886,7 @@
       image,
       mime: "image/jpeg",
       prompt:
-        "Extract access details. Return JSON: label (guest name), start and end (ISO datetimes with timezone offset), doors (array of exact names), breakfastTotal (integer if known). Omit uncertain values; do not guess. Allowed doors: " +
+        "Extract access details. Return JSON: label (guest name), start and end (ISO datetimes with timezone offset), doors (array of exact names), guestCount (total number of guests if stated), breakfastTotal (integer if known). Omit uncertain values; do not guess. Allowed doors: " +
         localDoors.map((d) => d.name).join(", "),
     });
     if (!current()) return;
@@ -835,29 +926,24 @@
         : [],
       breakfast: null,
     };
-    if (completeDates && parsed.breakfastTotal && parsed.breakfastTotal > 0)
-      extraction.breakfast = {
-        ...breakfastDefaults(
-          {
-            grants: [
-              {
-                doorId: "",
-                start: new Date(parsed.start!).toISOString(),
-                end: new Date(parsed.end!).toISOString(),
-                singleUse: false,
-              },
-            ],
-          },
-          property.timezone,
-        ),
-        total: parsed.breakfastTotal,
-      };
+    const stayDate = (value: string) =>
+      /^\d{4}-\d{2}-\d{2}$/.test(value)
+        ? reservationDate(value)
+        : localDate(property.timezone, new Date(value));
+    if (completeDates)
+      extraction.breakfast = reservationBreakfast(
+        stayDate(parsed.start!),
+        stayDate(parsed.end!),
+        parsed.guestCount,
+        parsed.breakfastTotal,
+      );
     extractionBreakfast = parsed.breakfastTotal;
     extractionDetails = [
       [l("Source image", "Immagine originale"), imageFile.name],
       [l("Extracted arrival", "Arrivo rilevato"), parsed.start ?? ""],
       [l("Extracted departure", "Partenza rilevata"), parsed.end ?? ""],
       [l("Extracted doors", "Porte rilevate"), parsed.doors.join(", ")],
+      [l("Guests", "Ospiti"), String(parsed.guestCount ?? "")],
       [
         l("Breakfast quantity found", "Colazioni rilevate"),
         parsed.breakfastTotal === undefined
@@ -1786,7 +1872,14 @@
                 {extraction.grants?.length ?? 0}
                 {l("matched doors", "porte corrispondenti")}
               </p>
-              {#if extractionBreakfast !== undefined}<p
+              {#if extraction.breakfast}<p
+                  class="text-sm text-muted-foreground"
+                >
+                  {l("Proposed breakfasts", "Colazioni proposte")}: {extraction
+                    .breakfast.total} · {formatDisplayDate(
+                    extraction.breakfast.start,
+                  )} → {formatDisplayDate(extraction.breakfast.end)}
+                </p>{:else if extractionBreakfast !== undefined}<p
                   class="text-sm text-muted-foreground"
                 >
                   {l("Breakfast quantity found", "Colazioni rilevate")}: {extractionBreakfast}.
@@ -1873,7 +1966,8 @@
   title={l("Review imported details", "Controlla i dettagli importati")}
   onclose={() => (preview = null)}
 >
-  {#if preview}<div class="space-y-6" data-connector-preview>
+  {#if preview}{@const imported = preview}
+    <div class="space-y-6" data-connector-preview>
       <div>
         <Badge variant="secondary">{preview.source}</Badge>
         <h2 class="mt-3 text-xl font-semibold">
@@ -1887,84 +1981,119 @@
           )}
         </p>
       </div>
-      {#if preview.contact}
-        {@const contact = preview.contact}
-        <Button
-          variant="outline"
-          onclick={() => saveGuestContact(contact, contactNameFormat)}
-          ><Contact />{l("Save contact", "Salva contatto")}</Button
-        >
-      {/if}
-      <dl class="grid gap-3">
-        {#each preview.details.filter(([, value]) => value) as [label, value], index (index)}<div
-            class="border-b pb-3"
+      {#snippet reservationInfo()}
+        {#if imported.contact}
+          {@const contact = imported.contact}
+          <Button
+            variant="outline"
+            onclick={() => saveGuestContact(contact, contactNameFormat)}
+            ><Contact />{l("Save contact", "Salva contatto")}</Button
           >
-            <dt class="text-xs text-muted-foreground">{label}</dt>
-            <dd class="mt-1 whitespace-pre-wrap break-words text-sm">
-              {value}
-            </dd>
-          </div>{/each}
-      </dl>
-      <section class="space-y-3">
-        <h3 class="font-medium">
-          {l("Proposed door permissions", "Permessi porta proposti")}
-        </h3>
-        <p class="text-xs text-muted-foreground">{property.timezone}</p>
-        {#each preview.draft.grants as grant (grant.doorId)}<div
-            class="border-b pb-3 text-sm"
-          >
-            <strong
-              >{localDoors.find((d) => d.id === grant.doorId)?.name}</strong
-            >
-            <p class="mt-1 text-muted-foreground">
-              {formatDisplayDateTime(grant.start, property.timezone)} → {formatDisplayDateTime(
-                grant.end,
-                property.timezone,
-              )}
-            </p>
-            <small
-              >{grant.singleUse
-                ? l("Single use", "Monouso")
-                : l("Multiple uses", "Utilizzi multipli")}</small
-            >
-          </div>{:else}<p class="text-sm text-amber-700 dark:text-amber-400">
+        {:else if view === "kross"}
+          <p class="mb-3 font-medium text-amber-700 dark:text-amber-400">
             {l(
-              "No doors could be mapped with valid dates. Select doors and fill in dates in the form.",
-              "Nessuna porta associata con date valide. Seleziona porte e date nel modulo.",
+              "No phone number provided",
+              "Numero di telefono non disponibile",
             )}
-          </p>{/each}
-      </section>
-      {#if preview.draft.breakfast}<section class="text-sm">
-          <h3 class="font-medium">{l("Breakfast", "Colazioni")}</h3>
-          <p>
-            {preview.draft.breakfast.total} · {formatDisplayDate(
-              preview.draft.breakfast.start,
-            )} → {formatDisplayDate(preview.draft.breakfast.end)}
           </p>
-        </section>{/if}
-      <dl class="space-y-3 text-sm">
-        <div>
-          <dt class="text-muted-foreground">
-            {l("Check-in link", "Link check-in")}
-          </dt>
-          <dd class="break-all">
-            {preview.draft.checkinLink || l("Not supplied", "Non disponibile")}
-          </dd>
-        </div>
-        <div>
-          <dt class="text-muted-foreground">
-            {l("Instructions link", "Link istruzioni")}
-          </dt>
-          <dd class="break-all">
-            {preview.draft.instructionsLink ||
-              l("Not supplied", "Non disponibile")}
-          </dd>
-        </div>
-      </dl>
+        {/if}
+        <dl class="grid gap-3">
+          {#each imported.details.filter(([, value]) => value) as [label, value], index (index)}<div
+              class="border-b pb-3"
+            >
+              <dt class="text-xs text-muted-foreground">{label}</dt>
+              <dd class="mt-1 whitespace-pre-wrap break-words text-sm">
+                {value}
+              </dd>
+            </div>{/each}
+        </dl>
+      {/snippet}
+      {#snippet proposedCode()}
+        <section class="space-y-3">
+          <h3 class="font-medium">
+            {l("Proposed door permissions", "Permessi porta proposti")}
+          </h3>
+          <p class="text-xs text-muted-foreground">{property.timezone}</p>
+          {#each imported.draft.grants as grant (grant.doorId)}<div
+              class="border-b pb-3 text-sm"
+            >
+              <strong
+                >{localDoors.find((d) => d.id === grant.doorId)?.name}</strong
+              >
+              <p class="mt-1 text-muted-foreground">
+                {formatDisplayDateTime(grant.start, property.timezone)} → {formatDisplayDateTime(
+                  grant.end,
+                  property.timezone,
+                )}
+              </p>
+              <small
+                >{grant.singleUse
+                  ? l("Single use", "Monouso")
+                  : l("Multiple uses", "Utilizzi multipli")}</small
+              >
+            </div>{:else}<p class="text-sm text-amber-700 dark:text-amber-400">
+              {l(
+                "No doors could be mapped with valid dates. Select doors and fill in dates in the form.",
+                "Nessuna porta associata con date valide. Seleziona porte e date nel modulo.",
+              )}
+            </p>{/each}
+        </section>
+        {#if imported.draft.breakfast}<section class="text-sm">
+            <h3 class="font-medium">{l("Breakfast", "Colazioni")}</h3>
+            <p>
+              {imported.draft.breakfast.total} · {formatDisplayDate(
+                imported.draft.breakfast.start,
+              )} → {formatDisplayDate(imported.draft.breakfast.end)}
+            </p>
+          </section>{/if}
+        <dl class="space-y-3 text-sm">
+          <div>
+            <dt class="text-muted-foreground">
+              {l("Check-in link", "Link check-in")}
+            </dt>
+            <dd class="break-all">
+              {imported.draft.checkinLink ||
+                l("Not supplied", "Non disponibile")}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-muted-foreground">
+              {l("Instructions link", "Link istruzioni")}
+            </dt>
+            <dd class="break-all">
+              {imported.draft.instructionsLink ||
+                l("Not supplied", "Non disponibile")}
+            </dd>
+          </div>
+        </dl>
+      {/snippet}
+      {#if view === "kross"}
+        <Accordion.Root type="multiple" value={["reservation"]}>
+          <Accordion.Item value="reservation">
+            <Accordion.Trigger
+              >{l("Reservation", "Prenotazione")}</Accordion.Trigger
+            >
+            <Accordion.Content>{@render reservationInfo()}</Accordion.Content>
+          </Accordion.Item>
+          <Accordion.Item value="code">
+            <Accordion.Trigger
+              >{l("Proposed code", "Codice proposto")}</Accordion.Trigger
+            >
+            <Accordion.Content
+              ><div class="space-y-4">
+                {@render proposedCode()}
+              </div></Accordion.Content
+            >
+          </Accordion.Item>
+        </Accordion.Root>
+      {:else}
+        {@render reservationInfo()}
+        {@render proposedCode()}
+      {/if}
       <div class="flex flex-wrap gap-2">
         <Button
           onclick={() => {
-            const value = preview!.draft;
+            const value = imported.draft;
             preview = null;
             onDraft(value);
           }}
