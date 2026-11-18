@@ -32,7 +32,7 @@ All connectors are optional. You can create your first access code without confi
 
 ## Team permissions
 
-**Owner** and **admin** mean the same unrestricted role. Under **Settings → Team**, owners can grant each collaborator permission to create ordinary access codes, add new doors, use booking connectors, and create staff access codes. Code permissions also control managing codes of that type. Staff access codes are separate from collaborator accounts.
+**Owner** and **admin** mean the same unrestricted role. Under **Settings → Team**, owners can grant each collaborator permission to create ordinary access codes, add new doors, use booking connectors, create staff access codes, edit the guest page, and test door openings. Guest page editors can also view previous versions. Door testers can mark uncertain tests as checked. Code permissions also control managing codes of that type. Staff access codes are separate from collaborator accounts.
 
 New collaborators start with no permissions. Existing staff accounts become collaborators while retaining their previous code creation and connector capabilities. Owners can delete collaborators or promote them to owners. Account management, connector configuration, permanent deletion and database wiping always require an owner role.
 

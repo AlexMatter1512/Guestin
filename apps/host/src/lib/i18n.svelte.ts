@@ -81,6 +81,8 @@ const italian: Record<string, string> = {
   "Create new doors": "Crea nuove porte",
   "Use booking connectors": "Usa i connettori delle prenotazioni",
   "Create staff access codes": "Crea codici di accesso staff",
+  "Edit guest page": "Modifica la pagina ospite",
+  "Test door openings": "Prova l’apertura delle porte",
   "Promote to owner": "Promuovi a proprietario",
   "Confirm promotion": "Conferma promozione",
   "Delete account": "Elimina account",
@@ -110,6 +112,10 @@ const italian: Record<string, string> = {
     "Serve il permesso per creare porte",
   "Collaborator permission required: useBookingConnectors":
     "Serve il permesso per usare i connettori delle prenotazioni",
+  "Collaborator permission required: editGuestPage":
+    "Serve il permesso per modificare la pagina ospite",
+  "Collaborator permission required: testOpenDoors":
+    "Serve il permesso per provare l’apertura delle porte",
 
   Notes: "Note",
   "Delete permanently": "Elimina definitivamente",
@@ -602,6 +608,7 @@ const redesignedItalian: Record<string, string> = {
   "Could not process this logo.": "Impossibile elaborare questo logo.",
   "Choose a PNG, JPEG or WebP image under 10 MB.": "Scegli un’immagine PNG, JPEG o WebP inferiore a 10 MB.",
   "An owner can change these settings.": "Un proprietario può modificare queste impostazioni.",
+  "Editing requires the Edit guest page permission.": "Per modificare queste impostazioni serve il permesso di modifica della pagina ospite.",
   "Guest page settings saved.": "Impostazioni della pagina ospite salvate.",
   "Save guest page settings": "Salva le impostazioni della pagina ospite",
   "The built-in message is used when this field is blank.": "Se lasci questo campo vuoto, verrà mostrato il messaggio predefinito.",

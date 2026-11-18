@@ -6,6 +6,8 @@ export const collaboratorPermissionsSchema = z
     createDoors: z.boolean().default(false),
     useBookingConnectors: z.boolean().default(false),
     createStaffCodes: z.boolean().default(false),
+    editGuestPage: z.boolean().default(false),
+    testOpenDoors: z.boolean().default(false),
   })
   .strict();
 // Patch fields must have no defaults: absent fields preserve stored grants.
@@ -15,6 +17,8 @@ export const collaboratorPermissionChangesSchema = z
     createDoors: z.boolean().optional(),
     useBookingConnectors: z.boolean().optional(),
     createStaffCodes: z.boolean().optional(),
+    editGuestPage: z.boolean().optional(),
+    testOpenDoors: z.boolean().optional(),
   })
   .strict();
 export type CollaboratorPermissions = z.infer<
@@ -26,6 +30,8 @@ export const permissionLabels: Record<Permission, string> = {
   createDoors: "Create new doors",
   useBookingConnectors: "Use booking connectors",
   createStaffCodes: "Create staff access codes",
+  editGuestPage: "Edit guest page",
+  testOpenDoors: "Test door openings",
 };
 export function hasPermission(
   user:

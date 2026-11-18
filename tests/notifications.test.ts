@@ -141,7 +141,7 @@ test("push uses the device language, code title and shared event context; retent
       "{}",
       JSON.stringify({
         properties: ["p"],
-        events: ["access.invalid"],
+        events: ["access.invalid", "code.updated"],
         language: "it",
       }),
     );
@@ -170,6 +170,36 @@ test("push uses the device language, code title and shared event context; retent
     expect(payloads[0].url).toBeNull();
     expect(payloads[0].icon).toStartWith("data:image/svg+xml,");
     expect(payloads[0].thumbnail).toBeNull();
+    expect(db.query("SELECT * FROM jobs").all()).toHaveLength(0);
+    db.query("INSERT INTO events VALUES(?,?,?,?,?,?)").run(
+      "update",
+      "p",
+      null,
+      "code.updated",
+      "Access code updated",
+      new Date().toISOString(),
+    );
+    db.query("INSERT INTO event_context VALUES(?,?)").run(
+      "update",
+      JSON.stringify({
+        actor: "Host",
+        changes: [
+          { kind: "doorAdded", door: "Side door" },
+          { kind: "doorRemoved", door: '🔑"'.repeat(1000) },
+        ],
+      }),
+    );
+    db.query(
+      "INSERT INTO jobs(event_id,subscription_id,next) VALUES(?,?,?)",
+    ).run("update", "s", 0);
+    await deliverPush(db, (async (_subscription: any, payload: string) => {
+      expect(Buffer.byteLength(payload)).toBeLessThanOrEqual(3500);
+      payloads.push(JSON.parse(payload));
+    }) as any);
+    expect(payloads[1]?.body).toStartWith(
+      "Casa · Host: Porta aggiunta: Side door",
+    );
+    expect(payloads[1]?.body).toEndWith("…");
     expect(db.query("SELECT * FROM jobs").all()).toHaveLength(0);
     db.query("UPDATE events SET created='2000-01-01T00:00:00.000Z'").run();
     pruneNotifications(db);

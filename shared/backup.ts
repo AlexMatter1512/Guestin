@@ -1,6 +1,7 @@
 import { normalizeDoorInput } from "./webhook";
 import { z } from "zod";
 import { propertySchema, doorSchema, codeSchema } from "./schema";
+import { accessCodeChangesSchema } from "./access-code-changes";
 export const MAX_BACKUP_BYTES = 32 * 1024 * 1024;
 const id = z.uuid();
 const counter = z.number().int().nonnegative();
@@ -165,6 +166,7 @@ export const backupSchema = z
               doorId: z.uuid().optional(),
               actor: z.string().optional(),
               detail: z.string().optional(),
+              changes: accessCodeChangesSchema.optional(),
               action: z.enum(["page", "door", "breakfast"]).optional(),
               suppressedAttempts: z.number().int().nonnegative().optional(),
               previousVisit: z

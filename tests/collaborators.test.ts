@@ -4,10 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../server/app";
 import { openDatabase } from "../server/db";
+import type { DeviceAdapter } from "../server/devices";
 import { digest } from "../server/security";
 import { permissionLabels } from "../shared/permissions";
 
-async function fixture(path = ":memory:") {
+async function fixture(
+  path = ":memory:",
+  device: DeviceAdapter = async () => ({
+    status: "accepted",
+    detail: "Fixture",
+  }),
+) {
   const db = openDatabase(path),
     origin = "http://localhost:3000";
   for (const role of ["owner", "collaborator"]) {
@@ -29,13 +36,14 @@ async function fixture(path = ":memory:") {
     key: "c".repeat(64),
     origin,
     setupToken: "setup",
-    device: async () => ({ status: "accepted", detail: "Fixture" }),
+    device,
   });
   async function req(
     path: string,
     body?: unknown,
     method = body === undefined ? "GET" : "POST",
     role = "owner",
+    headers: Record<string, string> = {},
   ) {
     const r = await app.request("/api/v1/" + path, {
       method,
@@ -44,6 +52,7 @@ async function fixture(path = ":memory:") {
         Cookie: `guestin_session=${role}`,
         "X-CSRF-Token": "csrf",
         "Content-Type": "application/json",
+        ...headers,
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
@@ -165,6 +174,8 @@ test("collaborator permissions are independent, checked on every request and can
       createStaffCodes: true,
       createDoors: true,
       useBookingConnectors: true,
+      editGuestPage: false,
+      testOpenDoors: false,
     });
     expect(
       (await f.req("doors", f.doorDraft, "POST", "collaborator")).status,
@@ -223,6 +234,86 @@ test("collaborator permissions are independent, checked on every request and can
     expect(
       (await f.req("me", undefined, "GET", "collaborator")).data.user.role,
     ).toBe("owner");
+  } finally {
+    f.db.close();
+  }
+});
+
+test("guest page editing and door testing are independently granted and revoked", async () => {
+  let testCalls = 0;
+  const f = await fixture(":memory:", async () => {
+    testCalls++;
+    return { status: "uncertain", detail: "Fixture response" };
+  });
+  try {
+    const door = await f.req("doors", {
+      ...f.doorDraft,
+      integration: "ewelink",
+      config: { webhook_code: "fixture" },
+    });
+    expect(door.status).toBe(201);
+    const guestPage = `properties/${f.property.id}/guest-page`;
+    const doorPath = `doors/${door.data.id}`;
+    const save = (accentColor: string) =>
+      f.req(guestPage, { guestPage: { accentColor } }, "PATCH", "collaborator");
+    const versions = () =>
+      f.req(`${guestPage}/versions`, undefined, "GET", "collaborator");
+    const actionId = crypto.randomUUID();
+    const testDoor = () =>
+      f.req(`${doorPath}/test`, { confirm: true }, "POST", "collaborator", {
+        "Idempotency-Key": actionId,
+      });
+    const resolve = () =>
+      f.req(
+        `${doorPath}/resolve-test`,
+        { confirm: true, actionId },
+        "POST",
+        "collaborator",
+      );
+
+    expect((await save("#123abc")).status).toBe(403);
+    expect((await versions()).status).toBe(403);
+    expect((await testDoor()).status).toBe(403);
+    expect(testCalls).toBe(0);
+
+    expect((await f.grant({ editGuestPage: true })).status).toBe(200);
+    expect((await save("#123abc")).data.accentColor).toBe("#123abc");
+    expect((await save("#321abc")).status).toBe(200);
+    expect((await versions()).data[0].guestPage.accentColor).toBe("#123abc");
+    expect(
+      (
+        await f.req(
+          `properties/${f.property.id}`,
+          { name: "Renamed" },
+          "PUT",
+          "collaborator",
+        )
+      ).status,
+    ).toBe(403);
+    expect((await testDoor()).status).toBe(403);
+    expect(testCalls).toBe(0);
+
+    expect(
+      (await f.grant({ editGuestPage: false, testOpenDoors: true })).status,
+    ).toBe(200);
+    expect((await save("#123abc")).status).toBe(403);
+    expect((await versions()).status).toBe(403);
+    expect((await testDoor()).data).toMatchObject({
+      id: actionId,
+      status: "uncertain",
+    });
+    expect((await testDoor()).status).toBe(200);
+    expect(testCalls).toBe(1);
+    expect(
+      (await f.req(`${doorPath}/config`, undefined, "GET", "collaborator"))
+        .status,
+    ).toBe(403);
+    expect((await resolve()).status).toBe(200);
+
+    expect((await f.grant({ testOpenDoors: false })).status).toBe(200);
+    expect((await resolve()).status).toBe(403);
+    expect((await testDoor()).status).toBe(403);
+    expect(testCalls).toBe(1);
   } finally {
     f.db.close();
   }

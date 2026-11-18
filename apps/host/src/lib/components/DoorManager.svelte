@@ -56,6 +56,7 @@
     propertyName = "",
     owner,
     canCreate = false,
+    canTest,
     api,
     reload,
     onSaved,
@@ -69,6 +70,7 @@
     propertyName?: string;
     owner: boolean;
     canCreate?: boolean;
+    canTest: boolean;
     api: (
       path: string,
       body?: any,
@@ -1169,7 +1171,7 @@
                     ><ArrowDown size={18} /></Button
                   >
                 </div>
-              {:else if owner && door.integration !== "none"}
+              {:else if canTest && door.integration !== "none"}
                 <Button
                   variant="outline"
                   size="icon"
@@ -1192,7 +1194,7 @@
                       size={20}
                     />{:else}<DoorOpen size={20} />{/if}</Button
                 >
-              {:else if owner}
+              {:else if canTest}
                 <span class="size-11 shrink-0" aria-hidden="true"></span>
               {/if}
             </li>
@@ -1231,7 +1233,7 @@
 {#snippet doorActions(door: Door)}
   <div class="w-full space-y-4">
     <div class="flex flex-wrap gap-2">
-      {#if owner}{#if door.testAction?.status === "uncertain"}<Button
+      {#if canTest}{#if door.testAction?.status === "uncertain"}<Button
             variant="outline"
             disabled={pending}
             onclick={() => ask("resolve", door)}

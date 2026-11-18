@@ -24,7 +24,7 @@
   let {
     property,
     doors,
-    owner,
+    canEdit,
     api,
     reload,
   }: {
@@ -37,7 +37,7 @@
         }
       | undefined;
     doors: { id: string; propertyId: string; name: string }[];
-    owner: boolean;
+    canEdit: boolean;
     api: (path: string, body?: unknown, method?: string) => Promise<unknown>;
     reload: () => Promise<void>;
   } = $props();
@@ -80,7 +80,7 @@
   }
 
   async function openHistory() {
-    if (!property || !owner || historyBusy) return;
+    if (!property || !canEdit || historyBusy) return;
     historyOpen = true;
     historyBusy = true;
     historyError = "";
@@ -96,7 +96,7 @@
     }
   }
   async function save() {
-    if (!property || pending || !owner) return;
+    if (!property || pending || !canEdit) return;
     pending = true;
     error = "";
     message = "";
@@ -139,7 +139,7 @@
             doorPicker = true;
           }}>{t("Open guest page")}</Button
         >
-        {#if owner}<Button type="button" variant="outline" onclick={openHistory}
+        {#if canEdit}<Button type="button" variant="outline" onclick={openHistory}
             >{t("Previous versions")}</Button
           >{/if}
       </div>
@@ -149,7 +149,7 @@
         <Switch
           id="guest-show-logo"
           bind:checked={setting.showLogo}
-          disabled={!owner || pending}
+          disabled={!canEdit || pending}
         />
         {t("Show property logo")}
       </Label>
@@ -168,14 +168,14 @@
           type="color"
           class="h-10 w-14 cursor-pointer"
           value={setting.accentColor ?? defaultGuestAccent}
-          disabled={!owner || pending}
+          disabled={!canEdit || pending}
           oninput={(event) => (setting.accentColor = event.currentTarget.value)}
         />
         {#if setting.accentColor}
           <Button
             type="button"
             variant="ghost"
-            disabled={!owner || pending}
+            disabled={!canEdit || pending}
             onclick={() => (setting.accentColor = null)}
             >{t("Use default accent")}</Button
           >
@@ -187,21 +187,21 @@
       label={t("Intro text")}
       kind="intro"
       bind:value={setting.intro}
-      disabled={!owner || pending}
+      disabled={!canEdit || pending}
     />
     <GuestLocalizedEditor
       id="guest-single-use"
       label={t("Single-use door message")}
       kind="singleUse"
       bind:value={setting.singleUse}
-      disabled={!owner || pending}
+      disabled={!canEdit || pending}
     />
     {#if error}<p class="error" role="alert">{error}</p>{/if}
     <FeedbackToast {message} />
-    {#if owner}<Button type="submit" disabled={pending}
+    {#if canEdit}<Button type="submit" disabled={pending}
         >{t("Save guest page settings")}</Button
       >
-    {:else}<p class="muted">{t("An owner can change these settings.")}</p>{/if}
+    {:else}<p class="muted">{t("Editing requires the Edit guest page permission.")}</p>{/if}
   </form>
 {/if}
 

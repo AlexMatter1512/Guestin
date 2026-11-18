@@ -716,9 +716,21 @@ try {
       .locator(".timeline-event")
       .filter({ hasText: "Access code updated" })
       .first(),
-  ).toContainText("Owner");
+  ).toContainText("Owner:");
+  await expect(
+    page
+      .locator(".timeline-event")
+      .filter({ hasText: "Access code updated" })
+      .first(),
+  ).toContainText("Check-in link updated");
   await page.goto(origin + "/host/#/activity/" + property.id);
   await page.getByRole("tab", { name: "Staff", exact: true }).click();
+  await expect(
+    page
+      .locator("[data-notification-id]")
+      .filter({ hasText: "Access code updated" })
+      .first(),
+  ).toContainText("Check-in link updated");
   await expect(
     page
       .locator("[data-notification-id]")

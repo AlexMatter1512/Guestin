@@ -3,6 +3,10 @@ import {
   DEFAULT_DATE_FORMAT,
   type DateFormat,
 } from "./date-format";
+import {
+  describeAccessCodeChange,
+  type AccessCodeChange,
+} from "./access-code-changes";
 export type NotificationCategory = "guest" | "staff";
 export type NotificationContext = {
   category?: NotificationCategory;
@@ -14,6 +18,7 @@ export type NotificationContext = {
   validTo?: string;
   timezone?: string;
   detail?: string;
+  changes?: AccessCodeChange[];
   action?: "page" | "door" | "breakfast";
   suppressedAttempts?: number;
   previousVisit?: { label: string; date: string };
@@ -169,6 +174,17 @@ export function notificationText(
         : ` valid from ${date(context.validFrom)} to ${date(context.validTo)}`;
     if (context.timezone) body += ` (${context.timezone})`;
     actor = undefined;
+  } else if (event.type === "code.updated" && context.changes?.length) {
+    body = context.changes
+      .map((change) =>
+        describeAccessCodeChange(
+          change,
+          it,
+          dateFormat,
+          context.timezone ?? "UTC",
+        ),
+      )
+      .join(" · ");
   } else if (event.type === "breakfast.redeemed") {
     const count = /^([0-9]+) breakfast/.exec(event.message)?.[1];
     body = count

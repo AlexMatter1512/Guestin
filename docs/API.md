@@ -25,9 +25,9 @@ Authentication sets an HttpOnly session cookie. Passwords require at least 12 ch
 
 Owner and admin refer to the same unrestricted `owner` role. Team accounts use `collaborator`; staff access codes remain a separate concept. New invited collaborators have no permissions until an owner grants them. Existing staff accounts migrate to collaborators with their previous code creation and connector capabilities preserved.
 
-`user.permissions` contains `createAccessCodes`, `createDoors`, `useBookingConnectors`, and `createStaffCodes`. `PATCH /users/:id` accepts a partial permissions object, preserving omitted flags. These are the only grantable permissions; unknown permission keys are rejected. Owners receive every capability regardless of permission storage. Permissions are enforced from the database on every authenticated request and account changes refresh active browsers.
+`user.permissions` contains `createAccessCodes`, `createDoors`, `useBookingConnectors`, `createStaffCodes`, `editGuestPage`, and `testOpenDoors`. `PATCH /users/:id` accepts a partial permissions object and preserves omitted flags. Unknown permission keys are rejected. Owners receive every capability regardless of permission storage. Permissions are enforced from the database on every authenticated request, and account changes refresh active browsers.
 
-Ordinary and staff code permissions are independent. Each controls creating and managing codes of its type, including updates, revocation, replacement, permission pauses and action resolution. Changing a code's type requires both permissions. `createDoors` permits adding doors, with their initial integration settings; editing, deleting, reordering and testing existing doors remain owner-only. `useBookingConnectors` permits listing and using saved connectors (including iCal and AI); credential configuration, Kross login/verification and deletion remain owner-only.
+Ordinary and staff code permissions are independent. Each controls creating and managing codes of its type, including updates, revocation, replacement, permission pauses and action resolution. Changing a code's type requires both permissions. `createDoors` permits adding doors with their initial integration settings. `editGuestPage` permits saving guest page settings and reading their version history. `testOpenDoors` permits starting and resolving door tests. Door editing, deletion, reordering and viewing saved device configurations remain owner-only. `useBookingConnectors` permits listing and using saved connectors, including iCal and AI. Connector credentials, Kross login/verification and deletion remain owner-only.
 
 Account management, invitations, property administration, permanent code deletion, backups/import and workspace wiping remain owner-only and cannot be delegated through flags. Owners cannot demote or delete another owner. Promoting a collaborator grants the full owner role. Self-deletion requires another owner, invalidates all account sessions and subscriptions, removes personal preferences/permissions/read receipts, and preserves workspace data and access codes (creator becomes null).
 
@@ -43,8 +43,8 @@ Properties also contain `defaultCheckinLink` and `defaultInstructionsLink`. Owne
 - `PUT /properties/:id/breakfast-settings`: owner-only `{enabled,password?}`. New passwords require 8–128 characters. Leaving the password unset keeps an existing password; disabling removes protection. Changes invalidate breakfast sessions.
 - `GET /doors`, `POST /doors`, `PUT /doors/:id`, `DELETE /doors/:id`: door management. Owners configure `none` or `webhook` adapters, credentials, translations, photos, defaults, and enabled state. Secret credentials are omitted from list and guest reads. Owner-only `GET /doors/:id/config` returns the saved decrypted configuration as `{config}` with `Cache-Control: no-store`; collaborators cannot read it. Successful door updates emit `door.updated` with the acting username and door reference, without credentials.
 - `PUT /doors/order`: save order.
-- `POST /doors/:id/test`: owner-only, explicitly confirmed device test, with an idempotency key. Disabled doors can be tested without enabling guest access or consuming a code grant.
-- `POST /doors/:id/resolve-test`: resolve an uncertain test after checking the device.
+- `POST /doors/:id/test`: requires `testOpenDoors`, explicit confirmation and an idempotency key. Disabled doors can be tested without enabling guest access or consuming a code grant.
+- `POST /doors/:id/resolve-test`: requires `testOpenDoors`. Resolve an uncertain test after checking the device.
 
 ## Email delivery and account recovery
 
@@ -108,6 +108,8 @@ filtered before pagination. Anonymous guest-link actions belong to guest history
 staff access codes and actions attributed to a valid host session belong to staff
 history. Attribution never replaces guest-token authorization. Older events use
 their recorded actor and staff-code context when no category was saved.
+
+Access code edits attach `context.changes` when an edit changes access or code settings. Entries include named door additions and removals, changed validity times and single-use settings, plus changes to label, code type and breakfast allocation. Notes and guest link edits record the field that changed. Historical events may lack this field.
 
 `POST /events/read` accepts `{eventIds:[...]}` with 1–100 UUIDs and marks only
 those existing events read by the signed-in user. Duplicate reads are idempotent.

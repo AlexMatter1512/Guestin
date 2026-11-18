@@ -13,6 +13,11 @@ import { accountRecovery } from "./account-recovery";
 import type { MailSender } from "./mail";
 import { recordTransferRoutes } from "./record-transfer";
 import { notificationPresentation } from "./notification-presentation";
+import {
+  accessCodeChanges,
+  type CodeInput,
+  type CodeRecord,
+} from "./access-code-changes";
 import { migrateWebhookDoors } from "./webhook-migration";
 import { normalizeDoorInput, webhookRequest } from "../shared/webhook";
 import {
@@ -275,6 +280,8 @@ export function createApp(
               createDoors: true,
               useBookingConnectors: true,
               createStaffCodes: true,
+              editGuestPage: true,
+              testOpenDoors: true,
             }
           : collaboratorPermissionsSchema.parse(
               JSON.parse(
@@ -1054,7 +1061,7 @@ export function createApp(
     return c.json(links);
   });
   app.get("/api/v1/properties/:id/guest-page/versions", (c) => {
-    owner(c);
+    permission(c, "editGuestPage");
     const property = get(
       "SELECT data FROM properties WHERE id=?",
       c.req.param("id"),
@@ -1093,7 +1100,7 @@ export function createApp(
     );
   });
   app.patch("/api/v1/properties/:id/guest-page", async (c) => {
-    owner(c);
+    permission(c, "editGuestPage");
     const { guestPage } = z
       .object({ guestPage: guestPageSchema })
       .parse(await c.req.json());
@@ -1363,7 +1370,7 @@ export function createApp(
     return c.json({ ok: true });
   });
   app.post("/api/v1/doors/:id/test", async (c) => {
-    owner(c);
+    permission(c, "testOpenDoors");
     z.object({ confirm: z.literal(true) }).parse(await c.req.json());
     const id = actionId(c),
       doorId = c.req.param("id");
@@ -1426,7 +1433,7 @@ export function createApp(
     return c.json({ id, ...result });
   });
   app.post("/api/v1/doors/:id/resolve-test", async (c) => {
-    owner(c);
+    permission(c, "testOpenDoors");
     const b = z
       .object({ actionId: z.string(), confirm: z.literal(true) })
       .parse(await c.req.json());
@@ -1506,8 +1513,16 @@ export function createApp(
       ).map(codeView),
     ),
   );
+  function activityDoorName(id: string): string {
+    return (
+      get(
+        "SELECT json_extract(data,'$.name') AS name FROM doors WHERE id=?",
+        id,
+      )?.name ?? id
+    );
+  }
   function saveCode(
-    data: any,
+    data: CodeInput,
     id: string,
     user: { id: string; name: string },
     isNew: boolean,
@@ -1515,19 +1530,19 @@ export function createApp(
     if (data.staff)
       data = {
         ...data,
-        grants: data.grants.map((g: any) => ({
+        grants: data.grants.map((g) => ({
           ...g,
           start: STAFF_ACCESS_START,
           end: STAFF_ACCESS_END,
         })),
       };
     db.transaction(() => {
-      if (!get("SELECT 1 FROM properties WHERE id=?", data.propertyId))
-        fail("Property missing");
-      if (
-        new Set(data.grants.map((g: any) => g.doorId)).size !==
-        data.grants.length
-      )
+      const property = get(
+        "SELECT data FROM properties WHERE id=?",
+        data.propertyId,
+      );
+      if (!property) fail("Property missing");
+      if (new Set(data.grants.map((g) => g.doorId)).size !== data.grants.length)
         fail("Duplicate door");
       for (const g of data.grants) {
         if (
@@ -1562,11 +1577,15 @@ export function createApp(
           .length
       )
         fail("Resolve pending device action first", 409);
-      const { grants, ...record } = data;
-      if (old && JSON.parse(old.data).importedCreatorName)
-        record.importedCreatorName = JSON.parse(old.data).importedCreatorName;
-      if (old && JSON.parse(old.data).importedCreatorId)
-        record.importedCreatorId = JSON.parse(old.data).importedCreatorId;
+      const previous: Partial<CodeRecord> | undefined = old
+        ? JSON.parse(old.data)
+        : undefined;
+      const { grants, ...fields } = data;
+      const record: CodeRecord = {
+        ...fields,
+        importedCreatorName: previous?.importedCreatorName,
+        importedCreatorId: previous?.importedCreatorId,
+      };
       if (isNew) {
         const raw = token();
         run(
@@ -1586,10 +1605,28 @@ export function createApp(
           data.propertyId,
           id,
         );
-      const prior = all("SELECT * FROM grants WHERE code_id=?", id);
+      const prior = new Map(
+        all("SELECT * FROM grants WHERE code_id=?", id).map((g) => [
+          g.door_id as string,
+          {
+            doorId: g.door_id as string,
+            start: g.start as string,
+            end: g.end as string,
+            singleUse: Boolean(g.single_use),
+            active: Boolean(g.active),
+            used: g.used as number,
+          },
+        ]),
+      );
+      const next = new Map(
+        grants.map((g) => [
+          g.doorId,
+          { ...g, active: g.active ?? prior.get(g.doorId)?.active ?? true },
+        ]),
+      );
       // Omitted doors are disabled, retaining their usage and single-use state.
       run("UPDATE grants SET active=0 WHERE code_id=?", id);
-      for (const g of grants)
+      for (const g of next.values())
         run(
           "INSERT INTO grants(code_id,door_id,start,end,single_use,used,active) VALUES(?,?,?,?,?,?,?) ON CONFLICT(code_id,door_id) DO UPDATE SET start=excluded.start,end=excluded.end,single_use=excluded.single_use,active=excluded.active",
           id,
@@ -1597,12 +1634,13 @@ export function createApp(
           g.start,
           g.end,
           Number(g.singleUse),
-          prior.find((v) => v.door_id === g.doorId)?.used ?? 0,
-          Number(
-            g.active ??
-              Boolean(prior.find((v) => v.door_id === g.doorId)?.active ?? 1),
-          ),
+          prior.get(g.doorId)?.used ?? 0,
+          Number(g.active),
         );
+      const changes =
+        previous &&
+        accessCodeChanges(previous, record, prior, next, activityDoorName);
+      if (!isNew && !changes?.length) return;
       staffEvent(
         user,
         isNew ? "code.created" : "code.updated",
@@ -1612,18 +1650,17 @@ export function createApp(
         {
           validFrom:
             !data.staff && grants.length
-              ? grants.map((g: { start: string }) => g.start).sort()[0]
+              ? grants.map((g) => g.start).sort()[0]
               : undefined,
           validTo:
             !data.staff && grants.length
               ? grants
-                  .map((g: { end: string }) => g.end)
+                  .map((g) => g.end)
                   .sort()
                   .at(-1)
               : undefined,
-          timezone: JSON.parse(
-            get("SELECT data FROM properties WHERE id=?", data.propertyId).data,
-          ).timezone,
+          timezone: JSON.parse(property.data).timezone,
+          changes,
         },
       );
     })();
@@ -1673,6 +1710,7 @@ export function createApp(
       b.active ? "Door permission resumed" : "Door permission paused",
       code.property_id,
       code.id,
+      { doorId: grant.door_id, doorName: activityDoorName(grant.door_id) },
     );
     return c.json({ ok: true });
   });

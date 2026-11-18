@@ -12,7 +12,7 @@ const origin = "http://localhost:3000",
   key = "c".repeat(64);
 const photo =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWZ0AAAAASUVORK5CYII=";
-async function fixture() {
+async function fixture(timezone = "UTC") {
   const db = openDatabase(":memory:"),
     user = crypto.randomUUID();
   db.query("INSERT INTO users VALUES(?,?,?,?,?)").run(
@@ -53,8 +53,7 @@ async function fixture() {
     });
     return { status: r.status, data: (await r.json()) as any };
   }
-  const property = (await req("properties", { name: "House", timezone: "UTC" }))
-    .data;
+  const property = (await req("properties", { name: "House", timezone })).data;
   const other = (await req("properties", { name: "Other", timezone: "UTC" }))
     .data;
   const door = (
@@ -170,6 +169,11 @@ test("staff activity names the authenticated actor in history and queued notific
       ).not.toBeNull();
     }
     expect(
+      notificationText(
+        staffEvents.find((event: any) => event.type === "code.permission"),
+      ).body,
+    ).toBe("Nina · Side entrance: Door permission paused");
+    expect(
       history.find((event: any) => event.type === "door.updated").context.actor,
     ).toBe("Owner");
 
@@ -200,6 +204,109 @@ test("staff activity names the authenticated actor in history and queued notific
     );
     expect(notificationText(doorDeletion, "it").body).toBe(
       "Owner: Porta eliminata: Side entry",
+    );
+  } finally {
+    f.db.close();
+  }
+});
+
+test("access code updates preserve the changed fields in staff activity and queued notifications", async () => {
+  const f = await fixture("Europe/Copenhagen");
+  try {
+    const addDoor = async (name: string) =>
+      (
+        await f.req("doors", {
+          propertyId: f.property.id,
+          name,
+          integration: "none",
+          config: {},
+        })
+      ).data.id;
+    const patio = await addDoor("Patio"),
+      garage = await addDoor("Garage"),
+      side = await addDoor("Side door");
+    const grant = (doorId: string) => ({
+      doorId,
+      start: "2030-01-05T14:00:00.000Z",
+      end: "2030-01-07T10:00:00.000Z",
+      singleUse: false,
+    });
+    const input = {
+      propertyId: f.property.id,
+      label: "Elena",
+      grants: [grant(f.door.id), grant(patio), grant(garage)],
+      breakfast: { total: 2, start: "2030-01-06", end: "2030-01-07" },
+    };
+    const created = await f.req("codes", input);
+    expect(created.status).toBe(201);
+    const codeId = created.data.id;
+    const subscription = crypto.randomUUID();
+    f.db
+      .query("INSERT INTO subscriptions VALUES(?,?,?,?)")
+      .run(
+        subscription,
+        f.user,
+        "{}",
+        JSON.stringify({ events: ["code.updated"] }),
+      );
+    const updated = {
+      ...input,
+      label: "Elena and Leo",
+      notes: "Private note content",
+      checkinLink: "https://example.test/private-checkin",
+      instructionsLink: "https://example.test/private-instructions",
+      breakfast: { ...input.breakfast, total: 3 },
+      grants: [
+        { ...grant(f.door.id), start: "2030-01-06T13:30:00Z", singleUse: true },
+        { ...grant(patio), active: false },
+        grant(side),
+      ],
+    };
+    expect((await f.req(`codes/${codeId}`, updated, "PUT")).status).toBe(200);
+    expect((await f.req(`codes/${codeId}`, updated, "PUT")).status).toBe(200);
+
+    const codeUpdates = (events: any[]) =>
+      events.filter((event) => event.type === "code.updated");
+    const activity = codeUpdates(
+      (await f.req("events?category=staff")).data.events,
+    );
+    const timeline = codeUpdates(
+      (await f.req(`events?codeId=${codeId}`)).data.events,
+    );
+    expect(activity).toHaveLength(1);
+    expect(timeline).toHaveLength(1);
+    const [event] = timeline;
+    expect(event.context).toEqual(activity[0].context);
+    const notice = notificationText(event, "en", undefined, "yyyy-mm-dd");
+    expect(notice.title).toBe("Elena and Leo · Access code updated");
+    expect(notice.body).toStartWith("Owner: ");
+    for (const detail of [
+      "Label: Elena → Elena and Leo",
+      "Notes updated",
+      "Check-in link updated",
+      "Instructions link updated",
+      "Breakfast allocation: 2 (2030-01-06–2030-01-07) → 3 (2030-01-06–2030-01-07)",
+      "Door removed: Patio",
+      "Door removed: Garage",
+      "Door added: Side door",
+      "Front door, valid from: 2030-01-05 15:00 → 2030-01-06 14:30",
+      "Front door: single use",
+    ])
+      expect(notice.body).toContain(detail);
+    expect(notice.body).not.toContain("valid until");
+    expect(notificationText(event, "it").body).toContain(
+      "Porta aggiunta: Side door",
+    );
+    expect(JSON.stringify(event.context)).not.toMatch(
+      /Private note content|example\.test/,
+    );
+    expect(
+      f.db.query("SELECT event_id, subscription_id FROM jobs").all(),
+    ).toEqual([{ event_id: event.id, subscription_id: subscription }]);
+
+    const backup = exportRecords(f.db, key);
+    expect(backup.events.find((v) => v.id === event.id)?.context).toEqual(
+      event.context,
     );
   } finally {
     f.db.close();

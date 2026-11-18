@@ -6,6 +6,19 @@ import { log } from "./log";
 import webpush from "web-push";
 import type { DB } from "./db";
 import { databaseLifecycle } from "./lifecycle";
+
+function truncatePushBody(body: string, budget: number) {
+  if (Buffer.byteLength(JSON.stringify(body)) <= budget) return body;
+  let result = "";
+  let remaining = budget - Buffer.byteLength(JSON.stringify("…"));
+  for (const char of body) {
+    remaining -= Buffer.byteLength(JSON.stringify(char)) - 2;
+    if (remaining < 0) break;
+    result += char;
+  }
+  return result.trimEnd() + "…";
+}
+
 export async function deliverPush(db: DB, send = webpush.sendNotification) {
   if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
   const lifecycle = databaseLifecycle(db);
@@ -42,11 +55,12 @@ export async function deliverPush(db: DB, send = webpush.sendNotification) {
           ).run(j.event_id, j.subscription_id);
           continue;
         }
+        const context = JSON.parse(j.context ?? "{}");
         const text = notificationText(
           {
             type: j.type,
             message: j.message,
-            context: JSON.parse(j.context ?? "{}"),
+            context,
           },
           preferences.language ?? "en",
           j.code_data ? JSON.parse(j.code_data).label : undefined,
@@ -54,23 +68,30 @@ export async function deliverPush(db: DB, send = webpush.sendNotification) {
         );
         const presentation = notificationPresentation(db, {
           ...j,
-          context: JSON.parse(j.context ?? "{}"),
+          context,
         });
-        await send(
-          JSON.parse(j.data),
-          JSON.stringify({
-            id: j.event_id,
-            title: text.title,
-            body:
-              (j.property_data
-                ? JSON.parse(j.property_data).name + " · "
-                : "") + text.body,
-            url: presentation.href,
-            icon: notificationIconURL(presentation.icon),
-            thumbnail: presentation.thumbnail,
-          }),
-          { TTL: 3600, timeout: 10000 },
-        );
+        const payload = {
+          id: j.event_id,
+          title: text.title,
+          body: "",
+          url: presentation.href,
+          icon: notificationIconURL(presentation.icon),
+          thumbnail: presentation.thumbnail,
+        };
+        const body =
+          (j.property_data ? JSON.parse(j.property_data).name + " · " : "") +
+          text.body;
+        // Leave room for Web Push encryption overhead. History keeps the full text.
+        payload.body = context.changes?.length
+          ? truncatePushBody(
+              body,
+              3500 - Buffer.byteLength(JSON.stringify(payload)) + 2,
+            )
+          : body;
+        await send(JSON.parse(j.data), JSON.stringify(payload), {
+          TTL: 3600,
+          timeout: 10000,
+        });
         log("info", "push.delivered", {
           eventId: j.event_id,
           subscriptionId: j.subscription_id,

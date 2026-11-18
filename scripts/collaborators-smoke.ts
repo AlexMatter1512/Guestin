@@ -118,7 +118,13 @@ try {
   await ownerPage.goto(origin + "/host/#/settings/team");
   const nina = ownerPage.getByRole("region", { name: "Nina", exact: true });
   await expect(nina).toBeVisible();
-  await expect(nina.getByRole("switch")).toHaveCount(4);
+  await expect(nina.getByRole("switch")).toHaveCount(6);
+  await expect(
+    nina.getByRole("switch", { name: "Edit guest page" }),
+  ).not.toBeChecked();
+  await expect(
+    nina.getByRole("switch", { name: "Test door openings" }),
+  ).not.toBeChecked();
   await page.goto(origin + "/host/#/codes");
   await expect(page.locator('[data-tour="new-code"]')).toBeDisabled();
   await nina
@@ -163,7 +169,7 @@ try {
     path: join(directory, "collaborator-door-form.png"),
     animations: "disabled",
   });
-  await page.goto(origin + "/host/#/settings");
+  await page.goto(origin + "/host/#/other");
   await expect(
     page.getByRole("button", { name: /Connectors KrossBooking/ }),
   ).toHaveCount(0);

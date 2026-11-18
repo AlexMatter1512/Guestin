@@ -3349,6 +3349,7 @@
               propertyName={property?.name ?? ""}
               owner={user.role === "owner"}
               canCreate={can("createDoors")}
+              canTest={can("testOpenDoors")}
               {api}
               {reload}
               onSaved={doorSaved}
@@ -3800,7 +3801,7 @@
               {#key propertyId}<GuestPageSettings
                   {property}
                   {doors}
-                  owner={user.role === "owner"}
+                  canEdit={can("editGuestPage")}
                   {api}
                   {reload}
                 />{/key}
