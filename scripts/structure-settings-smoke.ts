@@ -214,13 +214,14 @@ try {
     page.locator(`[data-notification-id="${gardenEventId}"]`),
   ).toBeVisible();
   await structure.selectOption(one.id);
-  await page.locator('[data-tour="nav-reports"]').click();
+  await page.locator('[data-tour="nav-favourite"]').click();
   await expect(page.locator(".page-heading h1")).toHaveText("Statistics");
   await expect(page.locator(".statistics-card").first()).toBeVisible();
-  await expect(page.locator('[data-tour="nav-settings"]')).not.toHaveAttribute(
+  await expect(page.locator('[data-tour="nav-other"]')).not.toHaveAttribute(
     "aria-current",
     "page",
   );
+  await page.locator('[data-tour="nav-other"]').click();
   await page.locator('[data-tour="nav-settings"]').click();
   await page.locator('[data-tour="nav-notifications"]').click();
   await expect(

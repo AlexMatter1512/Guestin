@@ -149,7 +149,7 @@ try {
     page.getByRole("button", { name: "All dates", exact: true }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("textbox", { name: "Search codes", exact: true }),
+    page.getByRole("searchbox", { name: "Search codes", exact: true }),
   ).toHaveCount(0);
   await expect(page.locator(".date-picker-trigger")).toContainText(
     String(new Date(today + "T12:00:00Z").getUTCDate()),
@@ -195,7 +195,7 @@ try {
   await popup.close();
   await page.getByRole("button", { name: "Search codes", exact: true }).click();
   await page
-    .getByRole("textbox", { name: "Search codes", exact: true })
+    .getByRole("searchbox", { name: "Search codes", exact: true })
     .fill("Jamie");
   await page.keyboard.press("Escape");
   await expect(page.locator(".code-row")).toHaveCount(1);

@@ -23,8 +23,6 @@
   import { connectLive } from "$lib/live";
   import { flip } from "svelte/animate";
   import AccessCalendar from "$lib/components/AccessCalendar.svelte";
-  import * as Popover from "$lib/components/ui/popover";
-  import { buttonVariants } from "$lib/components/ui/button";
   import { Switch } from "$lib/components/ui/switch";
   import GuestLinksSettings from "$lib/components/GuestLinksSettings.svelte";
   import InstallAppInfo from "$lib/components/InstallAppInfo.svelte";
@@ -42,7 +40,7 @@
   import * as NativeSelect from "$lib/components/ui/native-select";
   import * as Table from "$lib/components/ui/table";
   import { cn } from "$lib/utils";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { MediaQuery } from "svelte/reactivity";
   import { fly } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
@@ -54,6 +52,7 @@
     Menu,
     CircleHelp,
     ChevronRight,
+    ChevronDown,
     MessageSquare,
     Plug,
     ChartNoAxesColumn,
@@ -207,6 +206,16 @@
     users = $state<any[]>([]),
     propertyId = $state(""),
     search = $state("");
+  let searchOpen = $state(false),
+    searchInput = $state<HTMLInputElement | null>(null),
+    searchTrigger = $state<HTMLButtonElement | null>(null);
+  async function toggleSearch() {
+    searchOpen = !searchOpen;
+    if (searchOpen) {
+      await tick();
+      searchInput?.focus();
+    } else searchTrigger?.focus();
+  }
   let staffCodes = $state(false);
   function setStaffCodes(value: boolean) {
     staffCodes = value;
@@ -403,6 +412,41 @@
       icon: Settings,
     },
   ];
+  const desktop = new MediaQuery("(min-width: 900px)");
+  let otherExpanded = $state(false),
+    choosingFavourite = $state(false),
+    favouriteId = $state("reports");
+  const visibleOtherItems = $derived(
+    otherItems.filter(
+      (item) => item.id !== "connectors" || can("useBookingConnectors"),
+    ),
+  );
+  const favourite = $derived(
+    visibleOtherItems.find((item) => item.id === favouriteId) ??
+      visibleOtherItems.find((item) => item.id === "reports")!,
+  );
+  function otherItemActive(id: string) {
+    if (id === "reports") return tab === "Reports";
+    if (id === "connectors") return tab === "Connectors";
+    if (id === "settings")
+      return (
+        tab === "Messages" ||
+        (tab === "Settings" &&
+          !["properties", "breakfast"].includes(settingsPage))
+      );
+    return tab === "Settings" && settingsPage === id;
+  }
+  function activateOtherItem(id: string) {
+    if (choosingFavourite && !desktop.current) {
+      favouriteId = id;
+      try {
+        hostStorage.setItem("guestin.favourite." + user.id, id);
+      } catch {
+        // The shortcut still works for this session if storage is unavailable.
+      }
+      choosingFavourite = false;
+    } else openSettings(id);
+  }
   const currentSetting = $derived(
     settingItems.find((i) => i.id === settingsPage),
   );
@@ -588,6 +632,12 @@
     else restoreHostLocale(user.id);
     theme = user.preferences?.theme ?? "system";
     try {
+      favouriteId =
+        hostStorage.getItem("guestin.favourite." + user.id) ?? "reports";
+    } catch {
+      favouriteId = "reports";
+    }
+    try {
       const saved = JSON.parse(
         hostStorage.getItem("guestin.push." + user.id) ?? "null",
       );
@@ -637,6 +687,7 @@
       "Profile",
       "Activity",
       "Settings",
+      "Other",
     ].find((n) => n.toLowerCase() === destination);
     if (!found) return;
     const savedDraft = user && hostStorage.getItem("guestin.draft." + user.id);
@@ -646,6 +697,7 @@
       savedDraft &&
       (id === "new" ? !savedEditId : action === "edit" && savedEditId === id);
     tab = found;
+    choosingFavourite = false;
     if (found === "Codes" && id === "staff" && !staffCodes) setStaffCodes(true);
     if (found === "Codes" && !id && staffCodes) setStaffCodes(false);
     settingsPage = found === "Settings" ? (id ?? "") : "";
@@ -1309,6 +1361,9 @@
     shareCodeId = "";
     shareText = "";
     quickCreate = false;
+    searchOpen = false;
+    otherExpanded = false;
+    choosingFavourite = false;
     currentPassword = newPassword = confirmPassword = "";
     wipeOpen = false;
     wipePassword = "";
@@ -1633,9 +1688,6 @@
   const navigation = [
     { name: "Codes", icon: KeyRound },
     { name: "Doors", icon: DoorOpen },
-    { name: "Create", icon: Plus },
-    { name: "Reports", label: "Statistics", icon: ChartNoAxesColumn },
-    { name: "Other", icon: Menu },
   ];
   const tools = [
     {
@@ -1746,23 +1798,31 @@
     tourStage === "smtp"
       ? '[data-tour="smtp"]'
       : tourStage === "property"
-        ? !["Other", "Settings"].includes(tab)
-          ? '[data-tour="nav-other"]'
-          : settingsPage !== "properties"
-            ? '[data-tour="nav-properties"]'
-            : propertyForm
-              ? '[data-tour="property-form"]'
-              : '[data-tour="add-property"]'
+        ? tab === "Settings" && settingsPage === "properties"
+          ? propertyForm
+            ? '[data-tour="property-form"]'
+            : '[data-tour="add-property"]'
+          : desktop.current
+            ? otherExpanded
+              ? '.sidebar-other-items [data-tour="nav-properties"]'
+              : '[data-tour="nav-other"]'
+            : tab === "Other"
+              ? 'main [data-tour="nav-properties"]'
+              : '[data-tour="nav-other"]'
         : tourStage === "door"
           ? tab === "Doors"
             ? doorEditor
               ? '[data-tour="door-form"]'
-              : '[data-tour="new-code"]'
+              : desktop.current
+                ? '[data-tour="new-door"]'
+                : '[data-tour="new-code"]'
             : '[data-tour="nav-doors"]'
           : tourStage === "code"
             ? tab === "Codes" && editing && !editId
               ? '[data-tour="code-form"]'
-              : '[data-tour="new-code"]'
+              : desktop.current && tab !== "Codes"
+                ? '[data-tour="nav-codes"]'
+                : '[data-tour="new-code"]'
             : tourStage === "install"
               ? '[data-tour="install-app"]'
               : tourStage === "notifications"
@@ -1780,8 +1840,8 @@
           "Connect email delivery for verification and password recovery, or continue to use owner-generated reset links.",
         )
       : tourStage === "property"
-        ? tab === "Other" ||
-          (tab === "Settings" && settingsPage !== "properties")
+        ? settingsPage !== "properties" &&
+          (desktop.current ? otherExpanded : tab === "Other")
           ? t("Open Properties to set up your first structure.")
           : tab === "Settings" && !propertyForm
             ? t(
@@ -1800,9 +1860,11 @@
                 "Your property is ready. Click the highlighted Doors button to add an example door. You will add a device connector later.",
               )
             : !doorEditor
-              ? t(
-                  "Click the highlighted + button. Give the door a name such as “Example entrance”. You will add a device connector later, so no device account or credentials are needed now.",
-                )
+              ? desktop.current
+                ? t("Click Add door to create your example door.")
+                : t(
+                    "Click the highlighted + button. Give the door a name such as “Example entrance”. You will add a device connector later, so no device account or credentials are needed now.",
+                  )
               : t(
                   "Name your example door, leave Integration on Connect later, and click Save door. You will add a device connector later; this door cannot unlock anything yet.",
                 )
@@ -1816,9 +1878,15 @@
                       " The example door stays inactive until you add its connector.",
                     )
                   : "")
-              : t(
-                  "Your example door is ready. Click the highlighted + button to create an access code. Existing properties and doors are reused when you replay this guide.",
-                )
+              : desktop.current
+                ? t(
+                    tab === "Codes"
+                      ? "Click Create access code to continue."
+                      : "Open Codes to create your first access code.",
+                  )
+                : t(
+                    "Your example door is ready. Click the highlighted + button to create an access code. Existing properties and doors are reused when you replay this guide.",
+                  )
             : tourStage === "install"
               ? hostLanguage.current === "it"
                 ? "Il primo codice è pronto. Usa l’area evidenziata per installare l’app o continuare senza installarla."
@@ -1844,6 +1912,7 @@
   );
   function navigate(destination: string) {
     tab = destination;
+    choosingFavourite = false;
     settingsPage = "";
     propertyForm = false;
     connectorView = "list";
@@ -2168,47 +2237,92 @@
       aria-label={t("Main navigation")}
     >
       {#each navigation as item (item.name)}
-        {#if item.name === "Create"}<Button
-            type="button"
-            variant="ghost"
-            class="quick-create"
-            data-tour="new-code"
-            aria-label={t("Create access code")}
-            disabled={((editing || doorEditor) && !tourVisible) ||
-              !propertyId ||
-              busy ||
-              !(
-                can("createAccessCodes") ||
-                can("createStaffCodes") ||
-                can("createDoors")
-              )}
-            onclick={() => {
-              if (tourVisible && tourStage === "door") {
-                editingDoor = "";
-                detailDoorId = "";
-                doorEditor = true;
-              } else if (tourVisible) newCode();
-              else quickCreate = true;
-            }}><Plus size={25} /></Button
-          >
-        {:else}<Button
-            type="button"
-            variant="outline"
-            class={cn({
-              active:
-                tab === item.name ||
-                (item.name === "Other" &&
-                  ["Settings", "Connectors", "Messages", "Profile"].includes(
-                    tab,
-                  )),
-            })}
-            aria-current={tab === item.name ? "page" : undefined}
-            data-tour={"nav-" + item.name.toLowerCase()}
-            onclick={() => navigate(item.name)}
-            ><item.icon size={21} /><span>{t(item.label ?? item.name)}</span
-            ></Button
-          >{/if}
+        <Button
+          type="button"
+          variant="outline"
+          class={cn({ active: tab === item.name })}
+          aria-current={tab === item.name ? "page" : undefined}
+          data-tour={"nav-" + item.name.toLowerCase()}
+          onclick={() => navigate(item.name)}
+        >
+          <item.icon size={21} /><span>{t(item.name)}</span>
+        </Button>
       {/each}
+      {#if !desktop.current}
+        <Button
+          type="button"
+          variant="ghost"
+          class="quick-create"
+          data-tour="new-code"
+          aria-label={t("Create access code")}
+          disabled={((editing || doorEditor) && !tourVisible) ||
+            !propertyId ||
+            busy ||
+            !(
+              can("createAccessCodes") ||
+              can("createStaffCodes") ||
+              can("createDoors")
+            )}
+          onclick={() => {
+            if (tourVisible && tourStage === "door") {
+              editingDoor = "";
+              detailDoorId = "";
+              doorEditor = true;
+            } else if (tourVisible) newCode();
+            else quickCreate = true;
+          }}><Plus size={25} /></Button
+        >
+        <Button
+          variant="ghost"
+          class={cn({ active: otherItemActive(favourite.id) })}
+          aria-current={otherItemActive(favourite.id) ? "page" : undefined}
+          data-tour="nav-favourite"
+          onclick={() => openSettings(favourite.id)}
+        >
+          <favourite.icon size={21} /><span>{t(favourite.title)}</span>
+        </Button>
+      {/if}
+      <Button
+        variant="ghost"
+        class={cn({
+          active:
+            tab === "Other" ||
+            visibleOtherItems.some((item) => otherItemActive(item.id)),
+        })}
+        aria-current={!desktop.current && tab === "Other" ? "page" : undefined}
+        aria-expanded={desktop.current ? otherExpanded : undefined}
+        aria-controls={desktop.current ? "sidebar-other-items" : undefined}
+        data-tour="nav-other"
+        onclick={() => {
+          if (desktop.current) otherExpanded = !otherExpanded;
+          else navigate("Other");
+        }}
+      >
+        <Menu size={21} /><span>{t("Other")}</span>
+        {#if desktop.current}<ChevronDown
+            class={cn("sidebar-other-chevron", otherExpanded && "rotate-180")}
+            size={16}
+          />{/if}
+      </Button>
+      {#if desktop.current}
+        <div
+          class="sidebar-other-items"
+          id="sidebar-other-items"
+          hidden={!otherExpanded}
+        >
+          {#each visibleOtherItems as item (item.id)}
+            <Button
+              variant="ghost"
+              class={cn({ active: otherItemActive(item.id) })}
+              aria-current={otherItemActive(item.id) ? "page" : undefined}
+              data-tour={"nav-" + item.id}
+              onclick={() => openSettings(item.id)}
+            >
+              <item.icon size={18} /><span>{t(item.title)}</span>
+            </Button>
+          {/each}
+        </div>
+      {/if}
     </nav>
     <main
       class:settings-index={tab === "Other" ||
@@ -2218,34 +2332,27 @@
         <h1>{t(pageTitle)}</h1>
         <div class="code-list-tools">
           {#if tab === "Codes" && !editing && !detailCodeId}
-            <Popover.Root>
-              <Popover.Trigger
-                class={buttonVariants({ variant: "ghost", size: "icon" })}
-                aria-label={t("Search codes")}
-                title={t("Search codes")}
-                data-search-active={!!search}
-                ><Search size={18} /></Popover.Trigger
+            {#if desktop.current && (can("createAccessCodes") || can("createStaffCodes"))}
+              <Button
+                class="desktop-create"
+                data-tour="new-code"
+                disabled={!propertyId || busy}
+                onclick={() => newCode()}
               >
-              <Popover.Content align="end" class="w-72">
-                <Label for="code-search">{t("Search codes")}</Label>
-                <div class="flex gap-2">
-                  <Input
-                    id="code-search"
-                    placeholder={t(
-                      staffCodes
-                        ? "Search staff access…"
-                        : "Search guest access…",
-                    )}
-                    bind:value={search}
-                  /><Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={t("Clear search")}
-                    onclick={() => (search = "")}><X size={16} /></Button
-                  >
-                </div>
-              </Popover.Content>
-            </Popover.Root>
+                <Plus size={17} />{t("Create access code")}
+              </Button>
+            {/if}
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t("Search codes")}
+              title={t("Search codes")}
+              aria-expanded={searchOpen}
+              aria-controls={searchOpen ? "code-search-panel" : undefined}
+              data-search-active={searchOpen || !!search}
+              bind:ref={searchTrigger}
+              onclick={toggleSearch}><Search size={18} /></Button
+            >
             <Button
               variant="ghost"
               size="icon"
@@ -2255,6 +2362,19 @@
               onclick={() => (filtersOpen = !filtersOpen)}
               ><ListFilter size={17} />{codeStatus !== "all" ? "1" : ""}</Button
             >
+          {/if}
+          {#if desktop.current && tab === "Doors" && !doorEditor && !detailDoorId && can("createDoors")}
+            <Button
+              class="desktop-create"
+              data-tour="new-door"
+              disabled={!propertyId || busy}
+              onclick={() => {
+                editingDoor = "";
+                doorEditor = true;
+              }}
+            >
+              <Plus size={17} />{t("Add door")}
+            </Button>
           {/if}
           {#if user.role === "owner" && propertyId && ((tab === "Codes" && !editing && !detailCodeId) || (tab === "Doors" && !doorEditor && !detailDoorId))}
             {#key tab + propertyId}<HeadingRecordActions
@@ -2752,6 +2872,38 @@
                   </section>{/if}
               </section>
             {:else}
+              {#if searchOpen}
+                <div
+                  id="code-search-panel"
+                  class="search-field code-search-field"
+                >
+                  <Search size={18} aria-hidden="true" />
+                  <Input
+                    id="code-search"
+                    type="search"
+                    aria-label={t("Search codes")}
+                    placeholder={t(
+                      staffCodes
+                        ? "Search staff access…"
+                        : "Search guest access…",
+                    )}
+                    bind:ref={searchInput}
+                    bind:value={search}
+                    onkeydown={(event) => {
+                      if (event.key === "Escape") void toggleSearch();
+                    }}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t("Clear search")}
+                    onclick={() => {
+                      search = "";
+                      searchInput?.focus();
+                    }}><X size={16} /></Button
+                  >
+                </div>
+              {/if}
               <div class="code-list-controls">
                 <div
                   class="code-view-tabs"
@@ -2780,34 +2932,38 @@
                   >
                 </div>
                 {#if !staffCodes}
-                  {#if activeCodeDate !== todayCodeDate}
-                    <Button
-                      variant="ghost"
-                      class="quiet today-button"
-                      onclick={() => (codeDate = "")}>{t("Go to today")}</Button
-                    >
-                  {/if}
-                  <div class="calendar-bar code-toolbar">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={t("Previous day")}
-                      onclick={() => shiftDay(-1)}
-                      ><ChevronLeft size={18} /></Button
-                    >
-                    <AccessCalendar
-                      value={activeCodeDate}
-                      hasCodes={dateHasCodes}
-                      onchange={(day) => (codeDate = day)}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={t("Next day")}
-                      onclick={() => shiftDay(1)}
-                      ><ChevronRight size={18} /></Button
-                    >
-                  </div>{/if}
+                  <div class="code-date-controls">
+                    <div class="calendar-bar code-toolbar">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t("Previous day")}
+                        onclick={() => shiftDay(-1)}
+                        ><ChevronLeft size={18} /></Button
+                      >
+                      <AccessCalendar
+                        value={activeCodeDate}
+                        hasCodes={dateHasCodes}
+                        onchange={(day) => (codeDate = day)}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t("Next day")}
+                        onclick={() => shiftDay(1)}
+                        ><ChevronRight size={18} /></Button
+                      >
+                    </div>
+                    {#if activeCodeDate !== todayCodeDate}
+                      <Button
+                        variant="ghost"
+                        class="quiet today-button"
+                        onclick={() => (codeDate = "")}
+                        >{t("Go to today")}</Button
+                      >
+                    {/if}
+                  </div>
+                {/if}
               </div>
               {#if filtersOpen}<div class="filter-panel">
                   <Label class="field-label"
@@ -3128,7 +3284,7 @@
               {api}
               {reload}
               onSaved={doorSaved}
-              onSetup={() => navigate("Settings")}
+              onSetup={() => openSettings("properties")}
               bind:editor={doorEditor}
               bind:editId={editingDoor}
               bind:detailId={detailDoorId}
@@ -3202,22 +3358,42 @@
             </Card.Root>
           {:else if tab === "Other"}
             <Item.Group class="workspace-list">
-              {#each otherItems.filter((item) => item.id !== "connectors" || can("useBookingConnectors")) as item (item.id)}
+              {#each visibleOtherItems as item (item.id)}
                 <Button
                   type="button"
                   variant="ghost"
                   class="settings-row"
                   data-tour={"nav-" + item.id}
-                  onclick={() => openSettings(item.id)}
+                  aria-pressed={choosingFavourite
+                    ? favourite.id === item.id
+                    : undefined}
+                  onclick={() => activateOtherItem(item.id)}
                 >
                   <item.icon size={20} /><span
                     ><strong>{t(item.title)}</strong><small
                       >{t(item.description)}</small
                     ></span
-                  ><ChevronRight size={18} />
+                  >{#if choosingFavourite && favourite.id === item.id}<Check
+                      size={18}
+                    />{:else if !choosingFavourite}<ChevronRight
+                      size={18}
+                    />{/if}
                 </Button>
               {/each}
             </Item.Group>
+            {#if !desktop.current}
+              <Button
+                class="mt-4"
+                variant={choosingFavourite ? "secondary" : "outline"}
+                aria-pressed={choosingFavourite}
+                onclick={() => (choosingFavourite = !choosingFavourite)}
+              >
+                {t(choosingFavourite ? "Cancel" : "Choose favourite")}
+              </Button>
+              {#if choosingFavourite}<p class="muted mt-2" role="status">
+                  {t("Tap an item to make it your mobile shortcut.")}
+                </p>{/if}
+            {/if}
           {:else if tab === "Settings"}
             {#if !settingsPage}<div class="page-intro">
                 <p>{t("Manage your workspace and preferences")}</p>

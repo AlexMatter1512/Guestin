@@ -163,10 +163,22 @@ try {
     const todayBox = (await page
       .getByRole("button", { name: "Go to today", exact: true })
       .boundingBox())!;
-    expect(todayBox.x).toBeGreaterThanOrEqual(tabsBox.x + tabsBox.width);
-    expect(todayBox.x + todayBox.width).toBeLessThanOrEqual(
-      (await page.locator(".code-toolbar").boundingBox())!.x,
+    const dateGroup = (await page
+      .locator(".code-date-controls")
+      .boundingBox())!;
+    const updatedTabs = (await page.locator(".code-view-tabs").boundingBox())!;
+    const updatedDate = (await page.locator(".code-toolbar").boundingBox())!;
+    expect(todayBox.y).toBeGreaterThanOrEqual(
+      updatedDate.y + updatedDate.height,
     );
+    expect(
+      Math.abs(
+        updatedTabs.y +
+          updatedTabs.height / 2 -
+          dateGroup.y -
+          dateGroup.height / 2,
+      ),
+    ).toBeLessThan(1);
     await fits();
     await capture("codes-future-" + width);
     await page
@@ -181,6 +193,25 @@ try {
     }
   }
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Search codes", exact: true }).click();
+  const query = page.getByRole("searchbox", { name: "Search codes" });
+  await expect(query).toBeFocused();
+  const searchPosition = (await query.boundingBox())!;
+  expect(searchPosition.y).toBeGreaterThan(
+    (await page.locator(".page-heading").boundingBox())!.y,
+  );
+  expect(searchPosition.y).toBeLessThan(
+    (await page.locator(".code-list-controls").boundingBox())!.y,
+  );
+  await query.fill("no matching guest");
+  await expect(page.locator(".code-row")).toHaveCount(0);
+  await query.press("Escape");
+  await expect(query).toBeHidden();
+  await expect(page.locator(".code-row")).toHaveCount(0);
+  await page.getByRole("button", { name: "Search codes", exact: true }).click();
+  await page.getByRole("button", { name: "Clear search", exact: true }).click();
+  await expect(page.locator(".code-row")).toHaveCount(1);
+  await query.press("Escape");
   await expect(
     page.getByRole("button", { name: "Access codes JSON", exact: true }),
   ).toBeHidden();
@@ -241,6 +272,17 @@ try {
     "Breakfasts",
     "Settings",
   ]);
+  await page
+    .getByRole("button", { name: "Choose favourite", exact: true })
+    .click();
+  await otherRows.filter({ hasText: "Breakfasts" }).click();
+  await expect(
+    page.locator(".quick-create + [data-tour='nav-favourite']"),
+  ).toHaveText("Breakfasts");
+  await page.reload();
+  await page.locator("[data-tour='nav-favourite']").click();
+  await expect(page.locator(".page-heading h1")).toHaveText("Breakfast");
+  await page.getByRole("button", { name: "Other", exact: true }).click();
   await otherRows.filter({ hasText: "Settings" }).click();
   await expect(page.locator(".page-heading h1")).toHaveText("Settings");
   for (const id of ["properties", "connectors", "reports", "breakfast"])
@@ -437,6 +479,39 @@ try {
   await page.setViewportSize({ width: 1280, height: 900 });
   await expect(page.locator(".statistics-table")).toBeVisible();
   await expect(page.locator(".statistics-cards")).toBeHidden();
+  await page.setViewportSize({ width: 1650, height: 900 });
+  const sidebar = page.locator(".app-nav");
+  await expect(sidebar.locator(".quick-create")).toHaveCount(0);
+  const other = sidebar.getByRole("button", { name: "Other", exact: true });
+  await expect(other).toHaveAttribute("aria-expanded", "false");
+  await other.click();
+  await expect(page).toHaveURL(/#\/reports$/);
+  await expect(sidebar.locator(".sidebar-other-items button")).toHaveText([
+    "Properties",
+    "Connectors",
+    "Stats",
+    "Breakfasts",
+    "Settings",
+  ]);
+  await sidebar.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page).toHaveURL(/#\/settings$/);
+  await other.click();
+  await expect(other).toHaveAttribute("aria-expanded", "false");
+  await sidebar.getByRole("button", { name: "Codes", exact: true }).click();
+  const mainBox = (await page.locator(".shell > main").boundingBox())!;
+  const sideBox = (await sidebar.boundingBox())!;
+  expect(
+    Math.abs(mainBox.x - sideBox.width - (1650 - mainBox.x - mainBox.width)),
+  ).toBeLessThan(1);
+  await page
+    .getByRole("button", { name: "Create access code", exact: true })
+    .click();
+  await expect(page).toHaveURL(/#\/codes\/new$/);
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await sidebar.getByRole("button", { name: "Doors", exact: true }).click();
+  await page.getByRole("button", { name: "Add door", exact: true }).click();
+  await expect(page).toHaveURL(/#\/doors\/new$/);
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await route("codes/" + code.id + "/edit", "Edit access code");
   await expect(page.locator(".app-nav")).toBeVisible();
   await fits();
