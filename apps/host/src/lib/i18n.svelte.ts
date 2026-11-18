@@ -77,6 +77,7 @@ const italian: Record<string, string> = {
   "Owner / Admin": "Proprietario / Admin",
   "Invite and manage collaborators": "Invita e gestisci i collaboratori",
   "Former collaborator": "Ex collaboratore",
+  "KrossBooking settings": "Impostazioni KrossBooking",
   "Create access codes": "Crea codici di accesso",
   "Create new doors": "Crea nuove porte",
   "Use booking connectors": "Usa i connettori delle prenotazioni",

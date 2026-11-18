@@ -84,6 +84,46 @@ async function fixture(
   return { db, req, property, door, doorDraft, draft, grant };
 }
 
+test("KrossBooking reservation fields are saved independently for each user", async () => {
+  const f = await fixture();
+  try {
+    const choices = { tel: false, "rooms/number": true };
+    expect(
+      (
+        await f.req(
+          "me/preferences",
+          { krossReservationFields: choices },
+          "PATCH",
+          "collaborator",
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (await f.req("me", undefined, "GET", "collaborator")).data.user
+        .preferences.krossReservationFields,
+    ).toEqual(choices);
+    expect(
+      (await f.req("me")).data.user.preferences.krossReservationFields,
+    ).toBeUndefined();
+    expect(
+      (
+        await f.req(
+          "me/preferences",
+          { krossReservationFields: {} },
+          "PATCH",
+          "collaborator",
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (await f.req("me", undefined, "GET", "collaborator")).data.user
+        .preferences.krossReservationFields,
+    ).toEqual({});
+  } finally {
+    f.db.close();
+  }
+});
+
 test("collaborator permissions are independent, checked on every request and cannot grant owner powers", async () => {
   const f = await fixture();
   try {

@@ -142,6 +142,7 @@ globalThis.fetch = (async (input: any, init?: RequestInit) => {
             n_guests: 3,
             name_reservation_status: "Confirmed",
             notes: "Arrival by train",
+            meal: { plan: "Breakfast voucher" },
             link_guest_portal: "https://example.com/checkin",
             link_check_in_instructions: "https://example.com/instructions",
           },
@@ -377,13 +378,20 @@ try {
   expect(JSON.stringify(await api("connections"))).not.toContain(
     "fixture-secret-token",
   );
-  await page.getByRole("button", { name: "Contact settings" }).click();
+  const settings = page.getByRole("button", { name: "KrossBooking settings" });
+  const field = (name: string) => page.getByRole("checkbox", { name, exact: true });
+  await settings.click();
+  await expect(page).toHaveURL(/#\/connectors\/kross\/settings$/);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "KrossBooking settings", exact: true })).toBeVisible();
+  await expect(field("Phone")).toBeChecked();
+  for (const name of ["Planner room", "Email", "Reservation notes"]) {
+    await expect(field(name)).not.toBeChecked();
+    await field(name).check();
+  }
   await page.getByLabel("Contact name format").fill("{name} - {rooms}");
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Save", exact: true })
-    .click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page).toHaveURL(/#\/connectors\/kross$/);
   const planner = page.getByRole("region", {
     name: "Room planner",
     exact: true,
@@ -488,6 +496,7 @@ try {
   await expect(
     imported.getByText("Booking.com", { exact: true }),
   ).toBeVisible();
+  await expect(imported.getByText("Breakfast voucher", { exact: true })).toHaveCount(0);
   await expect(imported.getByText("Confirmed", { exact: true })).toBeVisible();
   await imported
     .getByRole("button", { name: "Proposed code", exact: true })
@@ -504,6 +513,12 @@ try {
   await expect(imported).toContainText(formatDate("2030-04-03"));
   expect((await api("codes")).length).toBe(0);
   await imported.getByRole("button", { name: "Cancel", exact: true }).click();
+  await settings.click();
+  await expect(field("Email")).toBeChecked();
+  await field("meal · plan").check();
+  await field("Booking source").uncheck();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page).toHaveURL(/#\/connectors\/kross$/);
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await expect(page).toHaveURL(/#\/connectors$/);
   await page.getByRole("button", { name: "Back", exact: true }).click();
@@ -554,6 +569,8 @@ try {
     .getByRole("button", { name: /Fixture Guest.*Review draft/ })
     .click();
   await expect(imported).toBeVisible();
+  await expect(imported.getByText("Breakfast voucher", { exact: true })).toBeVisible();
+  await expect(imported.getByText("Booking.com", { exact: true })).toHaveCount(0);
   await expect(imported.getByText("No phone number provided")).toBeVisible();
   await expect(imported).toContainText("Source rooms");
   await expect(imported).toContainText("fixture-guest@example.test");

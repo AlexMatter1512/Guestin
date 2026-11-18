@@ -264,7 +264,7 @@
     shareText = $state("");
   let settingsPage = $state(""),
     propertyForm = $state(false),
-    connectorView = $state<"list" | "kross" | "ical" | "ai">("list"),
+    connectorView = $state<"list" | "kross" | "kross/settings" | "ical" | "ai">("list"),
     invitationLink = $state(""),
     manualCopy = $state(""),
     copyDialog = $state(false),
@@ -476,7 +476,7 @@
     if (id === "reports") return tab === "Reports";
     if (id === "connectors") return tab === "Connectors";
     if (id.startsWith("connectors/"))
-      return tab === "Connectors" && id === "connectors/" + connectorView;
+      return tab === "Connectors" && id === "connectors/" + connectorView.split("/")[0];
     if (id === "settings")
       return (
         tab === "Messages" ||
@@ -525,7 +525,7 @@
       return;
     }
     if (tab === "Connectors" && connectorView !== "list") {
-      connectorView = "list";
+      connectorView = connectorView === "kross/settings" ? "kross" : "list";
       return;
     }
     if (tab === "Settings") {
@@ -770,7 +770,7 @@
         connectorView = "ai";
         history.replaceState(null, "", "#/connectors/ai");
       } else if (id === "kross" || id === "ical" || id === "ai") {
-        connectorView = id;
+        connectorView = id === "kross" && action === "settings" ? "kross/settings" : id;
       }
     }
     editing = false;
@@ -1833,6 +1833,7 @@
             : tab === "Connectors" && connectorView !== "list"
               ? {
                   kross: "KrossBooking",
+                  "kross/settings": "KrossBooking settings",
                   ical: "Calendars",
                   ai: "AI",
                 }[connectorView]
@@ -3256,6 +3257,8 @@
               {property}
               owner={user.role === "owner"}
               onDraft={newCode}
+              userId={user.id}
+              fieldChoices={user.preferences?.krossReservationFields}
               contactNameFormat={user.preferences?.contactNameFormat ??
                 "{name}"}
               savePreferences={preferences}

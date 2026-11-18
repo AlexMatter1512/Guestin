@@ -1,11 +1,6 @@
 <script lang="ts">
   import { hostStorage } from "$lib/demo-storage";
-  import {
-    contactName,
-    sampleContact,
-    saveGuestContact,
-    type GuestContact,
-  } from "$lib/guest-contact";
+  import { saveGuestContact, type GuestContact } from "$lib/guest-contact";
   import {
     connectorProviders as providers,
     matchesKind,
@@ -70,7 +65,14 @@
     localDate,
     type AccessCodeDraft,
   } from "../../../../../shared/schema";
-  type View = "list" | "kross" | "ical" | "ai";
+  import KrossSettings from "$lib/components/KrossSettings.svelte";
+  import {
+    defaultKrossFields,
+    knownKrossFields,
+    fieldLabel,
+    type ReviewRow,
+  } from "$lib/kross-fields";
+  type View = "list" | "kross/settings" | "kross" | "ical" | "ai";
   type Connection = {
     id: string;
     property_id: string;
@@ -88,6 +90,8 @@
     owner,
     onDraft,
     contactNameFormat,
+    fieldChoices,
+    userId,
     savePreferences,
     view = $bindable("list"),
   }: {
@@ -104,7 +108,12 @@
     property: any;
     owner: boolean;
     contactNameFormat: string;
-    savePreferences: (changes: { contactNameFormat?: string }) => Promise<void>;
+    fieldChoices?: Record<string, boolean>;
+    userId: string;
+    savePreferences: (changes: {
+      contactNameFormat?: string;
+      krossReservationFields?: Record<string, boolean>;
+    }) => Promise<void>;
     onDraft: (draft: AccessCodeDraft) => void;
     view?: View;
   } = $props();
@@ -149,33 +158,34 @@
     extractionBreakfast = $state<number | undefined>();
   let preview = $state<{
     draft: AccessCodeDraft;
-    details: [string, string][];
+    details: ReviewRow[];
     source: string;
     contact?: GuestContact;
   } | null>(null);
-  let settingsOpen = $state(false),
-    formatDraft = $state("");
-  let formatInput = $state<HTMLInputElement | null>(null);
-  function insertPlaceholder(key: string) {
-    const input = formatInput;
-    if (!input) return;
-    const start = input.selectionStart ?? formatDraft.length;
-    const end = input.selectionEnd ?? start;
-    const token = "{" + key + "}";
-    if (formatDraft.length - (end - start) + token.length > 180) return;
-    input.setRangeText(token, start, end, "end");
-    formatDraft = input.value;
-    input.focus();
-  }
-  const formatValid = $derived(
-    formatDraft.trim().length > 0 &&
-      !/[{}]/.test(
-        formatDraft.replace(
-          /\{(name|arrival|departure|dates|rooms|property|reservation)\}/g,
-          "",
-        ),
-      ),
+  const selectedFields = $derived(
+    fieldChoices
+      ? Object.keys(fieldChoices).filter((key) => fieldChoices[key])
+      : defaultKrossFields,
   );
+  const catalogKey = $derived("guestin.kross.fields." + userId);
+  function readCatalog(key: string): string[] {
+    try {
+      const saved = JSON.parse(hostStorage.getItem(key) ?? "[]");
+      return Array.isArray(saved)
+        ? saved.filter((item) => typeof item === "string")
+        : [];
+    } catch {
+      return [];
+    }
+  }
+  let seenFields = $derived(readCatalog(catalogKey));
+  const availableFields = $derived([
+    ...new Set([
+      ...knownKrossFields,
+      ...seenFields,
+      ...Object.keys(fieldChoices ?? {}),
+    ]),
+  ]);
   let extractionDetails = $state<[string, string][]>([]);
   let screenshotInput = $state<HTMLInputElement | null>(null);
   let scope = "",
@@ -184,15 +194,16 @@
   const localConnections = $derived(
     connections.filter((c) => c.property_id === propertyId),
   );
+  const providerView = $derived(view === "kross/settings" ? "kross" : view);
   const currentConnections = $derived(
-    localConnections.filter((c) => matchesKind(c, view)),
+    localConnections.filter((c) => matchesKind(c, providerView)),
   );
   const selected = $derived(
     currentConnections.find((c) => c.id === selectedId),
   );
   const localDoors = $derived(doors.filter((d) => d.propertyId === propertyId));
   $effect(() => {
-    const next = propertyId + "/" + view;
+    const next = propertyId + "/" + providerView;
     if (next === scope) return;
     scope = next;
     untrack(() => {
@@ -256,7 +267,7 @@
         calendarFileName = "";
         calendarText = "";
       }
-      if (view === "kross" && connected)
+      if (providerView === "kross" && connected)
         void perform(async (current) => {
           await loadProperties(source!.id, current);
         });
@@ -544,59 +555,79 @@
       detail.cod_channel ||
       summary.cod_channel;
     const fields = { ...(item.roomId === undefined ? summary : {}), ...detail };
-    const extraDetails: [string, string][] = [];
-    function addField(label: string, value: unknown) {
+    const rows: ReviewRow[] = [];
+    function row(key: string, value: unknown) {
+      rows.push([
+        fieldLabel(key, hostLanguage.current === "it"),
+        String(value ?? ""),
+        key,
+      ]);
+    }
+    row("id_reservation", id);
+    row("label", detail.label || summary.label);
+    row(
+      "channel",
+      channel && typeof channel === "object"
+        ? channel.name || channel.label || missing
+        : channel || missing,
+    );
+    row("tel", phone);
+    row("n_guests", detail.n_guests || summary.n_guests || missing);
+    row("arrival", detail.arrival ?? summary.arrival);
+    row("departure", detail.departure ?? summary.departure);
+    row("sourceRooms", rooms);
+    row("plannerRoom", plannerRoom !== rooms ? plannerRoom : "");
+    row("email", email);
+    row("notes", detail.notes || detail.note || summary.notes || summary.note);
+    const displayed = new Set(rows.map(([, , key]) => key));
+    function addField(key: string, label: string, value: unknown) {
       if (value && typeof value === "object" && Object.keys(value).length) {
-        for (const [key, child] of Object.entries(value)) {
-          const part = Array.isArray(value)
-            ? Number(key) + 1
-            : key.replaceAll("_", " ");
-          addField(label + " · " + part, child);
+        for (const [part, child] of Object.entries(value)) {
+          if (Array.isArray(value))
+            addField(key, label + " · " + (Number(part) + 1), child);
+          else {
+            const escaped = part.replaceAll("~", "~0").replaceAll("/", "~1");
+            addField(
+              key + "/" + escaped,
+              label +
+                " · " +
+                fieldLabel(escaped, hostLanguage.current === "it"),
+              child,
+            );
+          }
         }
-      } else {
-        extraDetails.push([
+      } else
+        rows.push([
           label,
           value == null || typeof value === "object" || value === ""
             ? missing
             : String(value),
+          key,
         ]);
-      }
     }
-    const fieldNames: Record<string, string> = {
-      cod_reservation: l("Booking reference", "Riferimento prenotazione"),
-      date_reservation: l("Booked on", "Data prenotazione"),
-      name_reservation_status: l("Reservation status", "Stato prenotazione"),
-      n_rooms: l("Number of rooms", "Numero di camere"),
-      nights: l("Nights", "Notti"),
-      rooms: l("Rooms", "Camere"),
-      cod_channel: l("Channel code", "Codice canale"),
-      link_guest_portal: l("Guest portal link", "Link portale ospite"),
-      link_check_in_instructions: l(
-        "Check-in instructions link",
-        "Link istruzioni check-in",
-      ),
-    };
-    const displayed = new Set([
-      "id_reservation",
-      "label",
-      "arrival",
-      "departure",
-      "n_guests",
-      "notes",
-      "tel",
-      "email",
-    ]);
     for (const [key, value] of Object.entries(fields)) {
       if (
-        !displayed.has(key) &&
-        !(key === "channel" && value === channel && typeof value !== "object")
+        displayed.has(key) &&
+        !(key === "channel" && typeof value === "object" && value)
       )
-        addField(
-          Object.hasOwn(fieldNames, key)
-            ? fieldNames[key]
-            : key.replaceAll("_", " "),
-          value,
-        );
+        continue;
+      const escaped = key.replaceAll("~", "~0").replaceAll("/", "~1");
+      addField(
+        escaped,
+        fieldLabel(escaped, hostLanguage.current === "it"),
+        value,
+      );
+    }
+    const discovered = rows.flatMap(([, , key]) =>
+      key && !availableFields.includes(key) ? [key] : [],
+    );
+    if (discovered.length) {
+      seenFields = [...new Set([...seenFields, ...discovered])];
+      try {
+        hostStorage.setItem(catalogKey, JSON.stringify(seenFields));
+      } catch {
+        /* Keep discoveries for this session. */
+      }
     }
     review(
       krossReservationDraft(
@@ -610,41 +641,7 @@
         },
         summary,
       ),
-      [
-        [l("Reservation number", "Numero prenotazione"), String(id)],
-        [
-          l("Booking source", "Canale di prenotazione"),
-          channel && typeof channel === "object"
-            ? String(channel.name || channel.label || missing)
-            : String(channel || missing),
-        ],
-        [l("Phone", "Telefono"), phone],
-        [
-          l("Guests", "Ospiti"),
-          String(detail.n_guests || summary.n_guests || missing),
-        ],
-        [
-          l("Arrival", "Arrivo"),
-          String(detail.arrival ?? summary.arrival ?? ""),
-        ],
-        [
-          l("Departure", "Partenza"),
-          String(detail.departure ?? summary.departure ?? ""),
-        ],
-        [l("Source rooms", "Camere della prenotazione"), rooms],
-        [
-          l("Planner room", "Camera nel planner"),
-          plannerRoom !== rooms ? plannerRoom : "",
-        ],
-        [l("Email", "Email"), email],
-        [
-          l("Reservation notes", "Note prenotazione"),
-          String(
-            detail.notes || detail.note || summary.notes || summary.note || "",
-          ),
-        ],
-        ...extraDetails,
-      ],
+      rows,
       phone
         ? {
             phone,
@@ -664,7 +661,7 @@
   }
   function review(
     value: Partial<AccessCodeDraft>,
-    details: [string, string][] = [],
+    details: ReviewRow[] = [],
     contact?: GuestContact,
   ) {
     preview = {
@@ -969,15 +966,25 @@
       <Button
         size="icon"
         variant="outline"
-        aria-label={l("Contact settings", "Impostazioni contatto")}
-        onclick={() => {
-          formatDraft = contactNameFormat;
-          settingsOpen = true;
-        }}><Settings /></Button
+        aria-label={l("KrossBooking settings", "Impostazioni KrossBooking")}
+        onclick={() => (view = "kross/settings")}><Settings /></Button
       >
     </div>
   {/if}
-  {#if !propertyId}
+  {#if view === "kross/settings"}
+    <KrossSettings
+      {contactNameFormat}
+      {availableFields}
+      {selectedFields}
+      onSave={async (format, fields) => {
+        await savePreferences({
+          contactNameFormat: format,
+          krossReservationFields: fields,
+        });
+        if (view === "kross/settings") view = "kross";
+      }}
+    />
+  {:else if !propertyId}
     <Card.Root
       ><Card.Content class="flex flex-col items-center gap-3 py-8 text-center">
         <Plug class="size-8 text-muted-foreground" />
@@ -1911,57 +1918,6 @@
 </section>
 
 <Modal
-  open={settingsOpen && view === "kross"}
-  title={l("Contact settings", "Impostazioni contatto")}
-  onclose={() => (settingsOpen = false)}
->
-  <form
-    class="grid gap-3"
-    onsubmit={(event) => {
-      event.preventDefault();
-      if (formatValid)
-        void perform(async () => {
-          await savePreferences({ contactNameFormat: formatDraft.trim() });
-          settingsOpen = false;
-        });
-    }}
-  >
-    <Label for="contact-format"
-      >{l("Contact name format", "Formato nome contatto")}</Label
-    >
-    <Input
-      id="contact-format"
-      bind:ref={formatInput}
-      bind:value={formatDraft}
-      maxlength={180}
-    />
-    <div class="flex flex-wrap gap-1">
-      {#each Object.keys(sampleContact) as key (key)}
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          onclick={() => insertPlaceholder(key)}>{"{" + key + "}"}</Button
-        >
-      {/each}
-    </div>
-    <p class="text-sm text-muted-foreground">
-      {l("Preview", "Anteprima")} · {contactName(formatDraft, sampleContact)}
-    </p>
-    {#if !formatValid}<p role="alert">
-        {l(
-          "Enter a name format using the listed placeholders.",
-          "Inserisci un formato usando i segnaposto elencati.",
-        )}
-      </p>{/if}
-    {#if error}<p role="alert">{error}</p>{/if}
-    <Button type="submit" disabled={!formatValid || pending}
-      >{l("Save", "Salva")}</Button
-    >
-  </form>
-</Modal>
-
-<Modal
   open={!!preview}
   title={l("Review imported details", "Controlla i dettagli importati")}
   onclose={() => (preview = null)}
@@ -1989,7 +1945,7 @@
             onclick={() => saveGuestContact(contact, contactNameFormat)}
             ><Contact />{l("Save contact", "Salva contatto")}</Button
           >
-        {:else if view === "kross"}
+        {:else if view === "kross" && selectedFields.includes("tel")}
           <p class="mb-3 font-medium text-amber-700 dark:text-amber-400">
             {l(
               "No phone number provided",
@@ -1998,7 +1954,7 @@
           </p>
         {/if}
         <dl class="grid gap-3">
-          {#each imported.details.filter(([, value]) => value) as [label, value], index (index)}<div
+          {#each imported.details.filter(([, value, key]) => value && (!key || selectedFields.includes(key))) as [label, value], index (index)}<div
               class="border-b pb-3"
             >
               <dt class="text-xs text-muted-foreground">{label}</dt>
